@@ -1,0 +1,4 @@
+patient_id,image,ground_truth,info_cfg
+patient101,/path/to/data/patient101/patient101_4d.nii.gz,/path/to/data/patient101,/path/to/data/patient101/Info.cfg
+patient102,/path/to/data/patient102/patient102_4d.nii.gz,/path/to/data/patient102,/path/to/data/patient102/Info.cfg
+patient103,/path/to/data/patient103/patient103_4d.nii.gz,/path/to/data/patient103,/path/to/data/patient103/Info.cfg

@@ -1,0 +1,122 @@
+{
+    "version": "1.0.0",
+    "description": "Model registry for CASC pipeline. Add new models here following the schema.",
+    "models": {
+        "cinema": {
+            "name": "CineMA",
+            "version": "1.0.0",
+            "description": "Convolutional Vision Transformer for cardiac MRI segmentation",
+            "container": "ghcr.io/your-org/casc-cinema:latest",
+            "module_path": "modules/cinema.nf",
+            "input_format": "nifti_4d",
+            "output_labels": {
+                "0": "background",
+                "1": "right_ventricle",
+                "2": "myocardium",
+                "3": "left_ventricle"
+            },
+            "preprocessing": {
+                "resample_spacing": [1.0, 1.0, 10.0],
+                "crop_size": [192, 192],
+                "normalize": true
+            },
+            "inference": {
+                "patch_size": [192, 192, 16],
+                "dtype": "float32",
+                "batch_size": 1
+            },
+            "scripts": {
+                "preprocess": "bin/cinema_preprocess.py",
+                "segment": "bin/cinema_segment.py"
+            },
+            "model_weights": {
+                "path": "models/cinema/finetuned/segmentation",
+                "format": "safetensors"
+            },
+            "citation": "CineMA: Cardiac cine MRI analysis framework",
+            "enabled": true
+        },
+        "nnformer": {
+            "name": "nnFormer",
+            "version": "1.0.0",
+            "description": "3D medical image segmentation transformer based on nnU-Net framework",
+            "container": "ghcr.io/your-org/casc-nnformer:latest",
+            "module_path": "modules/nnformer.nf",
+            "input_format": "nifti_3d",
+            "output_labels": {
+                "0": "background",
+                "1": "right_ventricle",
+                "2": "myocardium",
+                "3": "left_ventricle"
+            },
+            "preprocessing": {
+                "add_channel_suffix": "_0000",
+                "normalize": true
+            },
+            "inference": {
+                "fold": 0,
+                "tta": true,
+                "mixed_precision": true,
+                "step_size": 0.5
+            },
+            "scripts": {
+                "preprocess": "bin/nnformer_preprocess.py",
+                "segment": "bin/nnformer_segment.py"
+            },
+            "model_weights": {
+                "path": "models/nnformer/trained_models",
+                "format": "pickle"
+            },
+            "citation": "Zhou, H. Y., et al. nnFormer: Interleaved Transformer for Volumetric Segmentation. arXiv 2021.",
+            "enabled": true
+        },
+        "vsa3l": {
+            "name": "VSA-3L (MONAI)",
+            "version": "1.0.0",
+            "description": "MONAI Ventricular Short Axis 3-Label model for cardiac segmentation",
+            "container": "ghcr.io/your-org/casc-vsa3l:latest",
+            "module_path": "modules/vsa3l.nf",
+            "input_format": "nifti_4d",
+            "output_labels": {
+                "0": "background",
+                "1": "right_ventricle",
+                "2": "myocardium",
+                "3": "left_ventricle"
+            },
+            "preprocessing": {
+                "resize": [256, 256],
+                "extract_2d_slices": true,
+                "normalize": true
+            },
+            "inference": {
+                "input_size": [256, 256],
+                "batch_size": 1
+            },
+            "scripts": {
+                "preprocess": "bin/vsa3l_preprocess.py",
+                "segment": "bin/vsa3l_segment.py"
+            },
+            "model_weights": {
+                "path": "models/vsa3l/model.pt",
+                "format": "pytorch"
+            },
+            "citation": "MONAI Model Zoo: Ventricular Short Axis 3-Label Segmentation",
+            "enabled": true
+        }
+    },
+    "schema": {
+        "required_fields": [
+            "name",
+            "version",
+            "description",
+            "container",
+            "module_path",
+            "input_format",
+            "output_labels",
+            "scripts",
+            "enabled"
+        ],
+        "input_formats": ["nifti_3d", "nifti_4d", "dicom"],
+        "container_registries": ["ghcr.io", "docker.io", "quay.io"]
+    }
+}

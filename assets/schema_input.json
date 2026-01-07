@@ -1,0 +1,30 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "CASC Pipeline Input Schema",
+    "description": "Schema for validating CASC pipeline input samplesheet",
+    "type": "array",
+    "items": {
+        "type": "object",
+        "required": ["patient_id", "image"],
+        "properties": {
+            "patient_id": {
+                "type": "string",
+                "description": "Unique patient identifier",
+                "pattern": "^[a-zA-Z0-9_-]+$"
+            },
+            "image": {
+                "type": "string",
+                "description": "Path to 4D cardiac MRI NIfTI file",
+                "pattern": ".*\\.(nii|nii\\.gz)$"
+            },
+            "ground_truth": {
+                "type": ["string", "null"],
+                "description": "Path to ground truth segmentation file or directory"
+            },
+            "info_cfg": {
+                "type": ["string", "null"],
+                "description": "Path to ACDC Info.cfg file with ED/ES frame indices"
+            }
+        }
+    }
+}
