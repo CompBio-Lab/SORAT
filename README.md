@@ -312,29 +312,6 @@ docker build -f containers/nnformer/Dockerfile -t ghcr.io/pmoheban/casc-nnformer
 docker build -f containers/vsa3l/Dockerfile -t ghcr.io/pmoheban/casc-vsa3l:latest .
 ```
 
-### Docker Guide for Beginners
-
-**New to Docker?** See our comprehensive guide: [docs/DOCKER_GUIDE.md](docs/DOCKER_GUIDE.md)
-
-The guide covers:
-- Installing Docker and GPU support
-- Understanding Docker concepts
-- Pulling and running CASC images
-- Building and pushing images
-- Converting to Singularity for HPC
-- Troubleshooting common issues
-
-### Singularity/Apptainer (for HPC)
-
-```bash
-# Convert Docker images to Singularity
-singularity pull casc-cinema.sif docker://ghcr.io/pmoheban/casc-cinema:latest
-singularity pull casc-nnformer.sif docker://ghcr.io/pmoheban/casc-nnformer:latest
-singularity pull casc-vsa3l.sif docker://ghcr.io/pmoheban/casc-vsa3l:latest
-
-# Nextflow handles this automatically with -profile singularity
-```
-
 ## Troubleshooting
 
 ### Common Issues
@@ -375,9 +352,27 @@ If you use CASC in your research, please cite:
 
 Also cite the individual models you use:
 
-- **nnFormer**: Zhou, H. Y., et al. "nnFormer: Interleaved Transformer for Volumetric Segmentation." arXiv 2021.
-- **MONAI VSA-3L**: MONAI Consortium. "MONAI Model Zoo."
-- **CineMA**: [Citation TBD]
+- **nnFormer**: @article{zhou2022nnformerinterleavedtransformervolumetric,
+    title={nnFormer: Interleaved Transformer for Volumetric Segmentation}, 
+    author={Hong-Yu Zhou and Jiansen Guo and Yinghao Zhang and Lequan Yu and Liansheng Wang and Yizhou Yu},
+    year={2022},
+    url={https://arxiv.org/abs/2109.03201}
+}
+- **MONAI VSA-3L**: @article{inbook,
+    author = {Kerfoot, Eric and Clough, James and Oksuz, Ilkay and Lee, Jack and King, Andrew and Schnabel, Julia},
+    year = {2019},
+    month = {02},
+    pages = {371-380},
+    title = {Left-Ventricle Quantification Using Residual U-Net: 9th International Workshop, STACOM 2018, Held in Conjunction with MICCAI 2018, Granada, Spain, September 16, 2018, Revised Selected Papers},
+    isbn = {978-3-030-12028-3},
+    doi = {10.1007/978-3-030-12029-0_40}
+}
+- **CineMA**: @article{fu2025cinema,
+    title={A versatile foundation model for cine cardiac magnetic resonance image analysis tasks},
+    author={Fu, Yunguan and Bai, Wenjia and Yi, Weixi and Manisty, Charlotte and Bhuva, Anish N and Treibel, Thomas A and Moon, James C and Clarkson, Matthew J and Davies, Rhodri Huw and Hu, Yipeng},
+    journal={arXiv preprint arXiv:2506.00679},
+    year={2025}
+}
 
 ## License
 
