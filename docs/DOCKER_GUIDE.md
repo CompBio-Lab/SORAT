@@ -73,9 +73,9 @@ mkdir -p containers && cd containers
 module load gcc apptainer
 
 # Pull CASC images from GitHub Container Registry
-apptainer pull --name casc-cinema.sif docker://ghcr.io/pmoheban/casc-cinema:latest
-apptainer pull --name casc-nnformer.sif docker://ghcr.io/pmoheban/casc-nnformer:latest
-apptainer pull --name casc-vsa3l.sif docker://ghcr.io/pmoheban/casc-vsa3l:latest
+apptainer pull casc-cinema.sif docker://parsaban/casc-cinema:latest
+apptainer pull casc-nnformer.sif docker://parsaban/casc-nnformer:latest
+apptainer pull casc-vsa3l.sif docker://parsaban/casc-vsa3l:latest
 
 # List your downloaded containers
 ls -lh *.sif

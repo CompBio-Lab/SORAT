@@ -33,7 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Upgrade pip and install dependencies
 RUN pip install --upgrade pip && pip install \
-    numpy scipy pandas matplotlib \
+    numpy scipy pandas matplotlib seaborn \
     SimpleITK nibabel medpy tqdm \
     monai scikit-image Pillow \
     einops timm hydra-core omegaconf safetensors
@@ -49,6 +49,39 @@ COPY cinema/ /app/cinema/
 
 # Copy model weights (included in image for convenience)
 COPY models/cinema/ /models/cinema/
+
+# Create missing CineMA config(s) inside the container (keeps repo clean)
+RUN if [ ! -f /models/cinema/finetuned/segmentation/mnms2_sax/config.yaml ]; then \
+        mkdir -p /models/cinema/finetuned/segmentation/mnms2_sax && \
+        printf '%s\n' \
+        "grad_ckpt: True" \
+        "data:" \
+        "    sax:" \
+        "        spacing: [1.0, 1.0, 10.0]" \
+        "        patch_size: [192, 192, 16]" \
+        "        in_chans: 1" \
+        "model:" \
+        "    name: convunetr" \
+        "    views: sax" \
+        "    out_chans: 4" \
+        "    convunetr:" \
+        "        size: base" \
+        "        enc_patch_size: [4, 4, 1]" \
+        "        enc_scale_factor: [2, 2, 1]" \
+        "        enc_conv_chans: [64, 128]" \
+        "        enc_conv_n_blocks: 2" \
+        "        dec_chans: [32, 64, 128, 256, 512]" \
+        "        dec_patch_size: [2, 2, 1]" \
+        "        dec_scale_factor: [2, 2, 1]" \
+        "        dropout: 0.1" \
+        "        drop_path: 0.1" \
+        > /models/cinema/finetuned/segmentation/mnms2_sax/config.yaml; \
+    fi
+
+# Validate CineMA model configs are present to avoid runtime failures
+RUN test -f /models/cinema/finetuned/segmentation/acdc_sax/config.yaml && \
+    test -f /models/cinema/finetuned/segmentation/mnms_sax/config.yaml && \
+    test -f /models/cinema/finetuned/segmentation/mnms2_sax/config.yaml
 
 # Copy pipeline scripts
 COPY bin/cinema_preprocess.py bin/cinema_segment.py bin/compute_metrics.py /app/bin/

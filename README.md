@@ -67,6 +67,15 @@ nextflow run main.nf \
     -profile docker
 ```
 
+### Pulling Containers (Apptainer)
+
+```bash
+# Pull CASC images from GitHub Container Registry
+apptainer pull casc-cinema.sif docker://parsaban/casc-cinema:latest
+apptainer pull casc-nnformer.sif docker://parsaban/casc-nnformer:latest
+apptainer pull casc-vsa3l.sif docker://parsaban/casc-vsa3l:latest
+```
+
 ### 3. Alternative: Jupyter Notebook Interface
 
 For interactive use, open the Jupyter notebook:
@@ -130,6 +139,25 @@ Weight: 70
 | `--outdir` | `./results` | Output directory |
 | `--models` | `all` | Models to run: `cinema`, `nnformer`, `vsa3l`, or `all` |
 | `--compare` | `true` | Generate comparison report |
+| `--inference_only` | `false` | Run inference only (skip metrics + report generation) |
+
+### Inference-Only Runs
+
+Use `--inference_only` to run segmentation without computing metrics or generating comparison reports. This keeps the current behavior intact while providing a fast inference-only mode.
+
+```bash
+# Inference-only (no metrics/report)
+nextflow run main.nf \
+    --input samplesheet.csv \
+    --outdir results \
+    --models all \
+    --inference_only \
+    -profile slurm
+```
+
+Notes:
+- If `--inference_only` is enabled, `--compare` is ignored.
+- Metrics and reports require ground-truth data in the samplesheet; inference-only does not.
 
 ### Model-Specific Parameters
 

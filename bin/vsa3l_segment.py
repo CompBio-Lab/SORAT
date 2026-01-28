@@ -7,6 +7,7 @@ Runs cardiac segmentation inference using the MONAI VSA-3L model.
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 import monai
@@ -101,13 +102,18 @@ def segment_slice(
     return seg_remapped
 
 
+def _sanitize_tag(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_]+", "_", value).strip("_")
+
+
 def segment_patient(
     input_dir: Path,
     patient_id: str,
     output_prefix: str,
     model_path: Path,
     bundle_root: Path,
-    device: torch.device = None
+    device: torch.device = None,
+    model_tag: str = None
 ) -> dict:
     """
     Segment a single patient's cardiac MRI using VSA-3L.
@@ -126,6 +132,11 @@ def segment_patient(
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
+    # Build model tag for filenames/metadata
+    if model_tag is None:
+        model_tag = f"vsa3l__{model_path.stem}"
+    model_tag = _sanitize_tag(model_tag)
+
     # Load model
     print(f"Loading VSA-3L model from {model_path}...")
     model = load_model(model_path, bundle_root, device)
@@ -183,7 +194,7 @@ def segment_patient(
                 volume[:, :, slice_idx] = seg_resized
         
         # Save as NIfTI
-        output_path = f"{output_prefix}_{frame_type}_vsa3l.nii.gz"
+        output_path = f"{output_prefix}_{frame_type}_{model_tag}.nii.gz"
         
         # Get voxel spacing from metadata
         spacing = metadata.get('voxelspacing', [1.0, 1.0, 1.0])[:3]
@@ -197,9 +208,10 @@ def segment_patient(
     
     return {
         'patient_id': patient_id,
-        'model': 'vsa3l',
-        'ed_output': results.get('ed_output', f"{output_prefix}_ED_vsa3l.nii.gz"),
-        'es_output': results.get('es_output', f"{output_prefix}_ES_vsa3l.nii.gz")
+        'architecture': 'vsa3l',
+        'model_tag': model_tag,
+        'ed_output': results.get('ed_output', f"{output_prefix}_ED_{model_tag}.nii.gz"),
+        'es_output': results.get('es_output', f"{output_prefix}_ES_{model_tag}.nii.gz")
     }
 
 
@@ -210,6 +222,7 @@ def main():
     parser.add_argument('--output_prefix', required=True, help='Output file prefix')
     parser.add_argument('--model_path', required=True, help='Path to model weights')
     parser.add_argument('--bundle_root', required=True, help='Path to MONAI bundle root')
+    parser.add_argument('--model_tag', default=None, help='Model tag for output naming')
     
     args = parser.parse_args()
     
@@ -218,7 +231,8 @@ def main():
         patient_id=args.patient_id,
         output_prefix=args.output_prefix,
         model_path=Path(args.model_path),
-        bundle_root=Path(args.bundle_root)
+        bundle_root=Path(args.bundle_root),
+        model_tag=args.model_tag
     )
     
     print(f"Segmentation complete for {args.patient_id}")

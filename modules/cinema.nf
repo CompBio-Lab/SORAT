@@ -56,24 +56,24 @@ process CINEMA_SEGMENT {
     publishDir "${params.outdir}/cinema/segmentations", mode: params.publish_dir_mode
     
     input:
-    tuple val(patient_id), path(preprocessed_dir), path(ground_truth), path(info_cfg)
+    tuple val(patient_id), path(preprocessed_dir), path(ground_truth), path(info_cfg), val(trained_dataset), val(seeds_csv), val(do_ensemble), val(model_tag)
     
     output:
-    tuple val(patient_id), path("${patient_id}_ED_cinema.nii.gz"), path("${patient_id}_ES_cinema.nii.gz"), val(meta), emit: segmentation
+    tuple val(patient_id), path("${patient_id}_ED_${model_tag}.nii.gz"), path("${patient_id}_ES_${model_tag}.nii.gz"), val(meta), emit: segmentation
     path "versions.yml", emit: versions
     
     script:
-    def seeds = params.cinema.seeds.join(',')
-    def ensemble = params.cinema.ensemble ? "--ensemble" : ""
-    meta = [model: 'cinema', trained_dataset: params.cinema.trained_dataset]
+    def ensemble = do_ensemble ? "--ensemble" : ""
+    meta = [architecture: 'cinema', model_tag: model_tag, trained_dataset: trained_dataset, seeds: seeds_csv, ensemble: do_ensemble]
     """
     cinema_segment.py \\
         --input_dir ${preprocessed_dir} \\
         --patient_id ${patient_id} \\
         --output_prefix ${patient_id} \\
-        --trained_dataset ${params.cinema.trained_dataset} \\
-        --seeds ${seeds} \\
+        --trained_dataset ${trained_dataset} \\
+        --seeds ${seeds_csv} \\
         ${ensemble} \\
+        --model_tag ${model_tag} \\
         --model_dir /models/cinema
     
     cat <<-END_VERSIONS > versions.yml

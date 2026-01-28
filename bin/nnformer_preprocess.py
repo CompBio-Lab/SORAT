@@ -16,6 +16,21 @@ import numpy as np
 import SimpleITK as sitk
 
 
+def convert_to_native(obj):
+    """Convert numpy types to native Python types for JSON serialization."""
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, (np.floating, np.float32, np.float64)):
+        return float(obj)
+    elif isinstance(obj, (np.integer, np.int32, np.int64)):
+        return int(obj)
+    elif isinstance(obj, dict):
+        return {k: convert_to_native(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_to_native(i) for i in obj]
+    return obj
+
+
 def parse_info_cfg(info_path: Path) -> dict:
     """Parse ACDC Info.cfg file to get ED/ES frame indices."""
     info = {'ed_frame': 0, 'es_frame': None}
@@ -94,8 +109,9 @@ def preprocess_patient(
         es_image = extract_frame(image, es_frame_idx)
         
         # Save with nnFormer naming convention
-        ed_output = output_dir / f"{patient_id}_frame{ed_frame_idx + 1:02d}_0000.nii.gz"
-        es_output = output_dir / f"{patient_id}_frame{es_frame_idx + 1:02d}_0000.nii.gz"
+        # Use ED/ES naming instead of frame numbers for cleaner case IDs
+        ed_output = output_dir / f"{patient_id}_ED_0000.nii.gz"
+        es_output = output_dir / f"{patient_id}_ES_0000.nii.gz"
         
         sitk.WriteImage(ed_image, str(ed_output), useCompression=True)
         sitk.WriteImage(es_image, str(es_output), useCompression=True)
@@ -110,20 +126,9 @@ def preprocess_patient(
         ed_frame_idx = 0
         es_frame_idx = 0
     
-    # Copy ground truth if available
-    if ground_truth:
-        gt_path = Path(ground_truth)
-        
-        if gt_path.is_file():
-            # Single ground truth file
-            gt_output = output_dir / f"{patient_id}_gt.nii.gz"
-            shutil.copy(gt_path, gt_output)
-        elif gt_path.is_dir():
-            # Directory with multiple ground truth files
-            for gt_file in gt_path.glob("*.nii.gz"):
-                if "_gt" in gt_file.name or "gt" in gt_file.name.lower():
-                    gt_output = output_dir / gt_file.name
-                    shutil.copy(gt_file, gt_output)
+    # NOTE: Ground truth files are NOT copied to the preprocessing directory
+    # because nnFormer's predict_from_folder gets confused by non-input files.
+    # Ground truth is passed separately for metric computation.
     
     # Save metadata
     metadata = {
@@ -135,6 +140,9 @@ def preprocess_patient(
         'output_files': output_files,
         'spacing': list(image.GetSpacing()[:3])
     }
+    
+    # Convert numpy types to native Python types for JSON serialization
+    metadata = convert_to_native(metadata)
     
     with open(output_dir / 'metadata.json', 'w') as f:
         json.dump(metadata, f, indent=2)

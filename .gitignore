@@ -75,9 +75,15 @@ timeline.html
 report.html
 trace.txt
 dag.svg
+*.dot
 
 # Docker
 *.tar
+docs/
+docs/*
+container/cinema/*
+container/nnformer/*
+container/vsa3l/*
 
 # Editor
 .vscode/
@@ -90,18 +96,26 @@ dag.svg
 .DS_Store
 Thumbs.db
 
-# Model weights (download separately)
+# Model weights (download separately - too large for GitHub)
+# These are included in Docker images but transferred separately via SCP
 models/*/weights/
 models/*/*.pt
 models/*/*.pth
+models/*/*.ts
 models/*/*.safetensors
 models/*/*.pkl
+models/cinema/finetuned/
+models/**/finetuned/**/config.yaml
+models/nnformer/nnFormer_trained_models/
+models/vsa3l/*.pt
+models/vsa3l/*.ts
 !models/**/.gitkeep
+containers/*.sif
 
 # Large data files
 *.nii
 *.nii.gz
 *.dcm
-data/
+/data/
 DATASET/
 preprocessed/

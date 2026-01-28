@@ -31,6 +31,32 @@ def hd95_score(pred: np.ndarray, gt: np.ndarray, voxelspacing=None) -> float:
         return np.inf
 
 
+def resample_to_reference(image: sitk.Image, reference: sitk.Image, is_label: bool = True) -> sitk.Image:
+    """
+    Resample an image to match the reference image's size, spacing, and orientation.
+    
+    Args:
+        image: Image to resample
+        reference: Reference image to match
+        is_label: If True, use nearest neighbor interpolation (for segmentations)
+    
+    Returns:
+        Resampled image
+    """
+    resampler = sitk.ResampleImageFilter()
+    resampler.SetReferenceImage(reference)
+    
+    if is_label:
+        resampler.SetInterpolator(sitk.sitkNearestNeighbor)
+    else:
+        resampler.SetInterpolator(sitk.sitkLinear)
+    
+    resampler.SetDefaultPixelValue(0)
+    resampler.SetTransform(sitk.Transform())
+    
+    return resampler.Execute(image)
+
+
 def compute_metrics_for_volume(pred_path: Path, gt_path: Path) -> dict:
     """
     Compute metrics for a single prediction-ground truth pair.
@@ -46,11 +72,19 @@ def compute_metrics_for_volume(pred_path: Path, gt_path: Path) -> dict:
     pred_sitk = sitk.ReadImage(str(pred_path))
     gt_sitk = sitk.ReadImage(str(gt_path))
     
+    # Check if shapes match, if not resample prediction to ground truth space
+    pred_size = pred_sitk.GetSize()
+    gt_size = gt_sitk.GetSize()
+    
+    if pred_size != gt_size:
+        print(f"  Resampling prediction from {pred_size} to {gt_size}")
+        pred_sitk = resample_to_reference(pred_sitk, gt_sitk, is_label=True)
+    
     pred = sitk.GetArrayFromImage(pred_sitk)
     gt = sitk.GetArrayFromImage(gt_sitk)
     
-    # Get voxel spacing for HD95
-    spacing = pred_sitk.GetSpacing()
+    # Get voxel spacing from ground truth for HD95
+    spacing = gt_sitk.GetSpacing()
     
     # ACDC labels: 1=RV, 2=MYO, 3=LV
     metrics = {}
@@ -72,13 +106,23 @@ def compute_metrics_for_volume(pred_path: Path, gt_path: Path) -> dict:
     return metrics
 
 
+def _infer_architecture(model: str) -> str:
+    if '__' in model:
+        return model.split('__', 1)[0]
+    for prefix in ['cinema', 'nnformer', 'vsa3l']:
+        if model.startswith(prefix):
+            return prefix
+    return 'unknown'
+
+
 def compute_patient_metrics(
     patient_id: str,
     model: str,
     seg_ed: Path,
     seg_es: Path,
     ground_truth: Path,
-    output_path: Path
+    output_path: Path,
+    architecture: str = None
 ) -> pd.DataFrame:
     """
     Compute metrics for a patient's ED and ES segmentations.
@@ -155,9 +199,13 @@ def compute_patient_metrics(
     
     # Create combined result
     if results:
+        if architecture is None:
+            architecture = _infer_architecture(model)
+
         combined = {
             'patient_id': patient_id,
-            'model': model
+            'model': model,
+            'architecture': architecture
         }
         
         for result in results:
@@ -187,6 +235,7 @@ def main():
     parser = argparse.ArgumentParser(description='Compute segmentation metrics')
     parser.add_argument('--patient_id', required=True, help='Patient identifier')
     parser.add_argument('--model', required=True, help='Model name')
+    parser.add_argument('--architecture', default=None, help='Architecture name')
     parser.add_argument('--seg_ed', required=True, help='Path to ED segmentation')
     parser.add_argument('--seg_es', required=True, help='Path to ES segmentation')
     parser.add_argument('--ground_truth', required=True, help='Path to ground truth')
@@ -200,7 +249,8 @@ def main():
         seg_ed=Path(args.seg_ed),
         seg_es=Path(args.seg_es),
         ground_truth=Path(args.ground_truth),
-        output_path=Path(args.output)
+        output_path=Path(args.output),
+        architecture=args.architecture
     )
     
     print(f"Metrics computed for {args.patient_id} using {args.model}")

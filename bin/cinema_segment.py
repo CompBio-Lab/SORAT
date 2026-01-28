@@ -7,6 +7,7 @@ Runs cardiac segmentation inference using the CineMA model.
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -101,6 +102,10 @@ def run_inference(
     return labels
 
 
+def _sanitize_tag(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_]+", "_", value).strip("_")
+
+
 def segment_patient(
     input_dir: Path,
     patient_id: str,
@@ -109,7 +114,8 @@ def segment_patient(
     trained_dataset: str = 'acdc',
     seeds: list = [0],
     ensemble: bool = False,
-    device: torch.device = None
+    device: torch.device = None,
+    model_tag: str = None
 ) -> dict:
     """
     Segment a single patient's cardiac MRI.
@@ -150,6 +156,16 @@ def segment_patient(
     origin = image_sitk.GetOrigin()[:3]
     direction = image_sitk.GetDirection()
     
+    # Build model tag for filenames/metadata
+    if model_tag is None:
+        if ensemble and len(seeds) > 1:
+            model_tag = f"cinema__{trained_dataset}_ensemble"
+        elif len(seeds) == 1:
+            model_tag = f"cinema__{trained_dataset}_seed{seeds[0]}"
+        else:
+            model_tag = f"cinema__{trained_dataset}_seeds{len(seeds)}"
+    model_tag = _sanitize_tag(model_tag)
+
     # Run inference for each seed
     all_predictions = []
     for seed in seeds:
@@ -184,24 +200,25 @@ def segment_patient(
     ed_sitk = sitk.GetImageFromArray(np.transpose(ed_pred, (2, 1, 0)))
     ed_sitk.SetSpacing(spacing)
     ed_sitk.SetOrigin(origin)
-    sitk.WriteImage(ed_sitk, f"{output_prefix}_ED_cinema.nii.gz", useCompression=True)
+    sitk.WriteImage(ed_sitk, f"{output_prefix}_ED_{model_tag}.nii.gz", useCompression=True)
     
     # Save ES prediction
     es_sitk = sitk.GetImageFromArray(np.transpose(es_pred, (2, 1, 0)))
     es_sitk.SetSpacing(spacing)
     es_sitk.SetOrigin(origin)
-    sitk.WriteImage(es_sitk, f"{output_prefix}_ES_cinema.nii.gz", useCompression=True)
+    sitk.WriteImage(es_sitk, f"{output_prefix}_ES_{model_tag}.nii.gz", useCompression=True)
     
     results = {
         'patient_id': patient_id,
-        'model': 'cinema',
+        'architecture': 'cinema',
+        'model_tag': model_tag,
         'trained_dataset': trained_dataset,
         'seeds': seeds,
         'ensemble': ensemble,
         'ed_frame': ed_frame_idx,
         'es_frame': es_frame_idx,
-        'ed_output': f"{output_prefix}_ED_cinema.nii.gz",
-        'es_output': f"{output_prefix}_ES_cinema.nii.gz"
+        'ed_output': f"{output_prefix}_ED_{model_tag}.nii.gz",
+        'es_output': f"{output_prefix}_ES_{model_tag}.nii.gz"
     }
     
     return results
@@ -216,6 +233,7 @@ def main():
     parser.add_argument('--trained_dataset', default='acdc', help='Training dataset')
     parser.add_argument('--seeds', default='0', help='Comma-separated list of seeds')
     parser.add_argument('--ensemble', action='store_true', help='Ensemble predictions')
+    parser.add_argument('--model_tag', default=None, help='Model tag for output naming')
     
     args = parser.parse_args()
     
@@ -228,7 +246,8 @@ def main():
         model_dir=Path(args.model_dir),
         trained_dataset=args.trained_dataset,
         seeds=seeds,
-        ensemble=args.ensemble
+        ensemble=args.ensemble,
+        model_tag=args.model_tag
     )
     
     print(f"Segmentation complete for {args.patient_id}")

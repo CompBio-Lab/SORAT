@@ -41,7 +41,8 @@ RUN pip install --upgrade pip && pip install \
     numpy scipy pandas matplotlib \
     SimpleITK nibabel medpy tqdm \
     batchgenerators einops \
-    scikit-image Pillow
+    scikit-image Pillow \
+    timm
 
 # Create directories
 RUN mkdir -p /app /data /output /app/bin \

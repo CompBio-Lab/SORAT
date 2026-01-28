@@ -3,14 +3,34 @@
 nnFormer Segmentation Script for CASC Pipeline
 
 Runs cardiac segmentation inference using the nnFormer model.
+
+NOTE: Environment variables must be set BEFORE importing nnformer modules
+because paths.py runs at import time.
 """
 
 import argparse
 import json
 import os
 import pickle
+import re
+import shutil
 import sys
 from pathlib import Path
+
+# CRITICAL: Set environment variables to /tmp BEFORE importing nnformer
+# This MUST happen before any nnformer import because paths.py runs at import time
+# Always use /tmp which is writable inside containers
+_TMP_BASE = '/tmp/nnformer_tmp'
+os.environ['nnFormer_raw_data_base'] = f'{_TMP_BASE}/raw'
+os.environ['nnFormer_preprocessed'] = f'{_TMP_BASE}/preprocessed'
+os.environ['RESULTS_FOLDER'] = f'{_TMP_BASE}/results'
+os.environ['MPLCONFIGDIR'] = _TMP_BASE
+
+# Create the directories before importing nnformer (since paths.py calls maybe_mkdir_p)
+os.makedirs(f'{_TMP_BASE}/raw/nnFormer_raw_data', exist_ok=True)
+os.makedirs(f'{_TMP_BASE}/raw/nnFormer_cropped_data', exist_ok=True)
+os.makedirs(f'{_TMP_BASE}/preprocessed', exist_ok=True)
+os.makedirs(f'{_TMP_BASE}/results', exist_ok=True)
 
 import numpy as np
 import SimpleITK as sitk
@@ -18,15 +38,30 @@ import torch
 
 
 def setup_nnformer_env(model_dir: Path):
-    """Set up nnFormer environment variables."""
-    os.environ['nnFormer_raw_data_base'] = str(model_dir / "nnFormer_raw")
-    os.environ['nnFormer_preprocessed'] = str(model_dir / "nnFormer_preprocessed")
-    os.environ['RESULTS_FOLDER'] = str(model_dir / "nnFormer_trained_models")
+    """Set up nnFormer environment - DO NOT override temp directories.
     
-    # Add nnFormer to path
+    Note: The raw_data_base, preprocessed, and RESULTS_FOLDER env vars
+    are set at module load time to writable temp directories. We only
+    need to add nnformer to the path here.
+    """
+    # Add nnFormer to path if needed
     nnformer_path = model_dir.parent
     if str(nnformer_path) not in sys.path:
         sys.path.insert(0, str(nnformer_path))
+
+
+def ensure_plans_file(model_dir: Path):
+    """Ensure nnFormer plans file exists in nnFormer_preprocessed."""
+    plans_src = model_dir / "nnFormer_trained_models" / "nnFormer" / "3d_fullres" / "Task001_ACDC" / "nnFormerTrainerV2_nnformer_acdc__nnFormerPlansv2.1" / "plans.pkl"
+    preprocessed_root = Path(os.environ.get("nnFormer_preprocessed", f"{_TMP_BASE}/preprocessed"))
+    target_dir = preprocessed_root / "Task001_ACDC"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target_plans = target_dir / "nnFormerPlansv2.1_plans_3D.pkl"
+
+    if not target_plans.exists():
+        if not plans_src.exists():
+            raise FileNotFoundError(f"Missing plans file at {plans_src}")
+        shutil.copy(plans_src, target_plans)
 
 
 def load_nnformer_model(model_dir: Path, fold: int = 0):
@@ -66,6 +101,8 @@ def segment_files(
         List of output file paths
     """
     from nnformer.inference.predict import predict_from_folder
+
+    ensure_plans_file(model_dir)
     
     trainer_dir = model_dir / "nnFormer_trained_models" / "nnFormer" / "3d_fullres" / "Task001_ACDC" / "nnFormerTrainerV2_nnformer_acdc__nnFormerPlansv2.1"
     
@@ -93,6 +130,10 @@ def segment_files(
     return list(output_dir.glob("*.nii.gz"))
 
 
+def _sanitize_tag(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_]+", "_", value).strip("_")
+
+
 def segment_patient(
     input_dir: Path,
     patient_id: str,
@@ -100,7 +141,8 @@ def segment_patient(
     model_dir: Path,
     fold: int = 0,
     tta: bool = True,
-    mixed_precision: bool = True
+    mixed_precision: bool = True,
+    model_tag: str = None
 ) -> dict:
     """
     Segment a single patient's cardiac MRI using nnFormer.
@@ -136,14 +178,21 @@ def segment_patient(
         )
         
         # Find ED and ES outputs
+        # nnFormer outputs files with same name as input but without _0000 suffix
+        # e.g., patient101_ED_0000.nii.gz -> patient101_ED.nii.gz
         ed_output = None
         es_output = None
         
         for output_file in output_files:
-            if 'frame01' in output_file.name or 'frame1' in output_file.name:
+            fname = output_file.name.lower()
+            if '_ed' in fname or 'frame01' in fname or 'frame1' in fname:
                 ed_output = output_file
-            else:
+            elif '_es' in fname:
                 es_output = output_file
+            else:
+                # Default: first non-ED file is ES
+                if es_output is None:
+                    es_output = output_file
         
         # If we only have one output, it's both ED and ES
         if len(output_files) == 1:
@@ -151,8 +200,12 @@ def segment_patient(
             es_output = output_files[0]
         
         # Rename and move to final location
-        final_ed = f"{output_prefix}_ED_nnformer.nii.gz"
-        final_es = f"{output_prefix}_ES_nnformer.nii.gz"
+        if model_tag is None:
+            model_tag = f"nnformer__fold{fold}"
+        model_tag = _sanitize_tag(model_tag)
+
+        final_ed = f"{output_prefix}_ED_{model_tag}.nii.gz"
+        final_es = f"{output_prefix}_ES_{model_tag}.nii.gz"
         
         if ed_output:
             import shutil
@@ -167,7 +220,8 @@ def segment_patient(
         
         results = {
             'patient_id': patient_id,
-            'model': 'nnformer',
+            'architecture': 'nnformer',
+            'model_tag': model_tag,
             'fold': fold,
             'tta': tta,
             'ed_output': final_ed,
@@ -192,6 +246,7 @@ def main():
     parser.add_argument('--fold', type=int, default=0, help='Model fold')
     parser.add_argument('--tta', action='store_true', help='Use test-time augmentation')
     parser.add_argument('--mixed_precision', action='store_true', help='Use mixed precision')
+    parser.add_argument('--model_tag', default=None, help='Model tag for output naming')
     
     args = parser.parse_args()
     
@@ -202,7 +257,8 @@ def main():
         model_dir=Path(args.model_dir),
         fold=args.fold,
         tta=args.tta,
-        mixed_precision=args.mixed_precision
+        mixed_precision=args.mixed_precision,
+        model_tag=args.model_tag
     )
     
     print(f"Segmentation complete for {args.patient_id}")

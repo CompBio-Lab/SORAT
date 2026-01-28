@@ -50,8 +50,13 @@ def aggregate_metrics(input_files: list, output_aggregated: Path, output_compari
     comparison_data = []
     for model in all_metrics['model'].unique():
         model_df = all_metrics[all_metrics['model'] == model]
-        
-        model_stats = {'model': model, 'n_patients': len(model_df)}
+
+        architecture = model_df['architecture'].iloc[0] if 'architecture' in model_df.columns else ''
+        model_stats = {
+            'model': model,
+            'architecture': architecture,
+            'n_patients': len(model_df)
+        }
         
         for col in metric_cols:
             if col in model_df.columns:

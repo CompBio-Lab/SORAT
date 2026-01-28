@@ -23,10 +23,12 @@ process COMPUTE_METRICS {
     path "versions.yml", emit: versions
     
     script:
+    def arch = meta?.architecture ?: ''
     """
     compute_metrics.py \\
         --patient_id ${patient_id} \\
         --model ${model} \\
+        --architecture "${arch}" \\
         --seg_ed ${seg_ed} \\
         --seg_es ${seg_es} \\
         --ground_truth ${ground_truth} \\

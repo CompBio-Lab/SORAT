@@ -53,29 +53,41 @@ process NNFORMER_SEGMENT {
     publishDir "${params.outdir}/nnformer/segmentations", mode: params.publish_dir_mode
     
     input:
-    tuple val(patient_id), path(preprocessed_dir), path(ground_truth), path(info_cfg)
+    tuple val(patient_id), path(preprocessed_dir), path(ground_truth), path(info_cfg), val(fold), val(model_tag)
     
     output:
-    tuple val(patient_id), path("${patient_id}_ED_nnformer.nii.gz"), path("${patient_id}_ES_nnformer.nii.gz"), val(meta), emit: segmentation
+    tuple val(patient_id), path("${patient_id}_ED_${model_tag}.nii.gz"), path("${patient_id}_ES_${model_tag}.nii.gz"), val(meta), emit: segmentation
     path "versions.yml", emit: versions
     
     script:
     def tta = params.nnformer.tta ? "--tta" : ""
     def mixed_precision = params.nnformer.mixed_precision ? "--mixed_precision" : ""
-    meta = [model: 'nnformer', fold: params.nnformer.fold]
+    meta = [architecture: 'nnformer', model_tag: model_tag, fold: fold]
     """
-    # Set nnFormer environment variables
-    export nnFormer_raw_data_base=/models/nnformer/nnFormer_raw
-    export nnFormer_preprocessed=/models/nnformer/nnFormer_preprocessed
-    export RESULTS_FOLDER=/models/nnformer/nnFormer_trained_models
+    # Create writable temp directories for nnFormer
+    mkdir -p /tmp/nnformer_tmp/raw/nnFormer_raw_data /tmp/nnformer_tmp/raw/nnFormer_cropped_data
+    mkdir -p /tmp/nnformer_tmp/preprocessed /tmp/nnformer_tmp/results
+    
+    # Set APPTAINER environment variables (these get passed into container)
+    export APPTAINERENV_nnFormer_raw_data_base=/tmp/nnformer_tmp/raw
+    export APPTAINERENV_nnFormer_preprocessed=/tmp/nnformer_tmp/preprocessed
+    export APPTAINERENV_RESULTS_FOLDER=/tmp/nnformer_tmp/results
+    export APPTAINERENV_MPLCONFIGDIR=/tmp/nnformer_tmp
+    
+    # Also set regular env vars (for non-containerized runs)
+    export nnFormer_raw_data_base=/tmp/nnformer_tmp/raw
+    export nnFormer_preprocessed=/tmp/nnformer_tmp/preprocessed
+    export RESULTS_FOLDER=/tmp/nnformer_tmp/results
+    export MPLCONFIGDIR=/tmp/nnformer_tmp
     
     nnformer_segment.py \\
         --input_dir ${preprocessed_dir} \\
         --patient_id ${patient_id} \\
         --output_prefix ${patient_id} \\
-        --fold ${params.nnformer.fold} \\
+        --fold ${fold} \\
         ${tta} \\
         ${mixed_precision} \\
+        --model_tag ${model_tag} \\
         --model_dir /models/nnformer
     
     cat <<-END_VERSIONS > versions.yml

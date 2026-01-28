@@ -56,21 +56,22 @@ process VSA3L_SEGMENT {
     publishDir "${params.outdir}/vsa3l/segmentations", mode: params.publish_dir_mode
     
     input:
-    tuple val(patient_id), path(preprocessed_dir), path(ground_truth), path(info_cfg)
+    tuple val(patient_id), path(preprocessed_dir), path(ground_truth), path(info_cfg), val(model_path), val(model_tag)
     
     output:
-    tuple val(patient_id), path("${patient_id}_ED_vsa3l.nii.gz"), path("${patient_id}_ES_vsa3l.nii.gz"), val(meta), emit: segmentation
+    tuple val(patient_id), path("${patient_id}_ED_${model_tag}.nii.gz"), path("${patient_id}_ES_${model_tag}.nii.gz"), val(meta), emit: segmentation
     path "versions.yml", emit: versions
     
     script:
-    meta = [model: 'vsa3l', input_size: params.vsa3l.input_size]
+    meta = [architecture: 'vsa3l', model_tag: model_tag, input_size: params.vsa3l.input_size]
     """
     vsa3l_segment.py \\
         --input_dir ${preprocessed_dir} \\
         --patient_id ${patient_id} \\
         --output_prefix ${patient_id} \\
-        --model_path /models/vsa3l/model.pt \\
-        --bundle_root /models/vsa3l
+        --model_path ${model_path} \\
+        --bundle_root /models/vsa3l \\
+        --model_tag ${model_tag}
     
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

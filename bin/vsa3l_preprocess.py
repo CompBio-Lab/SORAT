@@ -16,6 +16,21 @@ import nibabel as nib
 import numpy as np
 
 
+def convert_to_native(obj):
+    """Convert numpy types to native Python types for JSON serialization."""
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, (np.float32, np.float64)):
+        return float(obj)
+    elif isinstance(obj, (np.int32, np.int64)):
+        return int(obj)
+    elif isinstance(obj, dict):
+        return {k: convert_to_native(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_to_native(i) for i in obj]
+    return obj
+
+
 def parse_info_cfg(info_path: Path) -> dict:
     """Parse ACDC Info.cfg file to get ED/ES frame indices."""
     info = {'ed_frame': 0, 'es_frame': None}
@@ -167,6 +182,9 @@ def preprocess_patient(
         'slice_items': slice_items,
         'gt_items': gt_items
     }
+    
+    # Convert numpy types to native Python types for JSON serialization
+    metadata = convert_to_native(metadata)
     
     with open(output_dir / 'metadata.json', 'w') as f:
         json.dump(metadata, f, indent=2)
