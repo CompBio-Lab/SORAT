@@ -79,8 +79,14 @@ dag.svg
 
 # Docker
 *.tar
+
+# Repo folders not tracked on GitHub
+containers/
 docs/
-docs/*
+models/
+scripts/
+test/
+
 container/cinema/*
 container/nnformer/*
 container/vsa3l/*
@@ -109,7 +115,6 @@ models/**/finetuned/**/config.yaml
 models/nnformer/nnFormer_trained_models/
 models/vsa3l/*.pt
 models/vsa3l/*.ts
-!models/**/.gitkeep
 containers/*.sif
 
 # Large data files

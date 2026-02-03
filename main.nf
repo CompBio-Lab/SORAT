@@ -8,20 +8,19 @@
     models. Supports CineMA, nnFormer, and MONAI VSA-3L models with extensibility for
     adding new models.
     
-    GitHub: https://github.com/your-org/CASC
+    GitHub: https://github.com/CompBio-Lab/CASC
 ----------------------------------------------------------------------------------------
 */
 
 nextflow.enable.dsl = 2
 
-// Print pipeline header
 log.info """
 ╔═══════════════════════════════════════════════════════════════════════════════╗
 ║   ____    _    ____   ____                                                    ║
-║  / ___|  / \\  / ___| / ___|                                                   ║
-║ | |     / _ \\ \\___ \\| |                                                       ║
-║ | |___ / ___ \\ ___) | |___                                                    ║
-║  \\____/_/   \\_\\____/ \\____|                                                   ║
+║  / ___|  / \\  / ___| / ___|                                                  ║
+║ | |     / _ \\ \\___ \\| |                                                    ║
+║ | |___ / ___ \\ ___) | |___                                                   ║
+║  \\____/_/   \\_\\____/ \\____|                                               ║
 ║                                                                               ║
 ║  Cardiac Automated Segmentation Comparison Pipeline                           ║
 ╚═══════════════════════════════════════════════════════════════════════════════╝
@@ -32,7 +31,6 @@ Input samplesheet    : ${params.input}
 Output directory     : ${params.outdir}
 Models to run        : ${params.models}
 Compare results      : ${params.compare}
-Inference only       : ${params.inference_only}
 """
 
 // Include modules
@@ -184,45 +182,41 @@ workflow {
         .mix(ch_nnformer_results)
         .mix(ch_vsa3l_results)
     
-    if (!params.inference_only) {
-        // Compute metrics if ground truth is available
-        ch_input_with_gt = ch_input
-            .filter { patient_id, image, gt, info -> gt != null }
-            .map { patient_id, image, gt, info -> [ patient_id, gt ] }
-
-        ch_for_metrics = ch_all_segmentations
-            .combine(ch_input_with_gt, by: 0)
-            .map { patient_id, model, seg_ed, seg_es, meta, gt ->
-                def gt_for_metrics = gt
-                if (meta?.architecture == 'cinema') {
-                    def pre_dir = "${params.outdir}/cinema/preprocessed/${patient_id}_preprocessed"
-                    if (file(pre_dir).exists()) {
-                        gt_for_metrics = file(pre_dir)
-                    }
+    // Compute metrics if ground truth is available
+    ch_input_with_gt = ch_input
+        .filter { patient_id, image, gt, info -> gt != null }
+        .map { patient_id, image, gt, info -> [ patient_id, gt ] }
+    
+    ch_for_metrics = ch_all_segmentations
+        .combine(ch_input_with_gt, by: 0)
+        .map { patient_id, model, seg_ed, seg_es, meta, gt ->
+            def gt_for_metrics = gt
+            if (meta?.architecture == 'cinema') {
+                def pre_dir = "${params.outdir}/cinema/preprocessed/${patient_id}_preprocessed"
+                if (file(pre_dir).exists()) {
+                    gt_for_metrics = file(pre_dir)
                 }
-                [ patient_id, model, seg_ed, seg_es, gt_for_metrics, meta ]
             }
-
-        COMPUTE_METRICS(ch_for_metrics)
-
-        // Aggregate results across all models and patients
-        if (params.compare) {
-            ch_all_metrics = COMPUTE_METRICS.out.metrics
-                .map { patient_id, model, metrics_csv -> metrics_csv }
-                .collect()
-            AGGREGATE_RESULTS(ch_all_metrics)
-            ch_all_seg_files = ch_all_segmentations
-                .map { patient_id, model, seg_ed, seg_es, meta -> [seg_ed, seg_es] }
-                .flatten()
-                .collect()
-            GENERATE_REPORT(
-                AGGREGATE_RESULTS.out.summary,
-                ch_all_seg_files,
-                params.models
-            )
+            [ patient_id, model, seg_ed, seg_es, gt_for_metrics, meta ]
         }
-    } else {
-        log.info 'Inference-only mode enabled: skipping metrics and report generation.'
+    
+    COMPUTE_METRICS(ch_for_metrics)
+    
+    // Aggregate results across all models and patients
+    if (params.compare) {
+        ch_all_metrics = COMPUTE_METRICS.out.metrics
+            .map { patient_id, model, metrics_csv -> metrics_csv }
+            .collect()
+        AGGREGATE_RESULTS(ch_all_metrics)
+        ch_all_seg_files = ch_all_segmentations
+            .map { patient_id, model, seg_ed, seg_es, meta -> [seg_ed, seg_es] }
+            .flatten()
+            .collect()
+        GENERATE_REPORT(
+            AGGREGATE_RESULTS.out.summary,
+            ch_all_seg_files,
+            params.models
+        )
     }
 }
 

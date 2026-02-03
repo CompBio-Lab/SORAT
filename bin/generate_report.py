@@ -7,6 +7,7 @@ Generates HTML report with visualizations comparing segmentation models.
 
 import argparse
 import base64
+import re
 from html import escape
 from pathlib import Path
 
@@ -47,13 +48,105 @@ def build_model_display(model: str, architecture: str) -> str:
     return f"{arch_label} • {variant}" if variant else arch_label
 
 
-def build_model_variant(model: str) -> str:
-    if '__' in model:
-        return model.split('__', 1)[1].replace('_', ' ')
-    for prefix in ['cinema', 'nnformer', 'vsa3l']:
-        if model.startswith(prefix):
-            return model[len(prefix):].lstrip('_').replace('_', ' ') or model
-    return model.replace('_', ' ')
+def parse_model_tag(model: str) -> dict:
+    architecture = infer_architecture(model)
+    tag = model.split('__', 1)[1] if '__' in model else model
+    tag = tag.strip('_')
+
+    dataset = ''
+    seed = None
+    seeds_count = None
+    fold = None
+    ensemble = False
+
+    if architecture == 'cinema':
+        parts = [p for p in tag.split('_') if p]
+        if parts:
+            dataset = parts[0]
+        for part in parts[1:]:
+            if part == 'ensemble':
+                ensemble = True
+                continue
+            seed_match = re.match(r'^seed(\d+)$', part)
+            if seed_match:
+                seed = int(seed_match.group(1))
+                continue
+            seeds_match = re.match(r'^seeds(\d+)$', part)
+            if seeds_match:
+                seeds_count = int(seeds_match.group(1))
+                continue
+    elif architecture == 'nnformer':
+        fold_match = re.search(r'fold(\d+)', tag)
+        if fold_match:
+            fold = int(fold_match.group(1))
+
+    return {
+        'architecture': architecture,
+        'tag': tag,
+        'dataset': dataset,
+        'seed': seed,
+        'seeds_count': seeds_count,
+        'fold': fold,
+        'ensemble': ensemble
+    }
+
+
+def build_model_variant_key(model: str, architecture: str) -> str:
+    parts = parse_model_tag(model)
+    if architecture == 'cinema':
+        dataset = parts['dataset'] or 'unknown'
+        if parts['seed'] is not None:
+            return f"{dataset}_s{parts['seed']}"
+        if parts['ensemble']:
+            return f"{dataset}_ensemble"
+        if parts['seeds_count'] is not None:
+            return f"{dataset}_seeds{parts['seeds_count']}"
+        return dataset
+    if architecture == 'nnformer':
+        if parts['fold'] is not None:
+            return f"fold{parts['fold']}"
+        return parts['tag'] or architecture
+    if architecture == 'vsa3l':
+        return parts['tag'] or architecture
+    return parts['tag'] or architecture
+
+
+def build_model_variant_label(model: str, architecture: str, arch_counts: dict) -> str:
+    arch_label = ARCH_LABELS.get(architecture, architecture.title())
+    if arch_counts.get(architecture, 0) <= 1:
+        return arch_label
+
+    parts = parse_model_tag(model)
+    if architecture == 'cinema':
+        dataset = parts['dataset'] or 'unknown'
+        if parts['seed'] is not None:
+            suffix = f"{dataset}_s{parts['seed']}"
+        elif parts['ensemble']:
+            suffix = f"{dataset}_ensemble"
+        elif parts['seeds_count'] is not None:
+            suffix = f"{dataset}_seeds{parts['seeds_count']}"
+        else:
+            suffix = dataset
+        return f"{arch_label}_{suffix}"
+
+    if architecture == 'nnformer':
+        if parts['fold'] is not None:
+            return f"{arch_label}_fold{parts['fold']}"
+        return f"{arch_label}_{parts['tag']}" if parts['tag'] else arch_label
+
+    if architecture == 'vsa3l':
+        if not parts['tag'] or parts['tag'] == 'model':
+            return arch_label
+        return f"{arch_label}_{parts['tag']}"
+
+    return f"{arch_label}_{parts['tag']}" if parts['tag'] else arch_label
+
+
+def build_color_group(model: str, architecture: str) -> str:
+    parts = parse_model_tag(model)
+    if architecture == 'cinema':
+        return f"{architecture}_{parts['dataset']}" if parts['dataset'] else architecture
+    return architecture
 
 
 def encode_image(path: Path) -> str:
@@ -97,18 +190,28 @@ def generate_report(
     if 'architecture' not in df.columns:
         df['architecture'] = df['model'].apply(infer_architecture)
     df['model_display'] = df.apply(lambda r: build_model_display(r['model'], r['architecture']), axis=1)
-    df['model_variant'] = df['model'].apply(build_model_variant)
-    if df['model_variant'].duplicated().any():
-        df['model_variant'] = df.apply(
-            lambda r: f"{r['model_variant']} ({ARCH_LABELS.get(r['architecture'], r['architecture'].title())})",
-            axis=1
-        )
+
+    df['variant_key'] = df.apply(lambda r: build_model_variant_key(r['model'], r['architecture']), axis=1)
+    arch_variant_counts = df.groupby('architecture')['variant_key'].nunique().to_dict()
+    df['model_variant'] = df.apply(
+        lambda r: build_model_variant_label(r['model'], r['architecture'], arch_variant_counts),
+        axis=1
+    )
+
+    df['color_group'] = df.apply(lambda r: build_color_group(r['model'], r['architecture']), axis=1)
 
     model_variants = sorted(df['model_variant'].unique())
+    variant_to_group = {}
+    for _, row in df[['model_variant', 'color_group']].drop_duplicates().iterrows():
+        variant_to_group[row['model_variant']] = row['color_group']
+
+    color_groups = sorted(set(variant_to_group.values()))
     if _HAS_SEABORN:
-        model_palette = dict(zip(model_variants, sns.color_palette('tab20', n_colors=len(model_variants))))
+        group_palette = dict(zip(color_groups, sns.color_palette('tab10', n_colors=len(color_groups))))
     else:
-        model_palette = dict(zip(model_variants, plt.cm.tab20(np.linspace(0, 1, len(model_variants)))))
+        group_palette = dict(zip(color_groups, plt.cm.tab10(np.linspace(0, 1, len(color_groups)))))
+
+    model_palette = {variant: group_palette[variant_to_group[variant]] for variant in model_variants}
     def abbreviate_model_label(label: str) -> str:
         if '•' in label:
             arch, variant = [part.strip() for part in label.split('•', 1)]
@@ -227,12 +330,11 @@ def generate_report(
 
         if plot_data:
             plot_df = pd.DataFrame(plot_data)
-            plot_df['model_variant'] = plot_df['model'].apply(build_model_variant)
-            if plot_df['model_variant'].duplicated().any():
-                plot_df['model_variant'] = plot_df.apply(
-                    lambda r: f"{r['model_variant']} ({ARCH_LABELS.get(r['architecture'], r['architecture'].title())})",
-                    axis=1
-                )
+            plot_df['variant_key'] = plot_df.apply(lambda r: build_model_variant_key(r['model'], r['architecture']), axis=1)
+            plot_df['model_variant'] = plot_df.apply(
+                lambda r: build_model_variant_label(r['model'], r['architecture'], arch_variant_counts),
+                axis=1
+            )
             order = model_variants
             fig, axes = plt.subplots(2, 3, figsize=(max(18, len(order) * 1.6), 9), sharey=True)
 
