@@ -31,6 +31,7 @@ Input samplesheet    : ${params.input}
 Output directory     : ${params.outdir}
 Models to run        : ${params.models}
 Compare results      : ${params.compare}
+Debug mode           : ${params.debug}
 """
 
 // Include modules
@@ -39,6 +40,7 @@ include { NNFORMER_PREPROCESS; NNFORMER_SEGMENT } from './modules/nnformer'
 include { VSA3L_PREPROCESS; VSA3L_SEGMENT } from './modules/vsa3l'
 include { CINEMA_DISCOVER_MODELS; NNFORMER_DISCOVER_MODELS; VSA3L_DISCOVER_MODELS } from './modules/discover_models'
 include { COMPUTE_METRICS; AGGREGATE_RESULTS; GENERATE_REPORT } from './modules/comparison'
+include { GENERATE_DEBUG_REPORT } from './modules/debug'
 include { validateInput } from './lib/utils'
 
 /*
@@ -48,6 +50,9 @@ include { validateInput } from './lib/utils'
 */
 
 workflow {
+
+    def debug_outdir = file(params.outdir).toAbsolutePath().toString()
+    def debug_input_samplesheet = file(params.input).toAbsolutePath().toString()
     
     // Validate and parse input samplesheet
     ch_input = Channel
@@ -216,6 +221,23 @@ workflow {
             AGGREGATE_RESULTS.out.summary,
             ch_all_seg_files,
             params.models
+        )
+    }
+
+    if (params.debug) {
+        def ch_debug_trigger = params.compare
+            ? GENERATE_REPORT.out.report.collect()
+            : COMPUTE_METRICS.out.metrics.collect()
+
+        GENERATE_DEBUG_REPORT(
+            ch_debug_trigger,
+            debug_outdir,
+            debug_input_samplesheet,
+            params.models,
+            workflow.runName,
+            workflow.duration.toString(),
+            workflow.start.toString(),
+            workflow.success
         )
     }
 }

@@ -140,6 +140,24 @@ Weight: 70
 | `--models` | `all` | Models to run: `cinema`, `nnformer`, `vsa3l`, or `all` |
 | `--compare` | `true` | Generate comparison report |
 | `--inference_only` | `false` | Run inference only (skip metrics + report generation) |
+| `--debug` | `false` | Generate debug analytics report (execution/runtime/GPU/scalability/success + scientific utility metrics) |
+
+### Debug Analytics Mode
+
+Enable `--debug` to generate metrics and figures that quantify:
+- execution time and process bottlenecks,
+- estimated scalable GPU consumption and GPU concurrency,
+- pipeline reliability/success rates and retry behavior,
+- coverage and segmentation-quality utility metrics.
+
+```bash
+nextflow run main.nf \
+    --input samplesheet.csv \
+    --outdir results \
+    --models all \
+    --debug \
+    -profile slurm
+```
 
 ### Inference-Only Runs
 
@@ -207,6 +225,17 @@ results/
     ├── execution_timeline.html
     ├── execution_report.html
     └── pipeline_dag.svg
+└── debug/
+    ├── text/
+    │   ├── debug_report.md
+    │   ├── debug_metrics_summary.json
+    │   ├── task_profile.csv
+    │   ├── gpu_profile.csv
+    │   └── metrics_snapshot.csv
+    └── figures/
+        ├── runtime_by_process.png
+        ├── gpu_walltime_by_process.png
+        └── overall_dice_by_model.png
 ```
 
 ## Execution Profiles
