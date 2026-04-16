@@ -1,0 +1,35 @@
+/*
+ * Example local override config for CASC.
+ *
+ * Copy this file to .casc/user.config (gitignored), or run:
+ *   python3 bin/casc_setup.py
+ */
+
+params {
+    // Required for default SAX runs when --input is omitted.
+    acdc_dir              = '/path/to/ACDC/database'
+    acdc_dataset          = 'testing'
+
+    // Required when using -profile slurm.
+    slurm_account         = 'your-allocation'
+
+    // Optional runtime/cache overrides.
+    singularity_cache_dir = '/path/to/.singularity_cache'
+    preprocess_cache_dir  = '/path/to/casc/.cache/preprocess'
+    outdir                = '/path/to/casc/results'
+
+    // Optional explicit samplesheet overrides.
+    default_inputs {
+        acdc              = null
+        mbas              = null
+    }
+
+    // Optional MBAS root for atrial default input generation.
+    atrial_nnunet {
+        mbas_root         = null
+    }
+
+    // Optional bind strings for local/slurm profiles.
+    singularity_local_binds = '/path/to/CASC/bin:/app/bin,/path/to/CASC/nnformer:/app/nnformer'
+    singularity_slurm_binds = '/arc:/arc,/scratch:/scratch,/path/to/CASC/bin:/app/bin,/path/to/CASC/nnformer:/app/nnformer'
+}

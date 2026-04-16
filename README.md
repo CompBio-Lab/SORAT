@@ -39,19 +39,35 @@ Atrial model (`atrial_nnunet`) produces atrial labels:
 curl -s https://get.nextflow.io | bash
 ```
 
-### 2. Run the Pipeline
+### 2. Configure Local User Paths (Required)
+
+```bash
+python3 bin/casc_setup.py
+```
+
+This writes local overrides to `.casc/user.config` (gitignored).
+
+### 3. Run the Pipeline
+
+You can run CASC directly with `nextflow run main.nf`, or use the helper runner:
+
+```bash
+./bin/casc_run.sh [pipeline options]
+```
+
+The helper runner uses `main.nf` from the repo root and reminds you to run setup if no local user config is present.
 
 **Using Default Inputs (Model-Dependent):**
 ```bash
-# SAX-only runs default to the ACDC testing samplesheet
-nextflow run main.nf -profile docker
+# SAX-only runs default to generated ACDC samplesheet from --acdc_dir
+./bin/casc_run.sh -profile local
 
-# With Singularity on HPC
-nextflow run main.nf -profile singularity,slurm
+# With SLURM + Apptainer on HPC
+./bin/casc_run.sh -profile slurm
 
 # Atrial-only runs default to MBAS when MBAS is configured
 export CASC_MBAS_ROOT=/path/to/nnUNet_raw/Dataset001_LGE
-nextflow run main.nf --models atrial_nnunet -profile singularity,slurm
+./bin/casc_run.sh --models atrial_nnunet -profile slurm
 ```
 
 Notes:
@@ -60,39 +76,40 @@ Notes:
 
 **Using Custom Data:**
 ```bash
-# Run with Docker (recommended)
-nextflow run main.nf \
+# Run locally (Apptainer/Singularity)
+./bin/casc_run.sh \
     --input samplesheet.csv \
     --outdir results \
     --models all \
-    -profile docker
+    -profile local
 
-# Run with Singularity (for HPC)
-nextflow run main.nf \
+# Run on SLURM (HPC)
+./bin/casc_run.sh \
     --input samplesheet.csv \
     --outdir results \
     --models all \
-    -profile singularity
+    -profile slurm
 
 # Run specific models only
-nextflow run main.nf \
+./bin/casc_run.sh \
     --input samplesheet.csv \
     --outdir results \
     --models cinema,nnformer \
-    -profile docker
+    -profile local
 ```
 
 ### Pulling Containers (Apptainer)
 
 ```bash
 # Pull CASC images from GitHub Container Registry
-apptainer pull casc-cinema.sif docker://ghcr.io/pmoheban/casc-cinema:latest
-apptainer pull casc-nnformer.sif docker://ghcr.io/pmoheban/casc-nnformer:latest
-apptainer pull casc-vsa3l.sif docker://ghcr.io/pmoheban/casc-vsa3l:latest
-apptainer pull casc-atrial-nnunet.sif docker://ghcr.io/pmoheban/casc-atrial-nnunet:latest
+export CASC_GHCR_NAMESPACE="your-org"
+apptainer pull casc-cinema.sif docker://ghcr.io/${CASC_GHCR_NAMESPACE}/casc-cinema:latest
+apptainer pull casc-nnformer.sif docker://ghcr.io/${CASC_GHCR_NAMESPACE}/casc-nnformer:latest
+apptainer pull casc-vsa3l.sif docker://ghcr.io/${CASC_GHCR_NAMESPACE}/casc-vsa3l:latest
+apptainer pull casc-atrial-nnunet.sif docker://ghcr.io/${CASC_GHCR_NAMESPACE}/casc-atrial-nnunet:latest
 ```
 
-### 3. Alternative: Jupyter Notebook Interface
+### 4. Alternative: Jupyter Notebook Interface
 
 For interactive use, open the Jupyter notebook:
 
@@ -154,9 +171,13 @@ Weight: 70
 |-----------|---------|-------------|
 | `--outdir` | `./results` | Output directory |
 | `--models` | `all` | Models to run: `cinema`, `nnformer`, `vsa3l`, `atrial_nnunet`, or `all` |
-| `--default_inputs.acdc` | `${projectDir}/data/acdc_testing_samplesheet.csv` | Default samplesheet used when `--input` is omitted for SAX-only runs |
+| `--default_inputs.acdc` | `null` | Optional explicit ACDC default samplesheet (or `CASC_ACDC_SAMPLESHEET`) |
+| `--acdc_dir` | `null` | ACDC database root used to auto-generate SAX default samplesheet (or `CASC_ACDC_DIR`) |
+| `--acdc_dataset` | `testing` | ACDC split folder to use when auto-generating defaults (`testing` or `training`) |
 | `--default_inputs.mbas` | `null` | Default MBAS samplesheet for atrial-only runs (can also use `CASC_MBAS_SAMPLESHEET`) |
 | `--atrial_nnunet.mbas_root` | `null` | MBAS root used to auto-generate atrial samplesheet + GT paths. Supports both nnUNet layout (`imagesTr/`,`labelsTr/`) and MBAS training layout (`MBAS_###/MBAS_###_gt.nii.gz`,`MBAS_###_label.nii.gz`) (can also use `CASC_MBAS_ROOT`) |
+| `--slurm_account` | `null` | SLURM allocation/account (required when `-profile slurm`, can use `CASC_SLURM_ACCOUNT`) |
+| `--singularity_cache_dir` | `$HOME/.singularity_cache` | Per-user Singularity cache location (can use `CASC_SINGULARITY_CACHEDIR`) |
 | `--compare` | `true` | Generate comparison report |
 | `--inference_only` | `false` | Run inference only (skip metrics + report generation) |
 | `--debug` | `false` | Generate debug analytics report (execution/runtime/GPU/scalability/success + scientific utility metrics) |
@@ -177,7 +198,7 @@ Note: `--models all` currently runs SAX models (`cinema`, `nnformer`, `vsa3l`) a
 ### Default Input Selection Rules
 
 When `--input` is omitted, CASC resolves input automatically:
-- SAX-only runs (`cinema`, `nnformer`, `vsa3l`, or `all`) use `--default_inputs.acdc`.
+- SAX-only runs (`cinema`, `nnformer`, `vsa3l`, or `all`) use `--default_inputs.acdc` if set; otherwise CASC generates an ACDC samplesheet from `--acdc_dir` and `--acdc_dataset`.
 - Atrial-only runs (`atrial_nnunet`) use `--default_inputs.mbas` if set; otherwise CASC auto-generates an MBAS samplesheet from `--atrial_nnunet.mbas_root`.
 - For MBAS training-style roots, CASC automatically stages nnUNet-style paths (`imagesTr/*_0000.nii.gz`, `labelsTr/*.nii.gz`) in `.cache/generated_inputs/` and uses those paths in the generated samplesheet.
 - Mixed SAX+atrial runs fail fast and require explicit `--input`.
@@ -188,6 +209,7 @@ The `slurm` profile now includes executor throttling and stage-specific labels i
 
 ```bash
 nextflow run main.nf \
+    -c .casc/user.config \
     --input samplesheet.csv \
     --outdir results \
     --models all \
@@ -210,11 +232,12 @@ To avoid repeated preprocessing for unchanged inputs/settings across reruns:
 
 ```bash
 nextflow run main.nf \
+    -c .casc/user.config \
     --input samplesheet.csv \
     --outdir results \
     --models all \
     --preprocess_cache_enabled true \
-    --preprocess_cache_dir /scratch/st-zlaksman-1/pmoheban/CASC/.cache/preprocess \
+    --preprocess_cache_dir ${PWD}/.cache/preprocess \
     -profile slurm
 ```
 
@@ -370,23 +393,21 @@ results/
 
 | Profile | Description |
 |---------|-------------|
-| `standard` | Local execution with Docker |
-| `docker` | Docker containers |
-| `singularity` | Singularity/Apptainer containers |
-| `slurm` | SLURM cluster with Singularity |
-| `pbs` | PBS/Torque cluster |
-| `gpu` | Enable GPU acceleration |
+| `local` | Local execution with Apptainer/Singularity |
+| `slurm` | SLURM execution with Apptainer |
 | `test` | Quick test with minimal data |
 
-### Combining Profiles
+### Profile Selection
 
 ```bash
-# SLURM cluster with GPU support
-nextflow run main.nf -profile slurm,gpu --input samplesheet.csv
+# Local run
+./bin/casc_run.sh -profile local --input samplesheet.csv
 
-# Local with Docker and GPU
-nextflow run main.nf -profile docker,gpu --input samplesheet.csv
+# SLURM run
+./bin/casc_run.sh -profile slurm --input samplesheet.csv
 ```
+
+Use one execution profile at a time.
 
 ## Adding New Models
 
@@ -477,9 +498,10 @@ The CASC Docker images come **pre-loaded with model weights**, so users can simp
 
 ```bash
 # Pull all CASC images from GitHub Container Registry
-docker pull ghcr.io/pmoheban/casc-cinema:latest
-docker pull ghcr.io/pmoheban/casc-nnformer:latest
-docker pull ghcr.io/pmoheban/casc-vsa3l:latest
+export CASC_GHCR_NAMESPACE="your-org"
+docker pull ghcr.io/${CASC_GHCR_NAMESPACE}/casc-cinema:latest
+docker pull ghcr.io/${CASC_GHCR_NAMESPACE}/casc-nnformer:latest
+docker pull ghcr.io/${CASC_GHCR_NAMESPACE}/casc-vsa3l:latest
 ```
 
 ### Building Images Locally
@@ -492,9 +514,9 @@ chmod +x scripts/build_containers.sh
 ./scripts/build_containers.sh all
 
 # Or build individually
-docker build -f containers/cinema/Dockerfile -t ghcr.io/pmoheban/casc-cinema:latest .
-docker build -f containers/nnformer/Dockerfile -t ghcr.io/pmoheban/casc-nnformer:latest .
-docker build -f containers/vsa3l/Dockerfile -t ghcr.io/pmoheban/casc-vsa3l:latest .
+docker build -f containers/cinema/Dockerfile -t ghcr.io/your-org/casc-cinema:latest .
+docker build -f containers/nnformer/Dockerfile -t ghcr.io/your-org/casc-nnformer:latest .
+docker build -f containers/vsa3l/Dockerfile -t ghcr.io/your-org/casc-vsa3l:latest .
 ```
 
 ## Troubleshooting

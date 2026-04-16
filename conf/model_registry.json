@@ -107,7 +107,7 @@
             "name": "Atrial nnUNet",
             "version": "1.0.0",
             "description": "nnUNetv2 2D atrial segmentation model (Dataset001_LGE)",
-            "container": "ghcr.io/pmoheban/casc-atrial-nnunet:latest",
+            "container": "ghcr.io/your-org/casc-atrial-nnunet:latest",
             "module_path": "modules/atrial_nnunet.nf",
             "input_format": "nifti_4d",
             "output_labels": {

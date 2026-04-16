@@ -184,7 +184,74 @@ def resolveMbasSamplesheet(mbasDefault, mbasRoot, contextLabel) {
     return generatedCsv.toString()
 }
 
-def resolveEffectiveSamplesheet(inputParam, modelsToRun, acdcDefault, mbasDefault, mbasRoot, contextLabel = 'main workflow') {
+def resolveAcdcSamplesheet(acdcDefault, acdcRoot, acdcDataset, contextLabel) {
+    def configuredAcdc = normalizeOptionalPath(acdcDefault)
+    if (configuredAcdc) {
+        return file(configuredAcdc).toAbsolutePath().toString()
+    }
+
+    def datasetRootPath = normalizeOptionalPath(acdcRoot)
+    if (!datasetRootPath) {
+        return null
+    }
+
+    def datasetName = normalizeOptionalPath(acdcDataset) ?: 'testing'
+    def dataDir = new File(datasetRootPath, datasetName)
+    if (!dataDir.exists()) {
+        exit 1, "ERROR: ${contextLabel}: ACDC dataset directory not found: ${dataDir}. Set --acdc_dir (or CASC_ACDC_DIR) and optionally --acdc_dataset."
+    }
+
+    def patientDirs = dataDir.listFiles()?.findAll {
+        it.isDirectory() && it.name.startsWith('patient')
+    }?.sort { it.name }
+
+    if (!patientDirs) {
+        exit 1, "ERROR: ${contextLabel}: No patient folders found under ${dataDir}."
+    }
+
+    def generatedDir = file("${projectDir}/.cache/generated_inputs")
+    generatedDir.mkdirs()
+    def generatedCsv = new File(generatedDir.toString(), "acdc_${datasetName}_samplesheet.csv")
+
+    def rowCount = 0
+    generatedCsv.withWriter('UTF-8') { writer ->
+        writer.writeLine('patient_id,image,ground_truth,info_cfg')
+
+        patientDirs.each { patientDir ->
+            def patientId = patientDir.name
+            def image4d = new File(patientDir, "${patientId}_4d.nii.gz")
+            if (!image4d.exists()) {
+                log.warn "Skipping ACDC sample ${patientId}: missing 4D image ${image4d}"
+                return
+            }
+
+            def infoCfg = new File(patientDir, 'Info.cfg')
+            def infoPath = infoCfg.exists() ? infoCfg.absolutePath : ''
+            writer.writeLine("${patientId},${image4d.absolutePath},${patientDir.absolutePath},${infoPath}")
+            rowCount++
+        }
+    }
+
+    if (rowCount == 0) {
+        exit 1, "ERROR: ${contextLabel}: Generated ACDC samplesheet has no valid rows under ${dataDir}."
+    }
+
+    return generatedCsv.toString()
+}
+
+def assertSlurmAccountForProfile(contextLabel) {
+    def profiles = (workflow.profile ?: '')
+        .toString()
+        .tokenize(',')
+        .collect { it.trim().toLowerCase() }
+        .findAll { it }
+
+    if ('slurm' in profiles && !normalizeOptionalPath(params.slurm_account)) {
+        exit 1, "ERROR: ${contextLabel}: SLURM profile is active but no account is configured. Set --slurm_account, CASC_SLURM_ACCOUNT, or .casc/user.config."
+    }
+}
+
+def resolveEffectiveSamplesheet(inputParam, modelsToRun, acdcDefault, acdcRoot, acdcDataset, mbasDefault, mbasRoot, contextLabel = 'main workflow') {
     def explicitInput = normalizeOptionalPath(inputParam)
     if (explicitInput) {
         return file(explicitInput).toAbsolutePath().toString()
@@ -205,9 +272,9 @@ def resolveEffectiveSamplesheet(inputParam, modelsToRun, acdcDefault, mbasDefaul
         return file(mbasInput).toAbsolutePath().toString()
     }
 
-    def acdcInput = normalizeOptionalPath(acdcDefault)
+    def acdcInput = resolveAcdcSamplesheet(acdcDefault, acdcRoot, acdcDataset, contextLabel)
     if (!acdcInput) {
-        exit 1, "ERROR: ${contextLabel}: ACDC default input is not configured. Set --default_inputs.acdc."
+        exit 1, "ERROR: ${contextLabel}: ACDC default input is not configured. Set --default_inputs.acdc or --acdc_dir (or CASC_ACDC_DIR)."
     }
     return file(acdcInput).toAbsolutePath().toString()
 }
@@ -220,11 +287,15 @@ def resolveEffectiveSamplesheet(inputParam, modelsToRun, acdcDefault, mbasDefaul
 
 workflow {
 
+    assertSlurmAccountForProfile('main workflow')
+
     def models_to_run = parseModels(params.models)
     def effective_input_samplesheet = resolveEffectiveSamplesheet(
         params.input,
         models_to_run,
         params.default_inputs.acdc,
+        params.acdc_dir,
+        params.acdc_dataset,
         params.default_inputs.mbas,
         params.atrial_nnunet.mbas_root,
         'main workflow'
@@ -546,6 +617,8 @@ workflow {
 
 
 workflow POSTPROCESS_ONLY {
+    assertSlurmAccountForProfile('POSTPROCESS_ONLY')
+
     def postprocess_samplesheet = normalizeOptionalPath(params.postprocess.samplesheet)
     def models_to_run = parseModels(params.models)
     def samplesheet_path = postprocess_samplesheet
@@ -554,6 +627,8 @@ workflow POSTPROCESS_ONLY {
             params.input,
             models_to_run,
             params.default_inputs.acdc,
+            params.acdc_dir,
+            params.acdc_dataset,
             params.default_inputs.mbas,
             params.atrial_nnunet.mbas_root,
             'POSTPROCESS_ONLY'
