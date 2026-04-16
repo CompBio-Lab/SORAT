@@ -26,14 +26,15 @@ except Exception:
 ARCH_LABELS = {
     'cinema': 'CineMA',
     'nnformer': 'nnFormer',
-    'vsa3l': 'VSA-3L'
+    'vsa3l': 'VSA-3L',
+    'atrial_nnunet': 'Atrial nnUNet'
 }
 
 
 def infer_architecture(model: str) -> str:
     if '__' in model:
         return model.split('__', 1)[0]
-    for prefix in ['cinema', 'nnformer', 'vsa3l']:
+    for prefix in ['cinema', 'nnformer', 'vsa3l', 'atrial_nnunet']:
         if model.startswith(prefix):
             return prefix
     return 'unknown'
@@ -79,6 +80,10 @@ def parse_model_tag(model: str) -> dict:
         fold_match = re.search(r'fold(\d+)', tag)
         if fold_match:
             fold = int(fold_match.group(1))
+    elif architecture == 'atrial_nnunet':
+        fold_match = re.search(r'folds?(\d+)', tag)
+        if fold_match:
+            seeds_count = int(fold_match.group(1))
 
     return {
         'architecture': architecture,
@@ -106,6 +111,10 @@ def build_model_variant_key(model: str, architecture: str) -> str:
         if parts['fold'] is not None:
             return f"fold{parts['fold']}"
         return parts['tag'] or architecture
+    if architecture == 'atrial_nnunet':
+        if parts['seeds_count'] is not None:
+            return f"folds{parts['seeds_count']}"
+        return parts['tag'] or architecture
     if architecture == 'vsa3l':
         return parts['tag'] or architecture
     return parts['tag'] or architecture
@@ -132,6 +141,11 @@ def build_model_variant_label(model: str, architecture: str, arch_counts: dict) 
     if architecture == 'nnformer':
         if parts['fold'] is not None:
             return f"{arch_label}_fold{parts['fold']}"
+        return f"{arch_label}_{parts['tag']}" if parts['tag'] else arch_label
+
+    if architecture == 'atrial_nnunet':
+        if parts['seeds_count'] is not None:
+            return f"{arch_label}_folds{parts['seeds_count']}"
         return f"{arch_label}_{parts['tag']}" if parts['tag'] else arch_label
 
     if architecture == 'vsa3l':
@@ -299,12 +313,14 @@ def generate_report(
         plt.close()
 
     # 2. Per-structure Dice comparison
-    structure_cols = ['dice_rv', 'dice_myo', 'dice_lv']
-    available_cols = [col for col in df.columns if any(s in col for s in structure_cols)]
+    structures = sorted(
+        {col.replace('ed_dice_', '') for col in df.columns if col.startswith('ed_dice_')}
+        | {col.replace('es_dice_', '') for col in df.columns if col.startswith('es_dice_')}
+    )
 
-    if available_cols:
+    if structures:
         plot_data = []
-        for structure in ['rv', 'myo', 'lv']:
+        for structure in structures:
             ed_col = f'ed_dice_{structure}'
             es_col = f'es_dice_{structure}'
             if ed_col in df.columns:
@@ -336,12 +352,25 @@ def generate_report(
                 axis=1
             )
             order = model_variants
-            fig, axes = plt.subplots(2, 3, figsize=(max(18, len(order) * 1.6), 9), sharey=True)
+            phases = [phase for phase in ['ED', 'ES'] if phase in set(plot_df['phase'].unique())]
+            nrows = max(1, len(phases))
+            ncols = max(1, len(structures))
+            fig, axes = plt.subplots(nrows, ncols, figsize=(max(16, ncols * 4.8), max(5.5, nrows * 4.2)), sharey=True)
 
-            for row_idx, phase in enumerate(['ED', 'ES']):
-                for col_idx, structure in enumerate(['RV', 'MYO', 'LV']):
+            axes = np.array(axes)
+            if axes.ndim == 1:
+                if nrows == 1:
+                    axes = axes.reshape(1, -1)
+                else:
+                    axes = axes.reshape(-1, 1)
+
+            for row_idx, phase in enumerate(phases):
+                for col_idx, structure in enumerate(structures):
                     ax = axes[row_idx][col_idx]
                     struct_df = plot_df[(plot_df['structure'] == structure) & (plot_df['phase'] == phase)]
+                    if struct_df.empty:
+                        ax.set_axis_off()
+                        continue
                     if _HAS_SEABORN:
                         sns.boxplot(
                             data=struct_df,
@@ -360,7 +389,7 @@ def generate_report(
                         for patch, model in zip(box['boxes'], order):
                             patch.set_facecolor(model_palette[model])
                             patch.set_alpha(0.6)
-                    ax.set_title(f'{structure} Dice ({phase})')
+                    ax.set_title(f'{structure.upper()} Dice ({phase})')
                     ax.set_xlabel('')
                     ax.set_xticklabels([])
                     ax.tick_params(axis='x', which='both', length=0)

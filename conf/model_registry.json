@@ -102,6 +102,49 @@
             },
             "citation": "MONAI Model Zoo: Ventricular Short Axis 3-Label Segmentation",
             "enabled": true
+        },
+        "atrial_nnunet": {
+            "name": "Atrial nnUNet",
+            "version": "1.0.0",
+            "description": "nnUNetv2 2D atrial segmentation model (Dataset001_LGE)",
+            "container": "ghcr.io/pmoheban/casc-atrial-nnunet:latest",
+            "module_path": "modules/atrial_nnunet.nf",
+            "input_format": "nifti_4d",
+            "output_labels": {
+                "0": "background",
+                "1": "wall",
+                "2": "right_atrium",
+                "3": "left_atrium"
+            },
+            "preprocessing": {
+                "add_channel_suffix": "_0000",
+                "extract_frames": [
+                    "ED",
+                    "ES"
+                ]
+            },
+            "inference": {
+                "dataset_id": "Dataset001_LGE",
+                "configuration": "2d",
+                "folds": [
+                    0,
+                    1,
+                    2,
+                    3,
+                    4
+                ],
+                "save_probabilities": false
+            },
+            "scripts": {
+                "preprocess": "bin/atrial_nnunet_preprocess.py",
+                "segment": "bin/atrial_nnunet_segment.py"
+            },
+            "model_weights": {
+                "path": "models/atrial_nnunet",
+                "format": "nnunetv2"
+            },
+            "citation": "Isensee, F. et al. nnU-Net: a self-configuring method for deep learning-based biomedical image segmentation.",
+            "enabled": true
         }
     },
     "schema": {

@@ -103,9 +103,57 @@ def discover_vsa3l(models_root: Path):
     return results
 
 
+def discover_atrial_nnunet(models_root: Path):
+    """Discover atrial nnUNetv2 model variants."""
+    base = models_root / "atrial_nnunet"
+    results = []
+
+    if not base.exists():
+        return results
+
+    candidate_roots = [
+        base / "nnUNet_results" / "Dataset001_LGE" / "nnUNetTrainer__nnUNetPlans__2d",
+        base / "nnUNet_results" / "Dataset001_LGE" / "Dataset001_LGE" / "nnUNetTrainer__nnUNetPlans__2d",
+        base / "Dataset001_LGE" / "nnUNetTrainer__nnUNetPlans__2d",
+    ]
+
+    trainer_dir = None
+    for candidate in candidate_roots:
+        if candidate.exists():
+            trainer_dir = candidate
+            break
+
+    if trainer_dir is None:
+        return results
+
+    fold_dirs = sorted([p for p in trainer_dir.glob("fold_*") if p.is_dir()])
+    folds = []
+    for fold_dir in fold_dirs:
+        suffix = fold_dir.name.split("_", 1)[-1]
+        if suffix.isdigit():
+            folds.append(int(suffix))
+
+    if not folds:
+        folds = [0]
+
+    folds_sorted = sorted(folds)
+    folds_csv = str(folds_sorted[0]) if len(folds_sorted) == 1 else "all"
+    model_tag = _sanitize_tag(f"atrial_nnunet__dataset001_lge_2d_folds{len(folds)}")
+    results.append({
+        "architecture": "atrial_nnunet",
+        "trained_dataset": "Dataset001_LGE",
+        "seed": "",
+        "fold": folds_csv,
+        "model_path": str(trainer_dir),
+        "model_tag": model_tag
+    })
+
+    return results
+
+
 def main():
     parser = argparse.ArgumentParser(description="Discover available models inside container")
-    parser.add_argument("--architecture", required=True, choices=["cinema", "nnformer", "vsa3l"], help="Architecture to discover")
+    parser.add_argument("--architecture", required=True, choices=["cinema", "nnformer", "vsa3l", "atrial_nnunet"], help="Architecture to discover")
     parser.add_argument("--models_root", default="/models", help="Root path for models inside container")
     parser.add_argument("--output", required=True, help="Output CSV path")
 
@@ -117,6 +165,8 @@ def main():
         rows = discover_cinema(models_root)
     elif args.architecture == "nnformer":
         rows = discover_nnformer(models_root)
+    elif args.architecture == "atrial_nnunet":
+        rows = discover_atrial_nnunet(models_root)
     else:
         rows = discover_vsa3l(models_root)
 

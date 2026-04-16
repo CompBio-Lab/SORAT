@@ -13,12 +13,16 @@
  */
 process NNFORMER_PREPROCESS {
     tag "$patient_id"
-    label 'process_low'
+    label 'process_preprocess'
+
+    storeDir {
+        params.preprocess_cache_enabled ? "${params.preprocess_cache_dir}/nnformer/${patient_id}/${preprocess_key}" : null
+    }
     
     publishDir "${params.outdir}/nnformer/preprocessed", mode: params.publish_dir_mode
     
     input:
-    tuple val(patient_id), path(image), path(ground_truth), path(info_cfg)
+    tuple val(patient_id), path(image), path(ground_truth), path(info_cfg), val(preprocess_key)
     
     output:
     tuple val(patient_id), path("${patient_id}_preprocessed"), path(ground_truth), path(info_cfg), emit: preprocessed
@@ -48,7 +52,7 @@ process NNFORMER_PREPROCESS {
  */
 process NNFORMER_SEGMENT {
     tag "$patient_id"
-    label 'process_gpu'
+    label 'process_gpu_light'
     
     publishDir "${params.outdir}/nnformer/segmentations", mode: params.publish_dir_mode
     

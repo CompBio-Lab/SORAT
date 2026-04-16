@@ -15,14 +15,21 @@ CASC (Cardiac Automated Segmentation Comparison) is a modular Nextflow pipeline 
 | **CineMA** | Convolutional Vision Transformer for cardiac MRI | [CineMA Paper](https://arxiv.org/abs/2506.00679) |
 | **nnFormer** | 3D medical image segmentation transformer | [Zhou et al., 2021](https://arxiv.org/abs/2109.03201) |
 | **VSA-3L** | MONAI Ventricular Short Axis 3-Label model | [MONAI Model Zoo](https://monai.io/model-zoo.html) |
+| **Atrial nnUNet** | nnUNetv2 2D atrial segmentation model (Dataset001_LGE) | [nnU-Net](https://www.nature.com/articles/s41592-020-01008-z) |
 
 ### Output Labels
 
-All models produce segmentations with ACDC-compatible labels:
+SAX models (`cinema`, `nnformer`, `vsa3l`) produce ACDC-compatible labels:
 - **0**: Background
 - **1**: Right Ventricle (RV)
 - **2**: Myocardium (MYO)
 - **3**: Left Ventricle (LV)
+
+Atrial model (`atrial_nnunet`) produces atrial labels:
+- **0**: Background
+- **1**: Wall
+- **2**: Right Atrium (RA)
+- **3**: Left Atrium (LA)
 
 ## Quick Start
 
@@ -34,14 +41,22 @@ curl -s https://get.nextflow.io | bash
 
 ### 2. Run the Pipeline
 
-**Using ACDC Dataset (Default):**
+**Using Default Inputs (Model-Dependent):**
 ```bash
-# The pipeline defaults to the ACDC testing dataset
+# SAX-only runs default to the ACDC testing samplesheet
 nextflow run main.nf -profile docker
 
 # With Singularity on HPC
 nextflow run main.nf -profile singularity,slurm
+
+# Atrial-only runs default to MBAS when MBAS is configured
+export CASC_MBAS_ROOT=/path/to/nnUNet_raw/Dataset001_LGE
+nextflow run main.nf --models atrial_nnunet -profile singularity,slurm
 ```
+
+Notes:
+- If `--models` includes both SAX and atrial models, `--input` is required.
+- `--models all` behavior is unchanged and remains SAX-only.
 
 **Using Custom Data:**
 ```bash
@@ -71,9 +86,10 @@ nextflow run main.nf \
 
 ```bash
 # Pull CASC images from GitHub Container Registry
-apptainer pull casc-cinema.sif docker://parsaban/casc-cinema:latest
-apptainer pull casc-nnformer.sif docker://parsaban/casc-nnformer:latest
-apptainer pull casc-vsa3l.sif docker://parsaban/casc-vsa3l:latest
+apptainer pull casc-cinema.sif docker://ghcr.io/pmoheban/casc-cinema:latest
+apptainer pull casc-nnformer.sif docker://ghcr.io/pmoheban/casc-nnformer:latest
+apptainer pull casc-vsa3l.sif docker://ghcr.io/pmoheban/casc-vsa3l:latest
+apptainer pull casc-atrial-nnunet.sif docker://ghcr.io/pmoheban/casc-atrial-nnunet:latest
 ```
 
 ### 3. Alternative: Jupyter Notebook Interface
@@ -130,17 +146,79 @@ Weight: 70
 
 | Parameter | Description |
 |-----------|-------------|
-| `--input` | Path to input samplesheet CSV |
+| `--input` | Optional override for input samplesheet CSV (required for mixed SAX+atrial runs) |
 
 ### Optional Parameters
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `--outdir` | `./results` | Output directory |
-| `--models` | `all` | Models to run: `cinema`, `nnformer`, `vsa3l`, or `all` |
+| `--models` | `all` | Models to run: `cinema`, `nnformer`, `vsa3l`, `atrial_nnunet`, or `all` |
+| `--default_inputs.acdc` | `${projectDir}/data/acdc_testing_samplesheet.csv` | Default samplesheet used when `--input` is omitted for SAX-only runs |
+| `--default_inputs.mbas` | `null` | Default MBAS samplesheet for atrial-only runs (can also use `CASC_MBAS_SAMPLESHEET`) |
+| `--atrial_nnunet.mbas_root` | `null` | MBAS root used to auto-generate atrial samplesheet + GT paths. Supports both nnUNet layout (`imagesTr/`,`labelsTr/`) and MBAS training layout (`MBAS_###/MBAS_###_gt.nii.gz`,`MBAS_###_label.nii.gz`) (can also use `CASC_MBAS_ROOT`) |
 | `--compare` | `true` | Generate comparison report |
 | `--inference_only` | `false` | Run inference only (skip metrics + report generation) |
 | `--debug` | `false` | Generate debug analytics report (execution/runtime/GPU/scalability/success + scientific utility metrics) |
+| `--postprocess.enabled` | `false` | Enable optional LV-intensity postprocessing (LV dark regions -> MYO) |
+| `--postprocess.use_for_metrics` | `true` | If postprocess enabled, compute metrics on corrected segmentations |
+| `--postprocess.visualize` | `true` | Generate before/after/delta postprocess visualizations |
+| `--visualization.enabled` | `true` | Generate ED/ES previews for each model output. If GT exists, previews include prediction-vs-GT overlays, per-structure DSC, and difference maps |
+| `--slurm_max_forks` | `30` | Maximum concurrent task submissions in `slurm` profile |
+| `--slurm_queue_size` | `64` | Max tasks queued/submitted to executor at once |
+| `--slurm_submit_rate` | `50/1min` | Submission throttling rate to reduce scheduler pressure |
+| `--slurm_poll_interval` | `30 sec` | Job-status polling interval |
+| `--slurm_queue_stat_interval` | `60 sec` | Queue-stat refresh interval |
+| `--preprocess_cache_enabled` | `true` | Reuse model-specific preprocessing outputs across reruns |
+| `--preprocess_cache_dir` | `${projectDir}/.cache/preprocess` | Cache root for reusable preprocessing artifacts |
+
+Note: `--models all` currently runs SAX models (`cinema`, `nnformer`, `vsa3l`) and does not automatically include `atrial_nnunet`.
+
+### Default Input Selection Rules
+
+When `--input` is omitted, CASC resolves input automatically:
+- SAX-only runs (`cinema`, `nnformer`, `vsa3l`, or `all`) use `--default_inputs.acdc`.
+- Atrial-only runs (`atrial_nnunet`) use `--default_inputs.mbas` if set; otherwise CASC auto-generates an MBAS samplesheet from `--atrial_nnunet.mbas_root`.
+- For MBAS training-style roots, CASC automatically stages nnUNet-style paths (`imagesTr/*_0000.nii.gz`, `labelsTr/*.nii.gz`) in `.cache/generated_inputs/` and uses those paths in the generated samplesheet.
+- Mixed SAX+atrial runs fail fast and require explicit `--input`.
+
+### SLURM Performance Tuning
+
+The `slurm` profile now includes executor throttling and stage-specific labels intended to reduce orchestration overhead for short/medium tasks.
+
+```bash
+nextflow run main.nf \
+    --input samplesheet.csv \
+    --outdir results \
+    --models all \
+    --slurm_max_forks 30 \
+    --slurm_queue_size 64 \
+    --slurm_submit_rate 50/1min \
+    --slurm_poll_interval '30 sec' \
+    --slurm_queue_stat_interval '60 sec' \
+    -profile slurm
+```
+
+Tips:
+- Start with defaults above and tune one variable at a time.
+- Compare at least 3-5 replicated runs before deciding on a setting.
+- Keep dataset/model mix identical between benchmark runs.
+
+### Preprocessing Cache Reuse
+
+To avoid repeated preprocessing for unchanged inputs/settings across reruns:
+
+```bash
+nextflow run main.nf \
+    --input samplesheet.csv \
+    --outdir results \
+    --models all \
+    --preprocess_cache_enabled true \
+    --preprocess_cache_dir /scratch/st-zlaksman-1/pmoheban/CASC/.cache/preprocess \
+    -profile slurm
+```
+
+Set `--preprocess_cache_enabled false` to force full preprocessing recomputation.
 
 ### Debug Analytics Mode
 
@@ -177,6 +255,41 @@ Notes:
 - If `--inference_only` is enabled, `--compare` is ignored.
 - Metrics and reports require ground-truth data in the samplesheet; inference-only does not.
 
+### Optional LV -> MYO Postprocessing
+
+This optional module runs after segmentation and performs an intensity-aware correction:
+- keeps bright LV blood-pool voxels as LV,
+- relabels selected dark LV voxels to MYO under safety constraints.
+
+The correction is conservative and bounded by configurable limits (component size, adjacency, max relabel fraction).
+
+```bash
+# Full pipeline + optional postprocessing
+nextflow run main.nf \
+    --input samplesheet.csv \
+    --outdir results \
+    --models all \
+    --postprocess.enabled true \
+    --postprocess.threshold_mode percentile \
+    --postprocess.threshold_percentile 30 \
+    --postprocess.min_component_size 20 \
+    --postprocess.adjacency_radius 1 \
+    --postprocess.max_relabel_fraction 0.35 \
+    -profile slurm
+```
+
+```bash
+# Postprocess-only rerun from an existing completed results directory
+nextflow run main.nf \
+    -entry POSTPROCESS_ONLY \
+    --input samplesheet.csv \
+    --models all \
+    --outdir results \
+    --postprocess.results_dir results \
+    --postprocess.visualize true \
+    -profile slurm
+```
+
 ### Model-Specific Parameters
 
 #### CineMA
@@ -198,6 +311,14 @@ Notes:
 --vsa3l.input_size 256,256        # Model input size
 ```
 
+#### Atrial nnUNet
+```bash
+--atrial_nnunet.dataset_id Dataset001_LGE     # nnUNet dataset id
+--atrial_nnunet.configuration 2d              # nnUNet configuration
+--atrial_nnunet.folds 0,1,2,3,4               # Comma-separated folds (default all 5)
+--atrial_nnunet.save_probabilities false      # Save nnUNet probability maps
+```
+
 ## Output Structure
 
 ```
@@ -211,16 +332,23 @@ results/
 ├── vsa3l/
 │   ├── preprocessed/
 │   └── segmentations/
+├── atrial_nnunet/
+│   ├── preprocessed/
+│   └── segmentations/
 ├── metrics/
 │   ├── cinema/                 # Per-model metrics
 │   ├── nnformer/
-│   └── vsa3l/
+│   ├── vsa3l/
+│   └── atrial_nnunet/
 ├── comparison/
 │   ├── aggregated_metrics.csv  # All metrics combined
 │   ├── model_comparison.csv    # Model summary statistics
 │   ├── per_patient_summary.csv # Per-patient comparison
 │   ├── comparison_report.html  # Interactive HTML report
 │   └── figures/                # Visualization plots
+├── previews/
+│   ├── <model_tag>/*_ED_preview.png
+│   └── <model_tag>/*_ES_preview.png
 └── pipeline_info/
     ├── execution_timeline.html
     ├── execution_report.html

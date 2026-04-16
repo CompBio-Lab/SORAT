@@ -106,6 +106,31 @@ def _sanitize_tag(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_]+", "_", value).strip("_")
 
 
+def _spatial_direction_from_any(direction: tuple) -> tuple:
+    """Extract a valid 3x3 spatial direction from 3D or 4D direction cosines."""
+    identity = (
+        1.0, 0.0, 0.0,
+        0.0, 1.0, 0.0,
+        0.0, 0.0, 1.0,
+    )
+
+    if len(direction) == 9:
+        return tuple(direction)
+
+    dim = int(round(len(direction) ** 0.5))
+    if dim * dim != len(direction) or dim < 3:
+        return identity
+
+    try:
+        mat = np.asarray(direction, dtype=np.float64).reshape(dim, dim)
+        spatial = mat[:3, :3]
+        if np.linalg.matrix_rank(spatial) < 3:
+            return identity
+        return tuple(float(x) for x in spatial.reshape(-1))
+    except Exception:
+        return identity
+
+
 def segment_patient(
     input_dir: Path,
     patient_id: str,
@@ -155,6 +180,7 @@ def segment_patient(
     spacing = image_sitk.GetSpacing()[:3]
     origin = image_sitk.GetOrigin()[:3]
     direction = image_sitk.GetDirection()
+    spatial_direction = _spatial_direction_from_any(direction)
     
     # Build model tag for filenames/metadata
     if model_tag is None:
@@ -200,12 +226,14 @@ def segment_patient(
     ed_sitk = sitk.GetImageFromArray(np.transpose(ed_pred, (2, 1, 0)))
     ed_sitk.SetSpacing(spacing)
     ed_sitk.SetOrigin(origin)
+    ed_sitk.SetDirection(spatial_direction)
     sitk.WriteImage(ed_sitk, f"{output_prefix}_ED_{model_tag}.nii.gz", useCompression=True)
     
     # Save ES prediction
     es_sitk = sitk.GetImageFromArray(np.transpose(es_pred, (2, 1, 0)))
     es_sitk.SetSpacing(spacing)
     es_sitk.SetOrigin(origin)
+    es_sitk.SetDirection(spatial_direction)
     sitk.WriteImage(es_sitk, f"{output_prefix}_ES_{model_tag}.nii.gz", useCompression=True)
     
     results = {

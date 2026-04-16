@@ -14,6 +14,10 @@ import SimpleITK as sitk
 from medpy.metric import binary
 
 
+VENTRICULAR_LABELS = [(1, "rv"), (2, "myo"), (3, "lv")]
+ATRIAL_LABELS = [(1, "wall"), (2, "ra"), (3, "la")]
+
+
 def dice_score(pred: np.ndarray, gt: np.ndarray) -> float:
     """Calculate Dice score for binary masks."""
     if (pred.sum() + gt.sum()) == 0:
@@ -57,7 +61,14 @@ def resample_to_reference(image: sitk.Image, reference: sitk.Image, is_label: bo
     return resampler.Execute(image)
 
 
-def compute_metrics_for_volume(pred_path: Path, gt_path: Path) -> dict:
+def get_label_spec(architecture: str) -> list[tuple[int, str]]:
+    """Return label ids and names for a given model architecture."""
+    if architecture == "atrial_nnunet":
+        return ATRIAL_LABELS
+    return VENTRICULAR_LABELS
+
+
+def compute_metrics_for_volume(pred_path: Path, gt_path: Path, label_spec: list[tuple[int, str]]) -> dict:
     """
     Compute metrics for a single prediction-ground truth pair.
     
@@ -86,30 +97,32 @@ def compute_metrics_for_volume(pred_path: Path, gt_path: Path) -> dict:
     # Get voxel spacing from ground truth for HD95
     spacing = gt_sitk.GetSpacing()
     
-    # ACDC labels: 1=RV, 2=MYO, 3=LV
     metrics = {}
-    
-    for label, name in [(1, 'rv'), (2, 'myo'), (3, 'lv')]:
+
+    for label, name in label_spec:
         pred_mask = (pred == label).astype(np.uint8)
         gt_mask = (gt == label).astype(np.uint8)
-        
+
         metrics[f'dice_{name}'] = dice_score(pred_mask, gt_mask)
         metrics[f'hd95_{name}'] = hd95_score(pred_mask, gt_mask, voxelspacing=spacing)
-    
+
     # Compute mean metrics
-    metrics['dice_mean'] = np.mean([metrics['dice_rv'], metrics['dice_myo'], metrics['dice_lv']])
-    
-    hd95_vals = [metrics['hd95_rv'], metrics['hd95_myo'], metrics['hd95_lv']]
+    dice_keys = [f"dice_{name}" for _, name in label_spec]
+    hd95_keys = [f"hd95_{name}" for _, name in label_spec]
+
+    metrics['dice_mean'] = np.mean([metrics[key] for key in dice_keys])
+
+    hd95_vals = [metrics[key] for key in hd95_keys]
     finite_hd95 = [v for v in hd95_vals if np.isfinite(v)]
     metrics['hd95_mean'] = np.mean(finite_hd95) if finite_hd95 else np.inf
-    
+
     return metrics
 
 
 def _infer_architecture(model: str) -> str:
     if '__' in model:
         return model.split('__', 1)[0]
-    for prefix in ['cinema', 'nnformer', 'vsa3l']:
+    for prefix in ['cinema', 'nnformer', 'vsa3l', 'atrial_nnunet']:
         if model.startswith(prefix):
             return prefix
     return 'unknown'
@@ -139,6 +152,10 @@ def compute_patient_metrics(
         DataFrame with metrics
     """
     gt_path = Path(ground_truth)
+    if architecture is None:
+        architecture = _infer_architecture(model)
+
+    label_spec = get_label_spec(architecture)
     
     results = []
     
@@ -177,7 +194,7 @@ def compute_patient_metrics(
     
     # Compute ED metrics
     if ed_gt and ed_gt.exists() and Path(seg_ed).exists():
-        ed_metrics = compute_metrics_for_volume(seg_ed, ed_gt)
+        ed_metrics = compute_metrics_for_volume(seg_ed, ed_gt, label_spec)
         ed_result = {
             'patient_id': patient_id,
             'model': model,
@@ -188,7 +205,7 @@ def compute_patient_metrics(
     
     # Compute ES metrics
     if es_gt and es_gt.exists() and Path(seg_es).exists():
-        es_metrics = compute_metrics_for_volume(seg_es, es_gt)
+        es_metrics = compute_metrics_for_volume(seg_es, es_gt, label_spec)
         es_result = {
             'patient_id': patient_id,
             'model': model,
@@ -199,9 +216,6 @@ def compute_patient_metrics(
     
     # Create combined result
     if results:
-        if architecture is None:
-            architecture = _infer_architecture(model)
-
         combined = {
             'patient_id': patient_id,
             'model': model,

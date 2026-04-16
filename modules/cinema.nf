@@ -14,12 +14,16 @@
  */
 process CINEMA_PREPROCESS {
     tag "$patient_id"
-    label 'process_medium'
+    label 'process_preprocess'
+
+    storeDir {
+        params.preprocess_cache_enabled ? "${params.preprocess_cache_dir}/cinema/${patient_id}/${preprocess_key}" : null
+    }
     
     publishDir "${params.outdir}/cinema/preprocessed", mode: params.publish_dir_mode
     
     input:
-    tuple val(patient_id), path(image), path(ground_truth), path(info_cfg)
+    tuple val(patient_id), path(image), path(ground_truth), path(info_cfg), val(preprocess_key)
     
     output:
     tuple val(patient_id), path("${patient_id}_preprocessed"), path(ground_truth), path(info_cfg), emit: preprocessed
@@ -51,7 +55,7 @@ process CINEMA_PREPROCESS {
  */
 process CINEMA_SEGMENT {
     tag "$patient_id"
-    label 'process_gpu'
+    label 'process_gpu_heavy'
     
     publishDir "${params.outdir}/cinema/segmentations", mode: params.publish_dir_mode
     
