@@ -72,7 +72,7 @@ export CASC_ATRIAL_DATA_ROOT=/path/to/nnUNet_raw/Dataset001_LGE
 
 Notes:
 - If `--models` includes both SAX and atrial models, `--input` is required.
-- `--models all` behavior is unchanged and remains SAX-only.
+- `--models all` is SAX-only.
 
 **Using Custom Data:**
 ```bash
@@ -222,11 +222,6 @@ Weight: 70
 | `--preprocess_cache_dir` | `${projectDir}/.cache/preprocess` | Cache root for reusable preprocessing artifacts |
 
 Note: `--models all` currently runs SAX models (`cinema`, `nnformer`, `vsa3l`) and does not automatically include `atrial_nnunet`.
-
-Legacy compatibility:
-- `--default_inputs.acdc` and `CASC_ACDC_SAMPLESHEET` are still accepted as aliases for `--default_inputs.sax`.
-- `--acdc_dir` and `--acdc_dataset` are still accepted as aliases for `--sax_data_root` and `--sax_data_split`.
-- `--default_inputs.mbas`, `--atrial_nnunet.mbas_root`, `CASC_MBAS_SAMPLESHEET`, and `CASC_MBAS_ROOT` are still accepted as atrial aliases.
 
 ### Default Input Selection Rules
 
