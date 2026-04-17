@@ -76,8 +76,13 @@ params {{
     outdir                = {_groovy_literal(values['outdir'])}
     slurm_account         = {_groovy_literal(values['slurm_account'])}
 
-    acdc_dir              = {_groovy_literal(values['acdc_dir'])}
-    acdc_dataset          = {_groovy_literal(values['acdc_dataset'])}
+    // Preferred generic defaults for SAX model-family auto input generation.
+    sax_data_root         = {_groovy_literal(values['sax_data_root'])}
+    sax_data_split        = {_groovy_literal(values['sax_data_split'])}
+
+    // Legacy aliases retained for compatibility.
+    acdc_dir              = {_groovy_literal(values['sax_data_root'])}
+    acdc_dataset          = {_groovy_literal(values['sax_data_split'])}
 
     singularity_cache_dir = {_groovy_literal(values['singularity_cache_dir'])}
     preprocess_cache_dir  = {_groovy_literal(values['preprocess_cache_dir'])}
@@ -86,12 +91,20 @@ params {{
     singularity_slurm_binds = {_groovy_literal(values['singularity_slurm_binds'])}
 
     default_inputs {{
-        acdc              = {_groovy_literal(values['acdc_samplesheet'])}
-        mbas              = {_groovy_literal(values['mbas_samplesheet'])}
+        // Preferred generic keys.
+        sax               = {_groovy_literal(values['sax_samplesheet'])}
+        atrial            = {_groovy_literal(values['atrial_samplesheet'])}
+
+        // Legacy aliases retained for compatibility.
+        acdc              = {_groovy_literal(values['sax_samplesheet'])}
+        mbas              = {_groovy_literal(values['atrial_samplesheet'])}
     }}
 
     atrial_nnunet {{
-        mbas_root         = {_groovy_literal(values['mbas_root'])}
+        dataset_root      = {_groovy_literal(values['atrial_data_root'])}
+
+        // Legacy alias retained for compatibility.
+        mbas_root         = {_groovy_literal(values['atrial_data_root'])}
     }}
 }}
 """
@@ -103,12 +116,42 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--force", action="store_true", help="Overwrite existing .casc/user.config")
     parser.add_argument("--print-only", action="store_true", help="Print generated config instead of writing it")
 
-    parser.add_argument("--acdc-dir", default=os.getenv("CASC_ACDC_DIR", ""))
-    parser.add_argument("--acdc-dataset", default="testing")
-    parser.add_argument("--acdc-samplesheet", default=os.getenv("CASC_ACDC_SAMPLESHEET", ""))
+    parser.add_argument(
+        "--sax-data-root",
+        "--acdc-dir",
+        dest="sax_data_root",
+        default=os.getenv("CASC_SAX_DATA_ROOT", os.getenv("CASC_ACDC_DIR", "")),
+        help="SAX default dataset root (legacy alias: --acdc-dir)",
+    )
+    parser.add_argument(
+        "--sax-data-split",
+        "--acdc-dataset",
+        dest="sax_data_split",
+        default=os.getenv("CASC_SAX_DATA_SPLIT", "testing"),
+        help="SAX dataset split folder (legacy alias: --acdc-dataset)",
+    )
+    parser.add_argument(
+        "--sax-samplesheet",
+        "--acdc-samplesheet",
+        dest="sax_samplesheet",
+        default=os.getenv("CASC_SAX_SAMPLESHEET", os.getenv("CASC_ACDC_SAMPLESHEET", "")),
+        help="Explicit SAX default samplesheet (legacy alias: --acdc-samplesheet)",
+    )
 
-    parser.add_argument("--mbas-root", default=os.getenv("CASC_MBAS_ROOT", ""))
-    parser.add_argument("--mbas-samplesheet", default=os.getenv("CASC_MBAS_SAMPLESHEET", ""))
+    parser.add_argument(
+        "--atrial-data-root",
+        "--mbas-root",
+        dest="atrial_data_root",
+        default=os.getenv("CASC_ATRIAL_DATA_ROOT", os.getenv("CASC_MBAS_ROOT", "")),
+        help="Atrial default dataset root (legacy alias: --mbas-root)",
+    )
+    parser.add_argument(
+        "--atrial-samplesheet",
+        "--mbas-samplesheet",
+        dest="atrial_samplesheet",
+        default=os.getenv("CASC_ATRIAL_SAMPLESHEET", os.getenv("CASC_MBAS_SAMPLESHEET", "")),
+        help="Explicit atrial default samplesheet (legacy alias: --mbas-samplesheet)",
+    )
 
     parser.add_argument("--slurm-account", default=os.getenv("CASC_SLURM_ACCOUNT", ""))
 
@@ -132,11 +175,11 @@ def main() -> int:
     default_slurm_binds = f"/arc:/arc,/scratch:/scratch,{repo_root / 'bin'}:/app/bin,{repo_root / 'nnformer'}:/app/nnformer"
 
     values = {
-        "acdc_dir": args.acdc_dir,
-        "acdc_dataset": args.acdc_dataset,
-        "acdc_samplesheet": args.acdc_samplesheet,
-        "mbas_root": args.mbas_root,
-        "mbas_samplesheet": args.mbas_samplesheet,
+        "sax_data_root": args.sax_data_root,
+        "sax_data_split": args.sax_data_split,
+        "sax_samplesheet": args.sax_samplesheet,
+        "atrial_data_root": args.atrial_data_root,
+        "atrial_samplesheet": args.atrial_samplesheet,
         "slurm_account": args.slurm_account,
         "singularity_cache_dir": args.singularity_cache_dir,
         "preprocess_cache_dir": args.preprocess_cache_dir or default_pre_cache,
@@ -150,12 +193,12 @@ def main() -> int:
         print("Press Enter to accept defaults. Leave optional values blank if unused.")
         print()
 
-        values["acdc_dir"] = _prompt_value("ACDC root directory (contains testing/ or training/)", values["acdc_dir"])
-        values["acdc_dataset"] = _prompt_value("ACDC dataset split", values["acdc_dataset"] or "testing")
-        values["acdc_samplesheet"] = _prompt_value("ACDC samplesheet path override (optional)", values["acdc_samplesheet"])
+        values["sax_data_root"] = _prompt_value("SAX default dataset root (ACDC-style; contains testing/ or training/)", values["sax_data_root"])
+        values["sax_data_split"] = _prompt_value("SAX dataset split", values["sax_data_split"] or "testing")
+        values["sax_samplesheet"] = _prompt_value("SAX samplesheet path override (optional)", values["sax_samplesheet"])
 
-        values["mbas_root"] = _prompt_value("MBAS dataset root (optional)", values["mbas_root"])
-        values["mbas_samplesheet"] = _prompt_value("MBAS samplesheet path override (optional)", values["mbas_samplesheet"])
+        values["atrial_data_root"] = _prompt_value("Atrial dataset root (optional; nnUNet layout or MBAS-style)", values["atrial_data_root"])
+        values["atrial_samplesheet"] = _prompt_value("Atrial samplesheet path override (optional)", values["atrial_samplesheet"])
 
         values["slurm_account"] = _prompt_value("SLURM account/allocation (required for -profile slurm)", values["slurm_account"])
 
@@ -166,13 +209,13 @@ def main() -> int:
         values["singularity_local_binds"] = _prompt_value("Local profile bind list", values["singularity_local_binds"])
         values["singularity_slurm_binds"] = _prompt_value("SLURM profile bind list", values["singularity_slurm_binds"])
 
-    values["acdc_dir"] = _validate_existing_path(values["acdc_dir"], "ACDC root", expect_file=False, non_interactive=args.non_interactive)
-    values["acdc_samplesheet"] = _validate_existing_path(values["acdc_samplesheet"], "ACDC samplesheet", expect_file=True, non_interactive=args.non_interactive)
-    values["mbas_root"] = _validate_existing_path(values["mbas_root"], "MBAS root", expect_file=False, non_interactive=args.non_interactive)
-    values["mbas_samplesheet"] = _validate_existing_path(values["mbas_samplesheet"], "MBAS samplesheet", expect_file=True, non_interactive=args.non_interactive)
+    values["sax_data_root"] = _validate_existing_path(values["sax_data_root"], "SAX default data root", expect_file=False, non_interactive=args.non_interactive)
+    values["sax_samplesheet"] = _validate_existing_path(values["sax_samplesheet"], "SAX samplesheet", expect_file=True, non_interactive=args.non_interactive)
+    values["atrial_data_root"] = _validate_existing_path(values["atrial_data_root"], "Atrial data root", expect_file=False, non_interactive=args.non_interactive)
+    values["atrial_samplesheet"] = _validate_existing_path(values["atrial_samplesheet"], "Atrial samplesheet", expect_file=True, non_interactive=args.non_interactive)
 
-    if not values["acdc_dir"] and not values["acdc_samplesheet"]:
-        message = "Neither ACDC directory nor ACDC samplesheet is configured. SAX model runs without --input will fail."
+    if not values["sax_data_root"] and not values["sax_samplesheet"]:
+        message = "Neither SAX default dataset root nor SAX samplesheet is configured. SAX model runs without --input will fail."
         if args.non_interactive:
             print(f"Warning: {message}")
         else:

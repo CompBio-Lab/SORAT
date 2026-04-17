@@ -59,14 +59,14 @@ The helper runner uses `main.nf` from the repo root and reminds you to run setup
 
 **Using Default Inputs (Model-Dependent):**
 ```bash
-# SAX-only runs default to generated ACDC samplesheet from --acdc_dir
+# SAX-only runs default to generated samplesheet from --sax_data_root
 ./bin/casc_run.sh -profile local
 
 # With SLURM + Apptainer on HPC
 ./bin/casc_run.sh -profile slurm
 
-# Atrial-only runs default to MBAS when MBAS is configured
-export CASC_MBAS_ROOT=/path/to/nnUNet_raw/Dataset001_LGE
+# Atrial-only runs default when atrial root data is configured
+export CASC_ATRIAL_DATA_ROOT=/path/to/nnUNet_raw/Dataset001_LGE
 ./bin/casc_run.sh --models atrial_nnunet -profile slurm
 ```
 
@@ -134,7 +134,7 @@ Create a CSV file with the following columns:
 | `patient_id` | Yes | Unique patient identifier |
 | `image` | Yes | Path to 4D cardiac MRI NIfTI file |
 | `ground_truth` | No | Path to ground truth segmentation |
-| `info_cfg` | No | Path to ACDC Info.cfg file (ED/ES frame indices) |
+| `info_cfg` | No | Optional metadata config with ED/ES frame indices (for CineMA compatibility) |
 
 #### Example samplesheet.csv
 
@@ -144,6 +144,34 @@ patient101,/data/patient101/patient101_4d.nii.gz,/data/patient101,/data/patient1
 patient102,/data/patient102/patient102_4d.nii.gz,/data/patient102,/data/patient102/Info.cfg
 patient103,/data/patient103/patient103_4d.nii.gz,,
 ```
+
+### Custom Dataset Templates
+
+Use these templates when your directory structure does not match ACDC or MBAS conventions.
+
+#### 1. Minimal generic template (any dataset structure)
+
+```csv
+patient_id,image,ground_truth,info_cfg
+case001,/data/custom/case001/image.nii.gz,,
+case002,/data/custom/case002/image.nii.gz,,
+```
+
+Use this when you only need inference. You can point `image` to any valid NIfTI path.
+
+#### 2. Recommended per-model contributor template
+
+```csv
+patient_id,image,ground_truth,info_cfg
+case001,/data/custom/case001/image_4d.nii.gz,/data/custom/case001/label_dir,/data/custom/case001/Info.cfg
+case002,/data/custom/case002/image_4d.nii.gz,/data/custom/case002/label_dir,
+```
+
+Guidance:
+- Always provide stable `patient_id` values; they are used in outputs and comparisons.
+- Set `ground_truth` when you want metrics/reporting; leave empty for inference-only runs.
+- `info_cfg` is optional and mainly useful for CineMA ED/ES frame metadata.
+- Keep column names unchanged even if your on-disk folder names are different.
 
 ### Info.cfg Format (Optional)
 
@@ -171,11 +199,11 @@ Weight: 70
 |-----------|---------|-------------|
 | `--outdir` | `./results` | Output directory |
 | `--models` | `all` | Models to run: `cinema`, `nnformer`, `vsa3l`, `atrial_nnunet`, or `all` |
-| `--default_inputs.acdc` | `null` | Optional explicit ACDC default samplesheet (or `CASC_ACDC_SAMPLESHEET`) |
-| `--acdc_dir` | `null` | ACDC database root used to auto-generate SAX default samplesheet (or `CASC_ACDC_DIR`) |
-| `--acdc_dataset` | `testing` | ACDC split folder to use when auto-generating defaults (`testing` or `training`) |
-| `--default_inputs.mbas` | `null` | Default MBAS samplesheet for atrial-only runs (can also use `CASC_MBAS_SAMPLESHEET`) |
-| `--atrial_nnunet.mbas_root` | `null` | MBAS root used to auto-generate atrial samplesheet + GT paths. Supports both nnUNet layout (`imagesTr/`,`labelsTr/`) and MBAS training layout (`MBAS_###/MBAS_###_gt.nii.gz`,`MBAS_###_label.nii.gz`) (can also use `CASC_MBAS_ROOT`) |
+| `--default_inputs.sax` | `null` | Preferred explicit default samplesheet for SAX-only runs (or `CASC_SAX_SAMPLESHEET`) |
+| `--sax_data_root` | `null` | Preferred SAX data root used to auto-generate defaults (ACDC-style layout) (or `CASC_SAX_DATA_ROOT`) |
+| `--sax_data_split` | `testing` | SAX split folder used with `--sax_data_root` when auto-generating defaults |
+| `--default_inputs.atrial` | `null` | Preferred explicit default samplesheet for atrial-only runs (or `CASC_ATRIAL_SAMPLESHEET`) |
+| `--atrial_nnunet.dataset_root` | `null` | Preferred atrial data root for auto-generated defaults. Supports nnUNet layout (`imagesTr/`,`labelsTr/`) and MBAS-style layout (`MBAS_###/MBAS_###_gt.nii.gz`,`MBAS_###_label.nii.gz`) (or `CASC_ATRIAL_DATA_ROOT`) |
 | `--slurm_account` | `null` | SLURM allocation/account (required when `-profile slurm`, can use `CASC_SLURM_ACCOUNT`) |
 | `--singularity_cache_dir` | `$HOME/.singularity_cache` | Per-user Singularity cache location (can use `CASC_SINGULARITY_CACHEDIR`) |
 | `--compare` | `true` | Generate comparison report |
@@ -195,151 +223,36 @@ Weight: 70
 
 Note: `--models all` currently runs SAX models (`cinema`, `nnformer`, `vsa3l`) and does not automatically include `atrial_nnunet`.
 
+Legacy compatibility:
+- `--default_inputs.acdc` and `CASC_ACDC_SAMPLESHEET` are still accepted as aliases for `--default_inputs.sax`.
+- `--acdc_dir` and `--acdc_dataset` are still accepted as aliases for `--sax_data_root` and `--sax_data_split`.
+- `--default_inputs.mbas`, `--atrial_nnunet.mbas_root`, `CASC_MBAS_SAMPLESHEET`, and `CASC_MBAS_ROOT` are still accepted as atrial aliases.
+
 ### Default Input Selection Rules
 
 When `--input` is omitted, CASC resolves input automatically:
-- SAX-only runs (`cinema`, `nnformer`, `vsa3l`, or `all`) use `--default_inputs.acdc` if set; otherwise CASC generates an ACDC samplesheet from `--acdc_dir` and `--acdc_dataset`.
-- Atrial-only runs (`atrial_nnunet`) use `--default_inputs.mbas` if set; otherwise CASC auto-generates an MBAS samplesheet from `--atrial_nnunet.mbas_root`.
-- For MBAS training-style roots, CASC automatically stages nnUNet-style paths (`imagesTr/*_0000.nii.gz`, `labelsTr/*.nii.gz`) in `.cache/generated_inputs/` and uses those paths in the generated samplesheet.
+- SAX-only runs (`cinema`, `nnformer`, `vsa3l`, or `all`) use `--default_inputs.sax` if set; otherwise CASC generates a SAX default samplesheet from `--sax_data_root` and `--sax_data_split`.
+- Atrial-only runs (`atrial_nnunet`) use `--default_inputs.atrial` if set; otherwise CASC auto-generates an atrial default samplesheet from `--atrial_nnunet.dataset_root`.
+- For MBAS-style atrial roots, CASC automatically stages nnUNet-style paths (`imagesTr/*_0000.nii.gz`, `labelsTr/*.nii.gz`) in `.cache/generated_inputs/` and uses those paths in the generated samplesheet.
 - Mixed SAX+atrial runs fail fast and require explicit `--input`.
 
-### SLURM Performance Tuning
+### Advanced Options (Quick Reference)
 
-The `slurm` profile now includes executor throttling and stage-specific labels intended to reduce orchestration overhead for short/medium tasks.
+Use these options when needed:
+- `--inference_only true`: skip metrics/report generation.
+- `--debug true`: generate debug analytics outputs.
+- `--preprocess_cache_enabled true|false`: enable or disable preprocessing cache reuse.
+- `--postprocess.enabled true`: enable optional LV -> MYO postprocessing.
 
-```bash
-nextflow run main.nf \
-    -c .casc/user.config \
-    --input samplesheet.csv \
-    --outdir results \
-    --models all \
-    --slurm_max_forks 30 \
-    --slurm_queue_size 64 \
-    --slurm_submit_rate 50/1min \
-    --slurm_poll_interval '30 sec' \
-    --slurm_queue_stat_interval '60 sec' \
-    -profile slurm
-```
-
-Tips:
-- Start with defaults above and tune one variable at a time.
-- Compare at least 3-5 replicated runs before deciding on a setting.
-- Keep dataset/model mix identical between benchmark runs.
-
-### Preprocessing Cache Reuse
-
-To avoid repeated preprocessing for unchanged inputs/settings across reruns:
-
-```bash
-nextflow run main.nf \
-    -c .casc/user.config \
-    --input samplesheet.csv \
-    --outdir results \
-    --models all \
-    --preprocess_cache_enabled true \
-    --preprocess_cache_dir ${PWD}/.cache/preprocess \
-    -profile slurm
-```
-
-Set `--preprocess_cache_enabled false` to force full preprocessing recomputation.
-
-### Debug Analytics Mode
-
-Enable `--debug` to generate metrics and figures that quantify:
-- execution time and process bottlenecks,
-- estimated scalable GPU consumption and GPU concurrency,
-- pipeline reliability/success rates and retry behavior,
-- coverage and segmentation-quality utility metrics.
+For SLURM tuning, the main controls are `--slurm_max_forks`, `--slurm_queue_size`, `--slurm_submit_rate`, `--slurm_poll_interval`, and `--slurm_queue_stat_interval`.
 
 ```bash
 nextflow run main.nf \
     --input samplesheet.csv \
-    --outdir results \
     --models all \
-    --debug \
+    --inference_only true \
+    --debug false \
     -profile slurm
-```
-
-### Inference-Only Runs
-
-Use `--inference_only` to run segmentation without computing metrics or generating comparison reports. This keeps the current behavior intact while providing a fast inference-only mode.
-
-```bash
-# Inference-only (no metrics/report)
-nextflow run main.nf \
-    --input samplesheet.csv \
-    --outdir results \
-    --models all \
-    --inference_only \
-    -profile slurm
-```
-
-Notes:
-- If `--inference_only` is enabled, `--compare` is ignored.
-- Metrics and reports require ground-truth data in the samplesheet; inference-only does not.
-
-### Optional LV -> MYO Postprocessing
-
-This optional module runs after segmentation and performs an intensity-aware correction:
-- keeps bright LV blood-pool voxels as LV,
-- relabels selected dark LV voxels to MYO under safety constraints.
-
-The correction is conservative and bounded by configurable limits (component size, adjacency, max relabel fraction).
-
-```bash
-# Full pipeline + optional postprocessing
-nextflow run main.nf \
-    --input samplesheet.csv \
-    --outdir results \
-    --models all \
-    --postprocess.enabled true \
-    --postprocess.threshold_mode percentile \
-    --postprocess.threshold_percentile 30 \
-    --postprocess.min_component_size 20 \
-    --postprocess.adjacency_radius 1 \
-    --postprocess.max_relabel_fraction 0.35 \
-    -profile slurm
-```
-
-```bash
-# Postprocess-only rerun from an existing completed results directory
-nextflow run main.nf \
-    -entry POSTPROCESS_ONLY \
-    --input samplesheet.csv \
-    --models all \
-    --outdir results \
-    --postprocess.results_dir results \
-    --postprocess.visualize true \
-    -profile slurm
-```
-
-### Model-Specific Parameters
-
-#### CineMA
-```bash
---cinema.trained_dataset acdc    # Training dataset (acdc, mnms, mnms2)
---cinema.seeds 0,1,2              # Seeds for ensemble
---cinema.ensemble true            # Enable ensemble prediction
-```
-
-#### nnFormer
-```bash
---nnformer.fold 0                 # Model fold to use
---nnformer.tta true               # Test-time augmentation
---nnformer.mixed_precision true   # Mixed precision inference
-```
-
-#### VSA-3L
-```bash
---vsa3l.input_size 256,256        # Model input size
-```
-
-#### Atrial nnUNet
-```bash
---atrial_nnunet.dataset_id Dataset001_LGE     # nnUNet dataset id
---atrial_nnunet.configuration 2d              # nnUNet configuration
---atrial_nnunet.folds 0,1,2,3,4               # Comma-separated folds (default all 5)
---atrial_nnunet.save_probabilities false      # Save nnUNet probability maps
 ```
 
 ## Output Structure
@@ -409,116 +322,6 @@ results/
 
 Use one execution profile at a time.
 
-## Adding New Models
-
-CASC is designed to be extensible. To add a new segmentation model:
-
-### 1. Create a Module
-
-Create `modules/mymodel.nf`:
-
-```groovy
-process MYMODEL_PREPROCESS {
-    tag "$patient_id"
-    label 'process_medium'
-    
-    input:
-    tuple val(patient_id), path(image), path(ground_truth), path(info_cfg)
-    
-    output:
-    tuple val(patient_id), path("${patient_id}_preprocessed"), path(ground_truth), path(info_cfg), emit: preprocessed
-    
-    script:
-    """
-    mymodel_preprocess.py --input ${image} --patient_id ${patient_id} --output_dir ${patient_id}_preprocessed
-    """
-}
-
-process MYMODEL_SEGMENT {
-    tag "$patient_id"
-    label 'process_gpu'
-    
-    input:
-    tuple val(patient_id), path(preprocessed_dir), path(ground_truth), path(info_cfg)
-    
-    output:
-    tuple val(patient_id), path("${patient_id}_ED_mymodel.nii.gz"), path("${patient_id}_ES_mymodel.nii.gz"), val(meta), emit: segmentation
-    
-    script:
-    meta = [model: 'mymodel']
-    """
-    mymodel_segment.py --input_dir ${preprocessed_dir} --patient_id ${patient_id} --output_prefix ${patient_id}
-    """
-}
-```
-
-### 2. Create Python Scripts
-
-Add preprocessing and segmentation scripts to `bin/`:
-- `bin/mymodel_preprocess.py`
-- `bin/mymodel_segment.py`
-
-### 3. Create a Dockerfile
-
-Create `containers/mymodel/Dockerfile`:
-
-```dockerfile
-FROM ghcr.io/your-org/casc-base:latest
-# Add model-specific dependencies
-RUN pip install mymodel-dependencies
-COPY mymodel/ /app/mymodel/
-```
-
-### 4. Register the Model
-
-Add entry to `conf/model_registry.json`:
-
-```json
-{
-    "mymodel": {
-        "name": "My Model",
-        "version": "1.0.0",
-        "description": "Description of my model",
-        "container": "ghcr.io/your-org/casc-mymodel:latest",
-        "module_path": "modules/mymodel.nf",
-        "enabled": true
-    }
-}
-```
-
-### 5. Update main.nf
-
-Add the new model to the workflow in `main.nf`.
-
-## Building Containers
-
-The CASC Docker images come **pre-loaded with model weights**, so users can simply pull and run without any additional setup.
-
-### Pulling Pre-built Images
-
-```bash
-# Pull all CASC images from GitHub Container Registry
-export CASC_GHCR_NAMESPACE="your-org"
-docker pull ghcr.io/${CASC_GHCR_NAMESPACE}/casc-cinema:latest
-docker pull ghcr.io/${CASC_GHCR_NAMESPACE}/casc-nnformer:latest
-docker pull ghcr.io/${CASC_GHCR_NAMESPACE}/casc-vsa3l:latest
-```
-
-### Building Images Locally
-
-If you need to build the images yourself:
-
-```bash
-# Use the build script
-chmod +x scripts/build_containers.sh
-./scripts/build_containers.sh all
-
-# Or build individually
-docker build -f containers/cinema/Dockerfile -t ghcr.io/your-org/casc-cinema:latest .
-docker build -f containers/nnformer/Dockerfile -t ghcr.io/your-org/casc-nnformer:latest .
-docker build -f containers/vsa3l/Dockerfile -t ghcr.io/your-org/casc-vsa3l:latest .
-```
-
 ## Troubleshooting
 
 ### Common Issues
@@ -558,28 +361,9 @@ If you use CASC in your research, please cite:
 ```
 
 Also cite the individual models you use:
-
-- **nnFormer**: @article{zhou2022nnformerinterleavedtransformervolumetric,
-    title={nnFormer: Interleaved Transformer for Volumetric Segmentation}, 
-    author={Hong-Yu Zhou and Jiansen Guo and Yinghao Zhang and Lequan Yu and Liansheng Wang and Yizhou Yu},
-    year={2022},
-    url={https://arxiv.org/abs/2109.03201}
-}
-- **MONAI VSA-3L**: @article{inbook,
-    author = {Kerfoot, Eric and Clough, James and Oksuz, Ilkay and Lee, Jack and King, Andrew and Schnabel, Julia},
-    year = {2019},
-    month = {02},
-    pages = {371-380},
-    title = {Left-Ventricle Quantification Using Residual U-Net: 9th International Workshop, STACOM 2018, Held in Conjunction with MICCAI 2018, Granada, Spain, September 16, 2018, Revised Selected Papers},
-    isbn = {978-3-030-12028-3},
-    doi = {10.1007/978-3-030-12029-0_40}
-}
-- **CineMA**: @article{fu2025cinema,
-    title={A versatile foundation model for cine cardiac magnetic resonance image analysis tasks},
-    author={Fu, Yunguan and Bai, Wenjia and Yi, Weixi and Manisty, Charlotte and Bhuva, Anish N and Treibel, Thomas A and Moon, James C and Clarkson, Matthew J and Davies, Rhodri Huw and Hu, Yipeng},
-    journal={arXiv preprint arXiv:2506.00679},
-    year={2025}
-}
+- **nnFormer**: https://arxiv.org/abs/2109.03201
+- **MONAI VSA-3L (LV quantification reference)**: https://doi.org/10.1007/978-3-030-12029-0_40
+- **CineMA**: https://arxiv.org/abs/2506.00679
 
 ## License
 

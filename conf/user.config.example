@@ -6,8 +6,12 @@
  */
 
 params {
-    // Required for default SAX runs when --input is omitted.
-    acdc_dir              = '/path/to/ACDC/database'
+    // Preferred generic defaults for SAX auto input generation.
+    sax_data_root         = '/path/to/sax_data_root'
+    sax_data_split        = 'testing'
+
+    // Legacy aliases retained for compatibility.
+    acdc_dir              = '/path/to/sax_data_root'
     acdc_dataset          = 'testing'
 
     // Required when using -profile slurm.
@@ -20,12 +24,19 @@ params {
 
     // Optional explicit samplesheet overrides.
     default_inputs {
+        sax               = null
+        atrial            = null
+
+        // Legacy aliases retained for compatibility.
         acdc              = null
         mbas              = null
     }
 
-    // Optional MBAS root for atrial default input generation.
+    // Optional atrial default root for automatic input generation.
     atrial_nnunet {
+        dataset_root      = null
+
+        // Legacy alias retained for compatibility.
         mbas_root         = null
     }
 

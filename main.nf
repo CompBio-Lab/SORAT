@@ -27,7 +27,7 @@ log.info """
 
 Pipeline Parameters:
 --------------------
-Input samplesheet    : ${params.input ?: 'AUTO (model-dependent default)'}
+Input samplesheet    : ${params.input ?: 'AUTO (model-family default)'}
 Output directory     : ${params.outdir}
 Models to run        : ${params.models}
 Compare results      : ${params.compare}
@@ -89,13 +89,13 @@ def stageMbasFile(File source, File target, String contextLabel) {
     }
 }
 
-def resolveMbasSamplesheet(mbasDefault, mbasRoot, contextLabel) {
-    def configuredMbas = normalizeOptionalPath(mbasDefault)
-    if (configuredMbas) {
-        return file(configuredMbas).toAbsolutePath().toString()
+def resolveMbasSamplesheet(atrialDefault, atrialRoot, contextLabel) {
+    def configuredAtrial = normalizeOptionalPath(atrialDefault)
+    if (configuredAtrial) {
+        return file(configuredAtrial).toAbsolutePath().toString()
     }
 
-    def datasetRootPath = normalizeOptionalPath(mbasRoot)
+    def datasetRootPath = normalizeOptionalPath(atrialRoot)
     if (!datasetRootPath) {
         return null
     }
@@ -103,7 +103,7 @@ def resolveMbasSamplesheet(mbasDefault, mbasRoot, contextLabel) {
     def datasetRoot = new File(datasetRootPath)
     def generatedDir = file("${projectDir}/.cache/generated_inputs")
     generatedDir.mkdirs()
-    def generatedCsv = new File(generatedDir.toString(), 'mbas_default_samplesheet.csv')
+    def generatedCsv = new File(generatedDir.toString(), 'atrial_default_samplesheet.csv')
 
     def imagesDir = new File(datasetRoot.toString(), 'imagesTr')
     def labelsDir = new File(datasetRoot.toString(), 'labelsTr')
@@ -116,14 +116,14 @@ def resolveMbasSamplesheet(mbasDefault, mbasRoot, contextLabel) {
         if (imagesDir.exists() && labelsDir.exists()) {
             def imageFiles = imagesDir.listFiles()?.findAll { it.name.endsWith('_0000.nii.gz') }?.sort { it.name }
             if (!imageFiles) {
-                exit 1, "ERROR: ${contextLabel}: No MBAS inputs found under ${imagesDir}"
+                exit 1, "ERROR: ${contextLabel}: No atrial default inputs found under ${imagesDir}"
             }
 
             imageFiles.each { imageFile ->
                 def patientId = imageFile.name.replace('_0000.nii.gz', '')
                 def gtFile = new File(labelsDir, "${patientId}.nii.gz")
                 if (!gtFile.exists()) {
-                    log.warn "Skipping MBAS sample ${patientId}: missing label file ${gtFile}"
+                    log.warn "Skipping atrial sample ${patientId}: missing label file ${gtFile}"
                     return
                 }
                 writer.writeLine("${patientId},${imageFile.absolutePath},${gtFile.absolutePath},")
@@ -139,7 +139,7 @@ def resolveMbasSamplesheet(mbasDefault, mbasRoot, contextLabel) {
         }?.sort { it.name }
 
         if (!caseDirs) {
-            exit 1, "ERROR: ${contextLabel}: MBAS root must be either nnUNet layout (imagesTr/labelsTr) or MBAS training layout (MBAS_###/). Got: ${datasetRoot}"
+            exit 1, "ERROR: ${contextLabel}: Atrial data root must be either nnUNet layout (imagesTr/labelsTr) or MBAS-style training layout (MBAS_###/). Got: ${datasetRoot}"
         }
 
         def stagedRoot = new File(generatedDir.toString(), 'mbas_dataset001_lge')
@@ -162,7 +162,7 @@ def resolveMbasSamplesheet(mbasDefault, mbasRoot, contextLabel) {
             }
 
             if (!imageFile?.exists() || !gtFile?.exists()) {
-                log.warn "Skipping MBAS sample ${patientId}: expected image/label pair not found in ${caseDir}"
+                log.warn "Skipping atrial sample ${patientId}: expected image/label pair not found in ${caseDir}"
                 return
             }
 
@@ -178,27 +178,27 @@ def resolveMbasSamplesheet(mbasDefault, mbasRoot, contextLabel) {
     }
 
     if (rowCount == 0) {
-        exit 1, "ERROR: ${contextLabel}: Generated MBAS samplesheet has no valid rows. Check MBAS files under ${datasetRoot}."
+        exit 1, "ERROR: ${contextLabel}: Generated atrial default samplesheet has no valid rows. Check files under ${datasetRoot}."
     }
 
     return generatedCsv.toString()
 }
 
-def resolveAcdcSamplesheet(acdcDefault, acdcRoot, acdcDataset, contextLabel) {
-    def configuredAcdc = normalizeOptionalPath(acdcDefault)
-    if (configuredAcdc) {
-        return file(configuredAcdc).toAbsolutePath().toString()
+def resolveAcdcSamplesheet(saxDefault, saxRoot, saxSplit, contextLabel) {
+    def configuredSax = normalizeOptionalPath(saxDefault)
+    if (configuredSax) {
+        return file(configuredSax).toAbsolutePath().toString()
     }
 
-    def datasetRootPath = normalizeOptionalPath(acdcRoot)
+    def datasetRootPath = normalizeOptionalPath(saxRoot)
     if (!datasetRootPath) {
         return null
     }
 
-    def datasetName = normalizeOptionalPath(acdcDataset) ?: 'testing'
+    def datasetName = normalizeOptionalPath(saxSplit) ?: 'testing'
     def dataDir = new File(datasetRootPath, datasetName)
     if (!dataDir.exists()) {
-        exit 1, "ERROR: ${contextLabel}: ACDC dataset directory not found: ${dataDir}. Set --acdc_dir (or CASC_ACDC_DIR) and optionally --acdc_dataset."
+        exit 1, "ERROR: ${contextLabel}: SAX dataset directory not found: ${dataDir}. Set --sax_data_root (or legacy --acdc_dir) and optionally --sax_data_split."
     }
 
     def patientDirs = dataDir.listFiles()?.findAll {
@@ -211,7 +211,7 @@ def resolveAcdcSamplesheet(acdcDefault, acdcRoot, acdcDataset, contextLabel) {
 
     def generatedDir = file("${projectDir}/.cache/generated_inputs")
     generatedDir.mkdirs()
-    def generatedCsv = new File(generatedDir.toString(), "acdc_${datasetName}_samplesheet.csv")
+    def generatedCsv = new File(generatedDir.toString(), "sax_${datasetName}_samplesheet.csv")
 
     def rowCount = 0
     generatedCsv.withWriter('UTF-8') { writer ->
@@ -221,7 +221,7 @@ def resolveAcdcSamplesheet(acdcDefault, acdcRoot, acdcDataset, contextLabel) {
             def patientId = patientDir.name
             def image4d = new File(patientDir, "${patientId}_4d.nii.gz")
             if (!image4d.exists()) {
-                log.warn "Skipping ACDC sample ${patientId}: missing 4D image ${image4d}"
+                log.warn "Skipping SAX sample ${patientId}: missing 4D image ${image4d}"
                 return
             }
 
@@ -233,7 +233,7 @@ def resolveAcdcSamplesheet(acdcDefault, acdcRoot, acdcDataset, contextLabel) {
     }
 
     if (rowCount == 0) {
-        exit 1, "ERROR: ${contextLabel}: Generated ACDC samplesheet has no valid rows under ${dataDir}."
+        exit 1, "ERROR: ${contextLabel}: Generated SAX default samplesheet has no valid rows under ${dataDir}."
     }
 
     return generatedCsv.toString()
@@ -251,7 +251,7 @@ def assertSlurmAccountForProfile(contextLabel) {
     }
 }
 
-def resolveEffectiveSamplesheet(inputParam, modelsToRun, acdcDefault, acdcRoot, acdcDataset, mbasDefault, mbasRoot, contextLabel = 'main workflow') {
+def resolveEffectiveSamplesheet(inputParam, modelsToRun, saxDefault, saxRoot, saxSplit, atrialDefault, atrialRoot, contextLabel = 'main workflow') {
     def explicitInput = normalizeOptionalPath(inputParam)
     if (explicitInput) {
         return file(explicitInput).toAbsolutePath().toString()
@@ -265,18 +265,18 @@ def resolveEffectiveSamplesheet(inputParam, modelsToRun, acdcDefault, acdcRoot, 
     }
 
     if (hasAtrial) {
-        def mbasInput = resolveMbasSamplesheet(mbasDefault, mbasRoot, contextLabel)
-        if (!mbasInput) {
-            exit 1, "ERROR: ${contextLabel}: atrial_nnunet requested without --input, but MBAS default is not configured. Set --default_inputs.mbas, CASC_MBAS_SAMPLESHEET, or --atrial_nnunet.mbas_root (or CASC_MBAS_ROOT)."
+        def atrialInput = resolveMbasSamplesheet(atrialDefault, atrialRoot, contextLabel)
+        if (!atrialInput) {
+            exit 1, "ERROR: ${contextLabel}: atrial_nnunet requested without --input, but no atrial default is configured. Set --default_inputs.atrial (or --default_inputs.mbas), CASC_ATRIAL_SAMPLESHEET (or CASC_MBAS_SAMPLESHEET), or --atrial_nnunet.dataset_root (or --atrial_nnunet.mbas_root)."
         }
-        return file(mbasInput).toAbsolutePath().toString()
+        return file(atrialInput).toAbsolutePath().toString()
     }
 
-    def acdcInput = resolveAcdcSamplesheet(acdcDefault, acdcRoot, acdcDataset, contextLabel)
-    if (!acdcInput) {
-        exit 1, "ERROR: ${contextLabel}: ACDC default input is not configured. Set --default_inputs.acdc or --acdc_dir (or CASC_ACDC_DIR)."
+    def saxInput = resolveAcdcSamplesheet(saxDefault, saxRoot, saxSplit, contextLabel)
+    if (!saxInput) {
+        exit 1, "ERROR: ${contextLabel}: No SAX default input is configured. Set --default_inputs.sax (or --default_inputs.acdc), --sax_data_root (or --acdc_dir), or pass --input."
     }
-    return file(acdcInput).toAbsolutePath().toString()
+    return file(saxInput).toAbsolutePath().toString()
 }
 
 /*
@@ -293,11 +293,11 @@ workflow {
     def effective_input_samplesheet = resolveEffectiveSamplesheet(
         params.input,
         models_to_run,
-        params.default_inputs.acdc,
-        params.acdc_dir,
-        params.acdc_dataset,
-        params.default_inputs.mbas,
-        params.atrial_nnunet.mbas_root,
+        normalizeOptionalPath(params.default_inputs.sax) ?: normalizeOptionalPath(params.default_inputs.acdc),
+        normalizeOptionalPath(params.sax_data_root) ?: normalizeOptionalPath(params.acdc_dir),
+        normalizeOptionalPath(params.sax_data_split) ?: normalizeOptionalPath(params.acdc_dataset),
+        normalizeOptionalPath(params.default_inputs.atrial) ?: normalizeOptionalPath(params.default_inputs.mbas),
+        normalizeOptionalPath(params.atrial_nnunet.dataset_root) ?: normalizeOptionalPath(params.atrial_nnunet.mbas_root),
         'main workflow'
     )
 
@@ -626,11 +626,11 @@ workflow POSTPROCESS_ONLY {
         : resolveEffectiveSamplesheet(
             params.input,
             models_to_run,
-            params.default_inputs.acdc,
-            params.acdc_dir,
-            params.acdc_dataset,
-            params.default_inputs.mbas,
-            params.atrial_nnunet.mbas_root,
+            normalizeOptionalPath(params.default_inputs.sax) ?: normalizeOptionalPath(params.default_inputs.acdc),
+            normalizeOptionalPath(params.sax_data_root) ?: normalizeOptionalPath(params.acdc_dir),
+            normalizeOptionalPath(params.sax_data_split) ?: normalizeOptionalPath(params.acdc_dataset),
+            normalizeOptionalPath(params.default_inputs.atrial) ?: normalizeOptionalPath(params.default_inputs.mbas),
+            normalizeOptionalPath(params.atrial_nnunet.dataset_root) ?: normalizeOptionalPath(params.atrial_nnunet.mbas_root),
             'POSTPROCESS_ONLY'
         )
     def results_dir = file(params.postprocess.results_dir ?: params.outdir).toAbsolutePath().toString()
