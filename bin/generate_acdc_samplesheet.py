@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generate ACDC Samplesheet for CASC Pipeline
+Generate ACDC Samplesheet for SORAT Pipeline
 
 Creates a CSV samplesheet from ACDC dataset directory structure.
 """

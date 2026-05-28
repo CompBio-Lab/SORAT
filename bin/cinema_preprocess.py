@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CineMA Preprocessing Script for CASC Pipeline
+CineMA Preprocessing Script for SORAT Pipeline
 
 Preprocesses cardiac MRI data for CineMA model:
 - Resample to target spacing (default: 1.0 x 1.0 x 10.0 mm)
@@ -257,7 +257,7 @@ def preprocess_patient(
 
 
 def main():
-    parser = argparse.ArgumentParser(description='CineMA preprocessing for CASC pipeline')
+    parser = argparse.ArgumentParser(description='CineMA preprocessing for SORAT pipeline')
     parser.add_argument('--input', required=True, help='Input 4D NIfTI file')
     parser.add_argument('--patient_id', required=True, help='Patient identifier')
     parser.add_argument('--output_dir', required=True, help='Output directory')

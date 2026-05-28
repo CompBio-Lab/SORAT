@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Atrial nnUNet Preprocessing Script for CASC Pipeline.
+Atrial nnUNet Preprocessing Script for SORAT Pipeline.
 
 Preprocesses cardiac MRI data for atrial nnUNetv2 model:
 - Extract ED and ES frames from 4D volume
@@ -128,7 +128,7 @@ def preprocess_patient(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Atrial nnUNet preprocessing for CASC pipeline")
+    parser = argparse.ArgumentParser(description="Atrial nnUNet preprocessing for SORAT pipeline")
     parser.add_argument("--input", required=True, help="Input NIfTI file")
     parser.add_argument("--patient_id", required=True, help="Patient identifier")
     parser.add_argument("--output_dir", required=True, help="Output directory")

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-nnFormer Segmentation Script for CASC Pipeline
+nnFormer Segmentation Script for SORAT Pipeline
 
 Runs cardiac segmentation inference using the nnFormer model.
 
@@ -238,7 +238,7 @@ def segment_patient(
 
 
 def main():
-    parser = argparse.ArgumentParser(description='nnFormer segmentation for CASC pipeline')
+    parser = argparse.ArgumentParser(description='nnFormer segmentation for SORAT pipeline')
     parser.add_argument('--input_dir', required=True, help='Directory with preprocessed data')
     parser.add_argument('--patient_id', required=True, help='Patient identifier')
     parser.add_argument('--output_prefix', required=True, help='Output file prefix')

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Discover available model variants inside CASC containers.
+Discover available model variants inside SORAT containers.
 
 Outputs a CSV of available models for a given architecture.
 """

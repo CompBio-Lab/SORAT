@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-nnFormer Preprocessing Script for CASC Pipeline
+nnFormer Preprocessing Script for SORAT Pipeline
 
 Preprocesses cardiac MRI data for nnFormer model:
 - Extract ED and ES frames from 4D volume
@@ -151,7 +151,7 @@ def preprocess_patient(
 
 
 def main():
-    parser = argparse.ArgumentParser(description='nnFormer preprocessing for CASC pipeline')
+    parser = argparse.ArgumentParser(description='nnFormer preprocessing for SORAT pipeline')
     parser.add_argument('--input', required=True, help='Input NIfTI file')
     parser.add_argument('--patient_id', required=True, help='Patient identifier')
     parser.add_argument('--output_dir', required=True, help='Output directory')

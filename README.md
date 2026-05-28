@@ -1,4 +1,4 @@
-# CASC - Cardiac Automated Segmentation Comparison Pipeline
+# SORAT - Segmentation Orchestration and Reproducible Analysis Toolkit
 
 [![Nextflow](https://img.shields.io/badge/nextflow-%E2%89%A523.04.0-brightgreen.svg)](https://www.nextflow.io/)
 [![Docker](https://img.shields.io/badge/docker-enabled-blue.svg)](https://www.docker.com/)
@@ -6,7 +6,7 @@
 
 ## Overview
 
-CASC (Cardiac Automated Segmentation Comparison) is a modular Nextflow pipeline for cardiac MRI segmentation that integrates multiple deep learning models. It enables easy comparison of segmentation results across different models and provides comprehensive evaluation metrics.
+SORAT (Segmentation Orchestration and Reproducible Analysis Toolkit) is a modular Nextflow pipeline for cardiac MRI segmentation that integrates multiple deep learning models. It enables reproducible orchestration, side-by-side comparison of segmentation results, and comprehensive evaluation metrics.
 
 ### Supported Models
 
@@ -42,17 +42,17 @@ curl -s https://get.nextflow.io | bash
 ### 2. Configure Local User Paths (Required)
 
 ```bash
-python3 bin/casc_setup.py
+python3 bin/sorat_setup.py
 ```
 
-This writes local overrides to `.casc/user.config` (gitignored).
+This writes local overrides to `.sorat/user.config` (gitignored).
 
 ### 3. Run the Pipeline
 
-You can run CASC directly with `nextflow run main.nf`, or use the helper runner:
+You can run SORAT directly with `nextflow run main.nf`, or use the helper runner:
 
 ```bash
-./bin/casc_run.sh [pipeline options]
+./bin/sorat_run.sh [pipeline options]
 ```
 
 The helper runner uses `main.nf` from the repo root and reminds you to run setup if no local user config is present.
@@ -60,14 +60,14 @@ The helper runner uses `main.nf` from the repo root and reminds you to run setup
 **Using Default Inputs (Model-Dependent):**
 ```bash
 # SAX-only runs default to generated samplesheet from --sax_data_root
-./bin/casc_run.sh -profile local
+./bin/sorat_run.sh -profile local
 
 # With SLURM + Apptainer on HPC
-./bin/casc_run.sh -profile slurm
+./bin/sorat_run.sh -profile slurm
 
 # Atrial-only runs default when atrial root data is configured
-export CASC_ATRIAL_DATA_ROOT=/path/to/nnUNet_raw/Dataset001_LGE
-./bin/casc_run.sh --models atrial_nnunet -profile slurm
+export SORAT_ATRIAL_DATA_ROOT=/path/to/nnUNet_raw/Dataset001_LGE
+./bin/sorat_run.sh --models atrial_nnunet -profile slurm
 ```
 
 Notes:
@@ -77,21 +77,21 @@ Notes:
 **Using Custom Data:**
 ```bash
 # Run locally (Apptainer/Singularity)
-./bin/casc_run.sh \
+./bin/sorat_run.sh \
     --input samplesheet.csv \
     --outdir results \
     --models all \
     -profile local
 
 # Run on SLURM (HPC)
-./bin/casc_run.sh \
+./bin/sorat_run.sh \
     --input samplesheet.csv \
     --outdir results \
     --models all \
     -profile slurm
 
 # Run specific models only
-./bin/casc_run.sh \
+./bin/sorat_run.sh \
     --input samplesheet.csv \
     --outdir results \
     --models cinema,nnformer \
@@ -101,12 +101,12 @@ Notes:
 ### Pulling Containers (Apptainer)
 
 ```bash
-# Pull CASC images from GitHub Container Registry
-export CASC_GHCR_NAMESPACE="your-org"
-apptainer pull casc-cinema.sif docker://ghcr.io/${CASC_GHCR_NAMESPACE}/casc-cinema:latest
-apptainer pull casc-nnformer.sif docker://ghcr.io/${CASC_GHCR_NAMESPACE}/casc-nnformer:latest
-apptainer pull casc-vsa3l.sif docker://ghcr.io/${CASC_GHCR_NAMESPACE}/casc-vsa3l:latest
-apptainer pull casc-atrial-nnunet.sif docker://ghcr.io/${CASC_GHCR_NAMESPACE}/casc-atrial-nnunet:latest
+# Pull SORAT images from GitHub Container Registry
+export SORAT_GHCR_NAMESPACE="your-org"
+apptainer pull sorat-cinema.sif docker://ghcr.io/${SORAT_GHCR_NAMESPACE}/sorat-cinema:latest
+apptainer pull sorat-nnformer.sif docker://ghcr.io/${SORAT_GHCR_NAMESPACE}/sorat-nnformer:latest
+apptainer pull sorat-vsa3l.sif docker://ghcr.io/${SORAT_GHCR_NAMESPACE}/sorat-vsa3l:latest
+apptainer pull sorat-atrial-nnunet.sif docker://ghcr.io/${SORAT_GHCR_NAMESPACE}/sorat-atrial-nnunet:latest
 ```
 
 ### 4. Alternative: Jupyter Notebook Interface
@@ -114,7 +114,7 @@ apptainer pull casc-atrial-nnunet.sif docker://ghcr.io/${CASC_GHCR_NAMESPACE}/ca
 For interactive use, open the Jupyter notebook:
 
 ```bash
-jupyter notebook notebooks/run_casc_pipeline.ipynb
+jupyter notebook notebooks/run_sorat_pipeline.ipynb
 ```
 
 The notebook provides:
@@ -199,13 +199,13 @@ Weight: 70
 |-----------|---------|-------------|
 | `--outdir` | `./results` | Output directory |
 | `--models` | `all` | Models to run: `cinema`, `nnformer`, `vsa3l`, `atrial_nnunet`, or `all` |
-| `--default_inputs.sax` | `null` | Preferred explicit default samplesheet for SAX-only runs (or `CASC_SAX_SAMPLESHEET`) |
-| `--sax_data_root` | `null` | Preferred SAX data root used to auto-generate defaults (ACDC-style layout) (or `CASC_SAX_DATA_ROOT`) |
+| `--default_inputs.sax` | `null` | Preferred explicit default samplesheet for SAX-only runs (or `SORAT_SAX_SAMPLESHEET`) |
+| `--sax_data_root` | `null` | Preferred SAX data root used to auto-generate defaults (ACDC-style layout) (or `SORAT_SAX_DATA_ROOT`) |
 | `--sax_data_split` | `testing` | SAX split folder used with `--sax_data_root` when auto-generating defaults |
-| `--default_inputs.atrial` | `null` | Preferred explicit default samplesheet for atrial-only runs (or `CASC_ATRIAL_SAMPLESHEET`) |
-| `--atrial_nnunet.dataset_root` | `null` | Preferred atrial data root for auto-generated defaults. Supports nnUNet layout (`imagesTr/`,`labelsTr/`) and MBAS-style layout (`MBAS_###/MBAS_###_gt.nii.gz`,`MBAS_###_label.nii.gz`) (or `CASC_ATRIAL_DATA_ROOT`) |
-| `--slurm_account` | `null` | SLURM allocation/account (required when `-profile slurm`, can use `CASC_SLURM_ACCOUNT`) |
-| `--singularity_cache_dir` | `$HOME/.singularity_cache` | Per-user Singularity cache location (can use `CASC_SINGULARITY_CACHEDIR`) |
+| `--default_inputs.atrial` | `null` | Preferred explicit default samplesheet for atrial-only runs (or `SORAT_ATRIAL_SAMPLESHEET`) |
+| `--atrial_nnunet.dataset_root` | `null` | Preferred atrial data root for auto-generated defaults. Supports nnUNet layout (`imagesTr/`,`labelsTr/`) and MBAS-style layout (`MBAS_###/MBAS_###_gt.nii.gz`,`MBAS_###_label.nii.gz`) (or `SORAT_ATRIAL_DATA_ROOT`) |
+| `--slurm_account` | `null` | SLURM allocation/account (required when `-profile slurm`, can use `SORAT_SLURM_ACCOUNT`) |
+| `--singularity_cache_dir` | `$HOME/.singularity_cache` | Per-user Singularity cache location (can use `SORAT_SINGULARITY_CACHEDIR`) |
 | `--compare` | `true` | Generate comparison report |
 | `--inference_only` | `false` | Run inference only (skip metrics + report generation) |
 | `--debug` | `false` | Generate debug analytics report (execution/runtime/GPU/scalability/success + scientific utility metrics) |
@@ -225,10 +225,10 @@ Note: `--models all` currently runs SAX models (`cinema`, `nnformer`, `vsa3l`) a
 
 ### Default Input Selection Rules
 
-When `--input` is omitted, CASC resolves input automatically:
-- SAX-only runs (`cinema`, `nnformer`, `vsa3l`, or `all`) use `--default_inputs.sax` if set; otherwise CASC generates a SAX default samplesheet from `--sax_data_root` and `--sax_data_split`.
-- Atrial-only runs (`atrial_nnunet`) use `--default_inputs.atrial` if set; otherwise CASC auto-generates an atrial default samplesheet from `--atrial_nnunet.dataset_root`.
-- For MBAS-style atrial roots, CASC automatically stages nnUNet-style paths (`imagesTr/*_0000.nii.gz`, `labelsTr/*.nii.gz`) in `.cache/generated_inputs/` and uses those paths in the generated samplesheet.
+When `--input` is omitted, SORAT resolves input automatically:
+- SAX-only runs (`cinema`, `nnformer`, `vsa3l`, or `all`) use `--default_inputs.sax` if set; otherwise SORAT generates a SAX default samplesheet from `--sax_data_root` and `--sax_data_split`.
+- Atrial-only runs (`atrial_nnunet`) use `--default_inputs.atrial` if set; otherwise SORAT auto-generates an atrial default samplesheet from `--atrial_nnunet.dataset_root`.
+- For MBAS-style atrial roots, SORAT automatically stages nnUNet-style paths (`imagesTr/*_0000.nii.gz`, `labelsTr/*.nii.gz`) in `.cache/generated_inputs/` and uses those paths in the generated samplesheet.
 - Mixed SAX+atrial runs fail fast and require explicit `--input`.
 
 ### Advanced Options (Quick Reference)
@@ -309,10 +309,10 @@ results/
 
 ```bash
 # Local run
-./bin/casc_run.sh -profile local --input samplesheet.csv
+./bin/sorat_run.sh -profile local --input samplesheet.csv
 
 # SLURM run
-./bin/casc_run.sh -profile slurm --input samplesheet.csv
+./bin/sorat_run.sh -profile slurm --input samplesheet.csv
 ```
 
 Use one execution profile at a time.
@@ -345,13 +345,13 @@ Use one execution profile at a time.
 
 ## Citation
 
-If you use CASC in your research, please cite:
+If you use SORAT in your research, please cite:
 
 ```bibtex
-@software{casc2024,
-    title = {CASC: Cardiac Automated Segmentation Comparison Pipeline},
+@software{sorat2024,
+    title = {SORAT: Segmentation Orchestration and Reproducible Analysis Toolkit},
     year = {2024},
-    url = {https://github.com/your-org/CASC}
+    url = {https://github.com/your-org/SORAT}
 }
 ```
 

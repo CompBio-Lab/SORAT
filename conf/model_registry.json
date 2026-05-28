@@ -1,12 +1,12 @@
 {
     "version": "1.0.0",
-    "description": "Model registry for CASC pipeline. Add new models here following the schema.",
+    "description": "Model registry for SORAT. Add new models here following the schema.",
     "models": {
         "cinema": {
             "name": "CineMA",
             "version": "1.0.0",
             "description": "Convolutional Vision Transformer for cardiac MRI segmentation",
-            "container": "ghcr.io/your-org/casc-cinema:latest",
+            "container": "ghcr.io/your-org/sorat-cinema:latest",
             "module_path": "modules/cinema.nf",
             "input_format": "nifti_4d",
             "output_labels": {
@@ -40,7 +40,7 @@
             "name": "nnFormer",
             "version": "1.0.0",
             "description": "3D medical image segmentation transformer based on nnU-Net framework",
-            "container": "ghcr.io/your-org/casc-nnformer:latest",
+            "container": "ghcr.io/your-org/sorat-nnformer:latest",
             "module_path": "modules/nnformer.nf",
             "input_format": "nifti_3d",
             "output_labels": {
@@ -74,7 +74,7 @@
             "name": "VSA-3L (MONAI)",
             "version": "1.0.0",
             "description": "MONAI Ventricular Short Axis 3-Label model for cardiac segmentation",
-            "container": "ghcr.io/your-org/casc-vsa3l:latest",
+            "container": "ghcr.io/your-org/sorat-vsa3l:latest",
             "module_path": "modules/vsa3l.nf",
             "input_format": "nifti_4d",
             "output_labels": {
@@ -107,7 +107,7 @@
             "name": "Atrial nnUNet",
             "version": "1.0.0",
             "description": "nnUNetv2 2D atrial segmentation model (Dataset001_LGE)",
-            "container": "ghcr.io/your-org/casc-atrial-nnunet:latest",
+            "container": "ghcr.io/your-org/sorat-atrial-nnunet:latest",
             "module_path": "modules/atrial_nnunet.nf",
             "input_format": "nifti_4d",
             "output_labels": {

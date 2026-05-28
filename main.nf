@@ -2,13 +2,13 @@
 
 /*
 ========================================================================================
-    CASC - Cardiac Automated Segmentation Comparison Pipeline
+    SORAT - Segmentation Orchestration and Reproducible Analysis Toolkit
 ========================================================================================
     A modular Nextflow pipeline for cardiac MRI segmentation using multiple deep learning
-    models. Supports CineMA, nnFormer, and MONAI VSA-3L models with extensibility for
+    models. Supports CineMA, nnFormer, nnU-Net, and MONAI models with extensibility for
     adding new models.
-    
-    GitHub: https://github.com/CompBio-Lab/CASC
+
+    GitHub: https://github.com/CompBio-Lab/SORAT
 ----------------------------------------------------------------------------------------
 */
 
@@ -16,13 +16,7 @@ nextflow.enable.dsl = 2
 
 log.info """
 ╔═══════════════════════════════════════════════════════════════════════════════╗
-║   ____    _    ____   ____                                                    ║
-║  / ___|  / \\  / ___| / ___|                                                  ║
-║ | |     / _ \\ \\___ \\| |                                                    ║
-║ | |___ / ___ \\ ___) | |___                                                   ║
-║  \\____/_/   \\_\\____/ \\____|                                               ║
-║                                                                               ║
-║  Cardiac Automated Segmentation Comparison Pipeline                           ║
+║  SORAT: Segmentation Orchestration and Reproducible Analysis Toolkit          ║
 ╚═══════════════════════════════════════════════════════════════════════════════╝
 
 Pipeline Parameters:
@@ -247,7 +241,7 @@ def assertSlurmAccountForProfile(contextLabel) {
         .findAll { it }
 
     if ('slurm' in profiles && !normalizeOptionalPath(params.slurm_account)) {
-        exit 1, "ERROR: ${contextLabel}: SLURM profile is active but no account is configured. Set --slurm_account, CASC_SLURM_ACCOUNT, or .casc/user.config."
+        exit 1, "ERROR: ${contextLabel}: SLURM profile is active but no account is configured. Set --slurm_account, SORAT_SLURM_ACCOUNT, or .sorat/user.config."
     }
 }
 
@@ -267,7 +261,7 @@ def resolveEffectiveSamplesheet(inputParam, modelsToRun, saxDefault, saxRoot, sa
     if (hasAtrial) {
         def atrialInput = resolveMbasSamplesheet(atrialDefault, atrialRoot, contextLabel)
         if (!atrialInput) {
-            exit 1, "ERROR: ${contextLabel}: atrial_nnunet requested without --input, but no atrial default is configured. Set --default_inputs.atrial (or --default_inputs.mbas), CASC_ATRIAL_SAMPLESHEET (or CASC_MBAS_SAMPLESHEET), or --atrial_nnunet.dataset_root (or --atrial_nnunet.mbas_root)."
+            exit 1, "ERROR: ${contextLabel}: atrial_nnunet requested without --input, but no atrial default is configured. Set --default_inputs.atrial (or --default_inputs.mbas), SORAT_ATRIAL_SAMPLESHEET (or SORAT_MBAS_SAMPLESHEET), or --atrial_nnunet.dataset_root (or --atrial_nnunet.mbas_root)."
         }
         return file(atrialInput).toAbsolutePath().toString()
     }
@@ -277,6 +271,28 @@ def resolveEffectiveSamplesheet(inputParam, modelsToRun, saxDefault, saxRoot, sa
         exit 1, "ERROR: ${contextLabel}: No SAX default input is configured. Set --default_inputs.sax (or --default_inputs.acdc), --sax_data_root (or --acdc_dir), or pass --input."
     }
     return file(saxInput).toAbsolutePath().toString()
+}
+
+def resolveOptionalSamplesheet(inputParam, modelsToRun, saxDefault, saxRoot, saxSplit, atrialDefault, atrialRoot, contextLabel = 'debug workflow') {
+    def explicitInput = normalizeOptionalPath(inputParam)
+    if (explicitInput) {
+        return file(explicitInput).toAbsolutePath().toString()
+    }
+
+    def hasAtrial = 'atrial_nnunet' in modelsToRun
+    def hasSax = ('all' in modelsToRun) || ['cinema', 'nnformer', 'vsa3l'].any { it in modelsToRun }
+
+    if (hasAtrial && hasSax) {
+        return null
+    }
+
+    if (hasAtrial) {
+        def atrialInput = resolveMbasSamplesheet(atrialDefault, atrialRoot, contextLabel)
+        return atrialInput ? file(atrialInput).toAbsolutePath().toString() : null
+    }
+
+    def saxInput = resolveAcdcSamplesheet(saxDefault, saxRoot, saxSplit, contextLabel)
+    return saxInput ? file(saxInput).toAbsolutePath().toString() : null
 }
 
 /*
@@ -671,6 +687,56 @@ workflow POSTPROCESS_ONLY {
     POSTPROCESS_LV_MYO(ch_discovered)
 
     VISUALIZE_POSTPROCESS_DELTA(POSTPROCESS_LV_MYO.out.before_after)
+}
+
+workflow DEBUG_ONLY {
+    assertSlurmAccountForProfile('DEBUG_ONLY')
+
+    def models_to_run = parseModels(params.models)
+    def debug_source_outdir = normalizeOptionalPath(params.debug_source_outdir)
+    if (!debug_source_outdir) {
+        exit 1, "ERROR: DEBUG_ONLY requires --debug_source_outdir pointing to an existing completed SORAT results directory. Use --outdir for the refresh run output location."
+    }
+
+    def refresh_outdir = file(params.outdir).toAbsolutePath().toString()
+    def source_outdir = file(debug_source_outdir).toAbsolutePath().toString()
+    if (refresh_outdir == source_outdir) {
+        exit 1, "ERROR: DEBUG_ONLY requires --outdir to differ from --debug_source_outdir to avoid overwriting the source run pipeline_info/debug artifacts."
+    }
+
+    def debug_samplesheet = resolveOptionalSamplesheet(
+        params.input,
+        models_to_run,
+        normalizeOptionalPath(params.default_inputs.sax) ?: normalizeOptionalPath(params.default_inputs.acdc),
+        normalizeOptionalPath(params.sax_data_root) ?: normalizeOptionalPath(params.acdc_dir),
+        normalizeOptionalPath(params.sax_data_split) ?: normalizeOptionalPath(params.acdc_dataset),
+        normalizeOptionalPath(params.default_inputs.atrial) ?: normalizeOptionalPath(params.default_inputs.mbas),
+        normalizeOptionalPath(params.atrial_nnunet.dataset_root) ?: normalizeOptionalPath(params.atrial_nnunet.mbas_root),
+        'DEBUG_ONLY'
+    )
+
+    def debug_input_samplesheet = debug_samplesheet ?: file("${projectDir}/.sorat/missing_debug_samplesheet.csv").toAbsolutePath().toString()
+    def debug_run_name = normalizeOptionalPath(params.debug_run_name) ?: "${workflow.runName}_debug_only"
+    def debug_workflow_duration = normalizeOptionalPath(params.debug_workflow_duration) ?: ''
+    def debug_workflow_start = normalizeOptionalPath(params.debug_workflow_start) ?: ''
+    def debug_workflow_success = normalizeOptionalPath(params.debug_workflow_success) ?: 'true'
+
+    log.info "DEBUG_ONLY mode: reading source results from ${source_outdir}"
+    log.info "DEBUG_ONLY mode: writing refresh workflow artifacts to ${refresh_outdir}"
+    if (!debug_samplesheet) {
+        log.warn "DEBUG_ONLY mode: no input samplesheet was resolved; patient coverage will be estimated from existing metrics only."
+    }
+
+    GENERATE_DEBUG_REPORT(
+        Channel.value('debug_only'),
+        source_outdir,
+        debug_input_samplesheet,
+        params.models,
+        debug_run_name,
+        debug_workflow_duration,
+        debug_workflow_start,
+        debug_workflow_success
+    )
 }
 
 /*

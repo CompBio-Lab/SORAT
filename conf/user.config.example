@@ -1,8 +1,8 @@
 /*
- * Example local override config for CASC.
+ * Example local override config for SORAT.
  *
- * Copy this file to .casc/user.config (gitignored), or run:
- *   python3 bin/casc_setup.py
+ * Copy this file to .sorat/user.config (gitignored), or run:
+ *   python3 bin/sorat_setup.py
  */
 
 params {
@@ -19,8 +19,8 @@ params {
 
     // Optional runtime/cache overrides.
     singularity_cache_dir = '/path/to/.singularity_cache'
-    preprocess_cache_dir  = '/path/to/casc/.cache/preprocess'
-    outdir                = '/path/to/casc/results'
+    preprocess_cache_dir  = '/path/to/sorat/.cache/preprocess'
+    outdir                = '/path/to/sorat/results'
 
     // Optional explicit samplesheet overrides.
     default_inputs {
@@ -41,6 +41,6 @@ params {
     }
 
     // Optional bind strings for local/slurm profiles.
-    singularity_local_binds = '/path/to/CASC/bin:/app/bin,/path/to/CASC/nnformer:/app/nnformer'
-    singularity_slurm_binds = '/arc:/arc,/scratch:/scratch,/path/to/CASC/bin:/app/bin,/path/to/CASC/nnformer:/app/nnformer'
+    singularity_local_binds = '/path/to/SORAT/bin:/app/bin,/path/to/SORAT/nnformer:/app/nnformer'
+    singularity_slurm_binds = '/arc:/arc,/scratch:/scratch,/path/to/SORAT/bin:/app/bin,/path/to/SORAT/nnformer:/app/nnformer'
 }

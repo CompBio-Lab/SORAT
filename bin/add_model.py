@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Model Template Generator for CASC Pipeline
+Model Template Generator for SORAT Pipeline
 
 Generates boilerplate code for adding a new segmentation model to the pipeline.
 """
@@ -88,7 +88,7 @@ def create_preprocess_script(model_name: str) -> str:
     """Generate preprocessing script template."""
     return f'''#!/usr/bin/env python3
 """
-{model_name.upper()} Preprocessing Script for CASC Pipeline
+{model_name.upper()} Preprocessing Script for SORAT Pipeline
 
 Preprocesses cardiac MRI data for {model_name.upper()} model.
 """
@@ -174,7 +174,7 @@ def preprocess_patient(
 
 
 def main():
-    parser = argparse.ArgumentParser(description='{model_name.upper()} preprocessing for CASC pipeline')
+    parser = argparse.ArgumentParser(description='{model_name.upper()} preprocessing for SORAT pipeline')
     parser.add_argument('--input', required=True, help='Input NIfTI file')
     parser.add_argument('--patient_id', required=True, help='Patient identifier')
     parser.add_argument('--output_dir', required=True, help='Output directory')
@@ -203,7 +203,7 @@ def create_segment_script(model_name: str) -> str:
     """Generate segmentation script template."""
     return f'''#!/usr/bin/env python3
 """
-{model_name.upper()} Segmentation Script for CASC Pipeline
+{model_name.upper()} Segmentation Script for SORAT Pipeline
 
 Runs cardiac segmentation inference using the {model_name.upper()} model.
 """
@@ -299,7 +299,7 @@ def segment_patient(
 
 
 def main():
-    parser = argparse.ArgumentParser(description='{model_name.upper()} segmentation for CASC pipeline')
+    parser = argparse.ArgumentParser(description='{model_name.upper()} segmentation for SORAT pipeline')
     parser.add_argument('--input_dir', required=True, help='Directory with preprocessed data')
     parser.add_argument('--patient_id', required=True, help='Patient identifier')
     parser.add_argument('--output_prefix', required=True, help='Output file prefix')
@@ -325,10 +325,10 @@ if __name__ == '__main__':
 def create_dockerfile(model_name: str) -> str:
     """Generate Dockerfile template."""
     return f'''# {model_name.upper()} Docker image
-FROM ghcr.io/your-org/casc-base:latest
+FROM ghcr.io/your-org/sorat-base:latest
 
 LABEL maintainer="Your Name <your.email@example.com>"
-LABEL description="{model_name.upper()} cardiac segmentation model for CASC pipeline"
+LABEL description="{model_name.upper()} cardiac segmentation model for SORAT pipeline"
 
 # Install model-specific dependencies
 RUN pip install --no-cache-dir \\
@@ -355,7 +355,7 @@ def create_registry_entry(model_name: str, model_name_upper: str) -> dict:
         "name": model_name_upper,
         "version": "1.0.0",
         "description": f"Description of {model_name_upper} model",
-        "container": f"ghcr.io/your-org/casc-{model_name}:latest",
+        "container": f"ghcr.io/your-org/sorat-{model_name}:latest",
         "module_path": f"modules/{model_name}.nf",
         "input_format": "nifti_4d",
         "output_labels": {
@@ -432,7 +432,7 @@ def generate_model_template(model_name: str, output_dir: Path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Generate template files for a new CASC model')
+    parser = argparse.ArgumentParser(description='Generate template files for a new SORAT model')
     parser.add_argument('model_name', help='Name of the new model')
     parser.add_argument('--output_dir', default='.', help='Output directory')
     

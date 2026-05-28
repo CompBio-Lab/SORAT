@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generate debug report for CASC pipeline.
+Generate debug report for SORAT pipeline.
 
 Produces execution, scalability, GPU consumption, robustness, and segmentation-quality
 metrics designed to support method validation in manuscript preparation.
@@ -10,12 +10,26 @@ import argparse
 import json
 import math
 import os
+import re
 from pathlib import Path
 from typing import Dict, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+
+
+SECTION3_DIRNAME = 'section3_1_proof_of_concept'
+SECTION3_PALETTE = {
+    'SORAT': '#16324f',
+    'Standalone': '#c8553d',
+}
+
+SECTION3_MODEL_PATHS = {
+    'CineMA': Path('debug/CineMa/text/debug_metrics_summary.json'),
+    'nnFormer': Path('debug/nnFormer/text/debug_metrics_summary.json'),
+    'VSA-3L': Path('debug/VSA3L/text/debug_metrics_summary.json'),
+}
 
 
 def infer_architecture(model_name: str) -> str:
@@ -146,6 +160,330 @@ def resolve_path_from_launch_dir(path_str: str) -> Path:
         return (Path(launch_dir) / path).resolve()
 
     return path.resolve()
+
+
+def clean_number(value):
+    if value is None:
+        return np.nan
+    if isinstance(value, float) and np.isnan(value):
+        return np.nan
+    return value
+
+
+def infer_reference_label(path: Path, summary: dict) -> str:
+    run_name = str(summary.get('run_name') or '').lower()
+    path_text = str(path).lower()
+    if 'cinema' in run_name or '/cinema/' in path_text:
+        return 'Standalone CineMA'
+    if 'nnformer' in run_name or '/nnformer/' in path_text:
+        return 'Standalone nnFormer'
+    if 'vsa3l' in run_name or '/vsa-3l/' in path_text or '/vsa3l/' in path_text:
+        return 'Standalone VSA-3L'
+    return f'Reference: {path.parent.parent.parent.name}'
+
+
+def infer_model_family(text: str) -> str:
+    text = str(text).lower()
+    if 'cinema' in text:
+        return 'CineMA'
+    if 'nnformer' in text:
+        return 'nnFormer'
+    if 'vsa3l' in text or 'vsa-3l' in text:
+        return 'VSA-3L'
+    return 'Unknown'
+
+
+def parse_reference_summaries(raw_value: Optional[str]) -> list[dict]:
+    if not raw_value:
+        return []
+
+    entries = []
+    for chunk in str(raw_value).split(','):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        label = None
+        path_text = chunk
+        if '=' in chunk:
+            label, path_text = chunk.split('=', 1)
+            label = label.strip() or None
+        path = resolve_path_from_launch_dir(path_text.strip())
+        if path.exists():
+            entries.append({'label': label, 'path': path})
+    return entries
+
+
+def flatten_summary_record(label: str, mode: str, path: Path, summary: dict) -> dict:
+    execution = summary.get('execution', {})
+    gpu = summary.get('gpu', {})
+    scientific = summary.get('scientific', {})
+    duration_seconds = clean_number(execution.get('workflow_duration_seconds'))
+    patient_count = clean_number(scientific.get('n_patients_input'))
+    derived_throughput = np.nan
+    if pd.notna(duration_seconds) and duration_seconds > 0 and pd.notna(patient_count):
+        derived_throughput = float((patient_count * 3600.0) / duration_seconds)
+
+    return {
+        'pipeline': label,
+        'mode': mode,
+        'model_family': infer_model_family(label),
+        'source_json': str(path),
+        'run_name': summary.get('run_name'),
+        'workflow_start': summary.get('workflow_start'),
+        'models_requested': summary.get('models_requested'),
+        'workflow_success': bool(execution.get('workflow_success', False)),
+        'workflow_duration_seconds': duration_seconds,
+        'workflow_duration_hours': duration_seconds / 3600.0 if pd.notna(duration_seconds) else np.nan,
+        'total_tasks': clean_number(execution.get('total_tasks')),
+        'task_success_rate': clean_number(execution.get('task_success_rate')),
+        'memory_gb_hours_est': clean_number(execution.get('memory_gb_hours_est')),
+        'gpu_task_count': clean_number(gpu.get('gpu_task_count')),
+        'gpu_walltime_hours_est': clean_number(gpu.get('gpu_walltime_hours_est')),
+        'avg_gpu_concurrency_est': clean_number(gpu.get('avg_gpu_concurrency_est')),
+        'patient_throughput_per_hour': clean_number(execution.get('patient_throughput_per_hour')),
+        'patient_throughput_per_hour_derived': derived_throughput,
+        'n_patients_input': patient_count,
+        'n_patients_with_metrics': clean_number(scientific.get('n_patients_with_metrics')),
+        'coverage_rate': clean_number(scientific.get('coverage_rate')),
+        'n_models_evaluated': clean_number(scientific.get('n_models_evaluated')),
+    }
+
+
+def add_bar_labels(ax, decimals=2):
+    for patch in ax.patches:
+        height = patch.get_height()
+        if pd.isna(height):
+            continue
+        ax.text(
+            patch.get_x() + patch.get_width() / 2.0,
+            height + max(ax.get_ylim()[1] * 0.015, 0.01),
+            f'{height:.{decimals}f}',
+            ha='center',
+            va='bottom',
+            fontsize=8,
+        )
+
+
+def infer_gpu_family(process_name: str) -> str:
+    upper = str(process_name).upper()
+    if upper.startswith('CINEMA_'):
+        return 'CineMA'
+    if upper.startswith('NNFORMER_'):
+        return 'nnFormer'
+    if upper.startswith('VSA3L_'):
+        return 'VSA-3L'
+    return re.sub(r'\s*\(.*\)', '', str(process_name))
+
+
+def load_source_summary(source_summary_path: Optional[Path]) -> Optional[dict]:
+    if not source_summary_path:
+        return None
+    if not source_summary_path.exists():
+        return None
+    with open(source_summary_path, 'r', encoding='utf-8') as handle:
+        return json.load(handle)
+
+
+def merge_execution_blocks(preferred: dict, fallback: dict) -> dict:
+    merged = dict(fallback or {})
+    for key, value in (preferred or {}).items():
+        if value is None:
+            continue
+        if isinstance(value, float) and np.isnan(value):
+            continue
+        merged[key] = value
+    return merged
+
+
+def merge_summary_with_source(current_summary: dict, source_summary: Optional[dict]) -> dict:
+    if not source_summary:
+        return current_summary
+
+    merged = dict(current_summary)
+    merged['run_name'] = source_summary.get('run_name') or current_summary.get('run_name')
+    merged['workflow_start'] = source_summary.get('workflow_start') or current_summary.get('workflow_start')
+    merged['models_requested'] = source_summary.get('models_requested') or current_summary.get('models_requested')
+    merged['execution'] = merge_execution_blocks(source_summary.get('execution', {}), current_summary.get('execution', {}))
+    merged['gpu'] = merge_execution_blocks(source_summary.get('gpu', {}), current_summary.get('gpu', {}))
+    merged['scientific'] = merge_execution_blocks(source_summary.get('scientific', {}), current_summary.get('scientific', {}))
+    merged['source_summary_path'] = source_summary.get('source_summary_path') or current_summary.get('source_summary_path')
+    return merged
+
+
+def load_json(path: Path) -> dict:
+    with open(path, 'r', encoding='utf-8') as handle:
+        return json.load(handle)
+
+
+def collect_section3_records(source_outdir: Path, reference_specs: list[dict]) -> list[dict]:
+    records = []
+
+    for family, relative_path in SECTION3_MODEL_PATHS.items():
+        path = source_outdir / relative_path
+        if path.exists():
+            summary = load_json(path)
+            records.append(flatten_summary_record(f'SORAT {family}', 'SORAT', path, summary))
+
+    for spec in reference_specs:
+        summary = load_json(spec['path'])
+        label = spec['label'] or infer_reference_label(spec['path'], summary)
+        records.append(flatten_summary_record(label, 'Standalone', spec['path'], summary))
+
+    return records
+
+
+def generate_proof_of_concept_artifacts(
+    source_outdir: Path,
+    section3_outdir: Path,
+    sorat_summary: dict,
+    sorat_gpu_profile: Dict,
+    reference_specs: list[dict],
+):
+    del sorat_summary
+    del sorat_gpu_profile
+
+    if not reference_specs:
+        return
+
+    comparison_dir = section3_outdir / 'metrics' / SECTION3_DIRNAME
+    comparison_dir.mkdir(parents=True, exist_ok=True)
+
+    records = collect_section3_records(source_outdir, reference_specs)
+    if not records:
+        return
+
+    frame = pd.DataFrame(records)
+    family_order = ['CineMA', 'nnFormer', 'VSA-3L']
+    mode_order = ['SORAT', 'Standalone']
+    frame['model_family'] = pd.Categorical(frame['model_family'], categories=family_order, ordered=True)
+    frame['mode'] = pd.Categorical(frame['mode'], categories=mode_order, ordered=True)
+    frame = frame.sort_values(['model_family', 'mode']).reset_index(drop=True)
+    frame.to_csv(comparison_dir / 'section3_1_run_comparison.csv', index=False)
+
+    compact_cols = [
+        'model_family', 'pipeline', 'mode', 'workflow_duration_hours', 'gpu_walltime_hours_est', 'memory_gb_hours_est', 'gpu_task_count',
+        'patient_throughput_per_hour_derived', 'task_success_rate', 'coverage_rate',
+        'n_patients_with_metrics', 'n_models_evaluated', 'source_json'
+    ]
+    frame[compact_cols].to_csv(comparison_dir / 'section3_1_run_comparison_compact.csv', index=False)
+
+    pivot_runtime = frame.pivot(index='model_family', columns='mode', values='workflow_duration_hours').reindex(family_order)
+    pivot_throughput = frame.pivot(index='model_family', columns='mode', values='patient_throughput_per_hour_derived').reindex(family_order)
+    pivot_gpu = frame.pivot(index='model_family', columns='mode', values='gpu_walltime_hours_est').reindex(family_order)
+    pivot_tasks = frame.pivot(index='model_family', columns='mode', values='gpu_task_count').reindex(family_order)
+    pivot_memory = frame.pivot(index='model_family', columns='mode', values='memory_gb_hours_est').reindex(family_order)
+    pivot_reliability = frame.pivot(index='model_family', columns='mode', values='task_success_rate').reindex(family_order)
+    pivot_coverage = frame.pivot(index='model_family', columns='mode', values='coverage_rate').reindex(family_order)
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5.2))
+    pivot_runtime.plot(kind='bar', ax=axes[0], color=[SECTION3_PALETTE['SORAT'], SECTION3_PALETTE['Standalone']], width=0.72)
+    axes[0].set_title('Wall-clock Runtime by Model Family')
+    axes[0].set_ylabel('Hours')
+    axes[0].set_xlabel('')
+    axes[0].tick_params(axis='x', rotation=20)
+    axes[0].legend(frameon=False, title='Implementation')
+
+    pivot_throughput.plot(kind='bar', ax=axes[1], color=[SECTION3_PALETTE['SORAT'], SECTION3_PALETTE['Standalone']], width=0.72)
+    axes[1].set_title('Patient Throughput by Model Family')
+    axes[1].set_ylabel('Patients per hour')
+    axes[1].set_xlabel('')
+    axes[1].tick_params(axis='x', rotation=20)
+    axes[1].legend(frameon=False, title='Implementation')
+
+    for ax in axes:
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.grid(axis='y', alpha=0.25, linewidth=0.8)
+    fig.tight_layout()
+    fig.savefig(comparison_dir / 'section3_1_execution_overview.png', dpi=300, bbox_inches='tight')
+    fig.savefig(comparison_dir / 'section3_1_execution_overview.svg', bbox_inches='tight')
+    plt.close(fig)
+
+    fig, axes = plt.subplots(1, 2, figsize=(13.5, 5.2))
+    pivot_gpu.plot(kind='bar', ax=axes[0], color=[SECTION3_PALETTE['SORAT'], SECTION3_PALETTE['Standalone']], width=0.72)
+    axes[0].set_title('Estimated GPU Walltime by Model Family')
+    axes[0].set_ylabel('GPU-hours')
+    axes[0].set_xlabel('')
+    axes[0].tick_params(axis='x', rotation=20)
+    axes[0].legend(frameon=False, title='Implementation')
+
+    pivot_tasks.plot(kind='bar', ax=axes[1], color=[SECTION3_PALETTE['SORAT'], SECTION3_PALETTE['Standalone']], width=0.72)
+    axes[1].set_title('GPU-associated Task Count by Model Family')
+    axes[1].set_ylabel('Tasks')
+    axes[1].set_xlabel('')
+    axes[1].tick_params(axis='x', rotation=20)
+    axes[1].legend(frameon=False, title='Implementation')
+
+    for ax in axes:
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.grid(axis='y', alpha=0.25, linewidth=0.8)
+    fig.tight_layout()
+    fig.savefig(comparison_dir / 'section3_1_resource_usage.png', dpi=300, bbox_inches='tight')
+    fig.savefig(comparison_dir / 'section3_1_resource_usage.svg', bbox_inches='tight')
+    plt.close(fig)
+
+    fig, axes = plt.subplots(1, 2, figsize=(13.5, 5.2))
+    (pivot_reliability * 100.0).plot(kind='bar', ax=axes[0], color=[SECTION3_PALETTE['SORAT'], SECTION3_PALETTE['Standalone']], width=0.72)
+    axes[0].set_title('Task Success Rate by Model Family')
+    axes[0].set_ylabel('Percent')
+    axes[0].set_xlabel('')
+    axes[0].tick_params(axis='x', rotation=20)
+    axes[0].legend(frameon=False, title='Implementation')
+
+    (pivot_coverage * 100.0).plot(kind='bar', ax=axes[1], color=[SECTION3_PALETTE['SORAT'], SECTION3_PALETTE['Standalone']], width=0.72)
+    axes[1].set_title('Patient Coverage by Model Family')
+    axes[1].set_ylabel('Percent')
+    axes[1].set_xlabel('')
+    axes[1].tick_params(axis='x', rotation=20)
+    axes[1].legend(frameon=False, title='Implementation')
+
+    for ax in axes:
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.grid(axis='y', alpha=0.25, linewidth=0.8)
+        ax.set_ylim(0, 110)
+    fig.tight_layout()
+    fig.savefig(comparison_dir / 'section3_1_reliability_coverage.png', dpi=300, bbox_inches='tight')
+    fig.savefig(comparison_dir / 'section3_1_reliability_coverage.svg', bbox_inches='tight')
+    plt.close(fig)
+
+    fig, ax = plt.subplots(1, 1, figsize=(10.5, 5.2))
+    pivot_memory.plot(kind='bar', ax=ax, color=[SECTION3_PALETTE['SORAT'], SECTION3_PALETTE['Standalone']], width=0.72)
+    ax.set_title('Estimated Memory Pressure by Model Family')
+    ax.set_ylabel('GB-hours from peak RSS')
+    ax.set_xlabel('')
+    ax.tick_params(axis='x', rotation=20)
+    ax.legend(frameon=False, title='Implementation')
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.grid(axis='y', alpha=0.25, linewidth=0.8)
+    fig.tight_layout()
+    fig.savefig(comparison_dir / 'section3_1_memory_pressure.png', dpi=300, bbox_inches='tight')
+    fig.savefig(comparison_dir / 'section3_1_memory_pressure.svg', bbox_inches='tight')
+    plt.close(fig)
+
+    lines = [
+        '# Section 3.1 Summary Artifacts',
+        '',
+        'These values are derived directly from the per-model SORAT debug summaries and the standalone pipeline debug summaries.',
+        'Section 3.1 focuses on workflow efficiency and resource use, not segmentation Dice comparisons.',
+        'Standalone pipeline numbers are contextual cross-run comparisons rather than a synchronized benchmark campaign.',
+        '',
+    ]
+    for family in family_order:
+        sub = frame[frame['model_family'] == family]
+        if sub.empty:
+            continue
+        lines.append(f'- {family}:')
+        for _, row in sub.iterrows():
+            lines.append(
+                f"  {row['mode']}: runtime {row['workflow_duration_hours']:.2f} h, "
+                f"GPU walltime {row['gpu_walltime_hours_est']:.2f} GPU-hours, "
+                f"GPU task count {int(row['gpu_task_count']) if pd.notna(row['gpu_task_count']) else 'NA'}, "
+                f"throughput {row['patient_throughput_per_hour_derived']:.2f} patients/hour."
+            )
+    (comparison_dir / 'section3_1_summary.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
 
 
 def derive_makespan_seconds(trace_df: pd.DataFrame) -> float:
@@ -520,7 +858,7 @@ def write_markdown_report(
     scientific: Dict,
 ):
     lines = []
-    lines.append('# CASC Debug Report')
+    lines.append('# SORAT Debug Report')
     lines.append('')
     lines.append('## Run Context')
     lines.append(f'- Run name: {run_name}')
@@ -569,8 +907,8 @@ def write_markdown_report(
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Generate CASC debug analytics report')
-    parser.add_argument('--outdir', required=True, help='Pipeline output directory')
+    parser = argparse.ArgumentParser(description='Generate SORAT debug analytics report')
+    parser.add_argument('--source_outdir', required=True, help='Results directory to read metrics, pipeline_info, and existing debug artifacts from')
     parser.add_argument('--input_samplesheet', required=True, help='Input samplesheet used for run')
     parser.add_argument('--model_selection', required=True, help='Models selected for the run')
     parser.add_argument('--run_name', required=True, help='Nextflow run name')
@@ -579,11 +917,16 @@ def main():
     parser.add_argument('--workflow_success', required=True, help='Workflow success boolean from Nextflow')
     parser.add_argument('--text_dir', required=True, help='Directory to write textual debug outputs')
     parser.add_argument('--figures_dir', required=True, help='Directory to write figure outputs')
+    parser.add_argument('--source_summary', default='', help='Optional existing SORAT debug summary JSON to use as the authoritative integrated execution source')
+    parser.add_argument('--section3_outdir', default='', help='Optional output directory root for Section 3.1 comparison artifacts; defaults to source_outdir')
+    parser.add_argument('--reference_summaries', default='', help='Optional comma-separated list of label=path or path debug summary JSON references for Section 3.1 comparison artifacts')
     args = parser.parse_args()
 
-    outdir = resolve_path_from_launch_dir(args.outdir)
-    trace_path = outdir / 'pipeline_info' / 'execution_trace.txt'
+    source_outdir = resolve_path_from_launch_dir(args.source_outdir)
+    trace_path = source_outdir / 'pipeline_info' / 'execution_trace.txt'
     input_samplesheet = resolve_path_from_launch_dir(args.input_samplesheet)
+    source_summary_path = resolve_path_from_launch_dir(args.source_summary) if args.source_summary else None
+    section3_outdir = resolve_path_from_launch_dir(args.section3_outdir) if args.section3_outdir else source_outdir
 
     text_dir = Path(args.text_dir)
     figures_dir = Path(args.figures_dir)
@@ -595,7 +938,7 @@ def main():
     task_profile = build_task_profile(trace_df)
     gpu_profile = build_gpu_profile(trace_df, execution.get('workflow_duration_seconds', np.nan))
 
-    metrics_df = load_metrics_data(outdir)
+    metrics_df = load_metrics_data(source_outdir)
     scientific = compute_scientific_metrics(metrics_df, input_samplesheet)
 
     n_patients_input = scientific.get('n_patients_input', np.nan)
@@ -607,12 +950,27 @@ def main():
         'run_name': args.run_name,
         'workflow_start': args.workflow_start,
         'models_requested': args.model_selection,
+        'source_outdir': str(source_outdir),
+        'source_summary_path': str(source_summary_path) if source_summary_path else None,
         'execution': execution,
         'gpu': {
             k: v for k, v in gpu_profile.items() if k != 'gpu_process_breakdown'
         },
         'scientific': scientific,
     }
+
+    source_summary = load_source_summary(source_summary_path)
+    summary = merge_summary_with_source(summary, source_summary)
+
+    merged_execution = summary.get('execution', {})
+    merged_gpu = summary.get('gpu', {})
+    merged_scientific = summary.get('scientific', {})
+    if math.isnan(merged_execution.get('patient_throughput_per_hour', np.nan)):
+        n_patients_input = merged_scientific.get('n_patients_input', np.nan)
+        duration_seconds = merged_execution.get('workflow_duration_seconds', np.nan)
+        if isinstance(n_patients_input, (int, np.integer)) and duration_seconds and duration_seconds > 0:
+            merged_execution['patient_throughput_per_hour'] = float((n_patients_input * 3600.0) / duration_seconds)
+            summary['execution'] = merged_execution
 
     with open(text_dir / 'debug_metrics_summary.json', 'w') as f:
         json.dump(summary, f, indent=2)
@@ -629,12 +987,12 @@ def main():
 
     write_markdown_report(
         output_path=text_dir / 'debug_report.md',
-        run_name=args.run_name,
-        model_selection=args.model_selection,
-        workflow_start=args.workflow_start,
-        execution=execution,
-        gpu_profile=gpu_profile,
-        scientific=scientific,
+        run_name=summary.get('run_name', args.run_name),
+        model_selection=summary.get('models_requested', args.model_selection),
+        workflow_start=summary.get('workflow_start', args.workflow_start),
+        execution=summary.get('execution', {}),
+        gpu_profile=summary.get('gpu', {}),
+        scientific=summary.get('scientific', {}),
     )
 
     make_figures(
@@ -642,6 +1000,15 @@ def main():
         gpu_profile=gpu_profile,
         metrics_df=metrics_df,
         figures_dir=figures_dir,
+    )
+
+    reference_specs = parse_reference_summaries(args.reference_summaries)
+    generate_proof_of_concept_artifacts(
+        source_outdir=source_outdir,
+        section3_outdir=section3_outdir,
+        sorat_summary=summary,
+        sorat_gpu_profile=merged_gpu,
+        reference_specs=reference_specs,
     )
 
     print(f'Debug summary written to: {text_dir / "debug_metrics_summary.json"}')

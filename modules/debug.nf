@@ -13,7 +13,7 @@ process GENERATE_DEBUG_REPORT {
 
     input:
     val _trigger
-    val outdir
+    val source_outdir
     val input_samplesheet
     val model_selection
     val run_name
@@ -27,11 +27,14 @@ process GENERATE_DEBUG_REPORT {
     path "versions.yml", emit: versions
 
     script:
+    def reference_arg = params.debug_reference_summaries ? "--reference_summaries \"${params.debug_reference_summaries}\"" : ""
+    def source_summary_arg = params.debug_source_summary ? "--source_summary \"${params.debug_source_summary}\"" : ""
+    def section3_outdir_arg = params.debug_section3_outdir ? "--section3_outdir \"${params.debug_section3_outdir}\"" : ""
     """
     mkdir -p text figures
 
-    python /app/bin/generate_debug_report.py \\
-        --outdir "${outdir}" \\
+    python ${projectDir}/bin/generate_debug_report.py \
+        --source_outdir "${source_outdir}" \
         --input_samplesheet "${input_samplesheet}" \\
         --model_selection "${model_selection}" \\
         --run_name "${run_name}" \\
@@ -39,7 +42,10 @@ process GENERATE_DEBUG_REPORT {
         --workflow_start "${workflow_start}" \\
         --workflow_success "${workflow_success}" \\
         --text_dir text \\
-        --figures_dir figures
+        --figures_dir figures \
+        ${source_summary_arg} \
+        ${section3_outdir_arg} \
+        ${reference_arg}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

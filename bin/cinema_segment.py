@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CineMA Segmentation Script for CASC Pipeline
+CineMA Segmentation Script for SORAT Pipeline
 
 Runs cardiac segmentation inference using the CineMA model.
 """
@@ -253,7 +253,7 @@ def segment_patient(
 
 
 def main():
-    parser = argparse.ArgumentParser(description='CineMA segmentation for CASC pipeline')
+    parser = argparse.ArgumentParser(description='CineMA segmentation for SORAT pipeline')
     parser.add_argument('--input_dir', required=True, help='Directory with preprocessed data')
     parser.add_argument('--patient_id', required=True, help='Patient identifier')
     parser.add_argument('--output_prefix', required=True, help='Output file prefix')

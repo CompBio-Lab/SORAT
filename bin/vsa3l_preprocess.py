@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-VSA-3L (MONAI) Preprocessing Script for CASC Pipeline
+VSA-3L (MONAI) Preprocessing Script for SORAT Pipeline
 
 Preprocesses cardiac MRI data for MONAI VSA-3L model:
 - Extract 2D slices from 4D volume
@@ -195,7 +195,7 @@ def preprocess_patient(
 
 
 def main():
-    parser = argparse.ArgumentParser(description='VSA-3L preprocessing for CASC pipeline')
+    parser = argparse.ArgumentParser(description='VSA-3L preprocessing for SORAT pipeline')
     parser.add_argument('--input', required=True, help='Input 4D NIfTI file')
     parser.add_argument('--patient_id', required=True, help='Patient identifier')
     parser.add_argument('--output_dir', required=True, help='Output directory')

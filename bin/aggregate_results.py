@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Aggregate Results Script for CASC Pipeline
+Aggregate Results Script for SORAT Pipeline
 
 Aggregates metrics across all models and patients for comparison.
 """

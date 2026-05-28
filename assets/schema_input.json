@@ -1,7 +1,7 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "title": "CASC Pipeline Input Schema",
-    "description": "Schema for validating CASC pipeline input samplesheet",
+    "title": "SORAT Pipeline Input Schema",
+    "description": "Schema for validating SORAT pipeline input samplesheet",
     "type": "array",
     "items": {
         "type": "object",

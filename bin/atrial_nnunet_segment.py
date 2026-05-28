@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Atrial nnUNet Segmentation Script for CASC Pipeline.
+Atrial nnUNet Segmentation Script for SORAT Pipeline.
 
 Runs atrial segmentation inference using nnUNetv2 model.
 """
@@ -151,7 +151,7 @@ def segment_patient(
     configuration: str,
     save_probabilities: bool = False,
 ) -> dict:
-    """Run atrial nnUNet inference and write standardized CASC outputs."""
+    """Run atrial nnUNet inference and write standardized SORAT outputs."""
     temp_output = Path(f"temp_atrial_nnunet_{patient_id}")
     temp_output.mkdir(parents=True, exist_ok=True)
 
@@ -197,7 +197,7 @@ def segment_patient(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Atrial nnUNet segmentation for CASC pipeline")
+    parser = argparse.ArgumentParser(description="Atrial nnUNet segmentation for SORAT pipeline")
     parser.add_argument("--input_dir", required=True, help="Directory with preprocessed data")
     parser.add_argument("--patient_id", required=True, help="Patient identifier")
     parser.add_argument("--output_prefix", required=True, help="Output file prefix")

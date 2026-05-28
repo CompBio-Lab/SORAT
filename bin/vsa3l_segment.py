@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-VSA-3L (MONAI) Segmentation Script for CASC Pipeline
+VSA-3L (MONAI) Segmentation Script for SORAT Pipeline
 
 Runs cardiac segmentation inference using the MONAI VSA-3L model.
 """
@@ -216,7 +216,7 @@ def segment_patient(
 
 
 def main():
-    parser = argparse.ArgumentParser(description='VSA-3L segmentation for CASC pipeline')
+    parser = argparse.ArgumentParser(description='VSA-3L segmentation for SORAT pipeline')
     parser.add_argument('--input_dir', required=True, help='Directory with preprocessed data')
     parser.add_argument('--patient_id', required=True, help='Patient identifier')
     parser.add_argument('--output_prefix', required=True, help='Output file prefix')

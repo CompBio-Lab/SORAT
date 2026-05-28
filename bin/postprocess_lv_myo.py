@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Optional LV -> MYO postprocessing for CASC segmentations.
+Optional LV -> MYO postprocessing for SORAT segmentations.
 
 This script applies an intensity-aware correction on voxels currently labeled LV.
 Dark LV regions can be relabeled to MYO under configurable safety constraints.

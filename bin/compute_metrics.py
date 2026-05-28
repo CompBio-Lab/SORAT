@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Compute Metrics Script for CASC Pipeline
+Compute Metrics Script for SORAT Pipeline
 
 Computes segmentation metrics (Dice, HD95) against ground truth.
 """
