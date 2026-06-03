@@ -267,11 +267,11 @@ Use `-entry POSTPROCESS_ONLY` to run postprocessing and delta visualizations fro
 nextflow run main.nf \
     -entry POSTPROCESS_ONLY \
     -profile slurm \
-    --slurm_account st-zlaksman-1 \
+    --slurm_account <your-slurm-account> \
     --models all \
-    --input /scratch/st-zlaksman-1/pmoheban/CASC/data/acdc_testing_samplesheet.csv \
-    --postprocess.results_dir /scratch/st-zlaksman-1/pmoheban/CASC/results \
-    --outdir /scratch/st-zlaksman-1/pmoheban/CASC/results_postprocess_only
+    --input /path/to/acdc_testing_samplesheet.csv \
+    --postprocess.results_dir /path/to/results \
+    --outdir /path/to/results_postprocess_only
 ```
 
 ### Feature Extraction Only (No Re-segmentation)
@@ -288,13 +288,13 @@ Important path split:
 nextflow run main.nf \
     -entry FEATURES_ONLY \
     -profile slurm \
-    --slurm_account st-zlaksman-1 \
+    --slurm_account <your-slurm-account> \
     --models all \
-    --input /scratch/st-zlaksman-1/pmoheban/CASC/data/acdc_testing_samplesheet.csv \
+    --input /path/to/acdc_testing_samplesheet.csv \
     --feature_extraction.enabled true \
     --feature_extraction.mask_source predictions \
-    --feature_extraction.results_dir /scratch/st-zlaksman-1/pmoheban/CASC/results \
-    --outdir /scratch/st-zlaksman-1/pmoheban/CASC/results_features_only
+    --feature_extraction.results_dir /path/to/results \
+    --outdir /path/to/results_features_only
 ```
 
 #### Example: Use post-processed masks
@@ -303,13 +303,13 @@ nextflow run main.nf \
 nextflow run main.nf \
     -entry FEATURES_ONLY \
     -profile slurm \
-    --slurm_account st-zlaksman-1 \
+    --slurm_account <your-slurm-account> \
     --models all \
-    --input /scratch/st-zlaksman-1/pmoheban/CASC/data/acdc_testing_samplesheet.csv \
+    --input /path/to/acdc_testing_samplesheet.csv \
     --feature_extraction.enabled true \
     --feature_extraction.mask_source postprocess \
-    --feature_extraction.results_dir /scratch/st-zlaksman-1/pmoheban/CASC/results \
-    --outdir /scratch/st-zlaksman-1/pmoheban/CASC/results_features_only_pp
+    --feature_extraction.results_dir /path/to/results \
+    --outdir /path/to/results_features_only_pp
 ```
 
 Note: On SLURM/non-interactive runs, set `--feature_extraction.mask_source` explicitly to avoid prompt fallback behavior.
@@ -321,14 +321,14 @@ module purge
 module load CVMFS_CC apptainer/1.3.4
 
 # Use the same Python ABI as the runtime container.
-apptainer exec /scratch/st-zlaksman-1/pmoheban/SORAT/containers/sorat-cinema.sif \
-    python -m venv /scratch/st-zlaksman-1/pmoheban/venvs/sorat-features-container
+apptainer exec /path/to/SORAT/containers/sorat-cinema.sif \
+    python -m venv /path/to/venvs/sorat-features-container
 
-apptainer exec /scratch/st-zlaksman-1/pmoheban/SORAT/containers/sorat-cinema.sif \
-    /scratch/st-zlaksman-1/pmoheban/venvs/sorat-features-container/bin/python -m pip install --upgrade pip
+apptainer exec /path/to/SORAT/containers/sorat-cinema.sif \
+    /path/to/venvs/sorat-features-container/bin/python -m pip install --upgrade pip
 
-apptainer exec /scratch/st-zlaksman-1/pmoheban/SORAT/containers/sorat-cinema.sif \
-    /scratch/st-zlaksman-1/pmoheban/venvs/sorat-features-container/bin/python -m pip install pyradiomics
+apptainer exec /path/to/SORAT/containers/sorat-cinema.sif \
+    /path/to/venvs/sorat-features-container/bin/python -m pip install pyradiomics
 ```
 
 Then run with that virtualenv:
@@ -337,15 +337,15 @@ Then run with that virtualenv:
 nextflow run main.nf \
     -entry FEATURES_ONLY \
     -profile slurm \
-    --slurm_account st-zlaksman-1 \
+    --slurm_account <your-slurm-account> \
     --models all \
-    --input /scratch/st-zlaksman-1/pmoheban/CASC/data/acdc_testing_samplesheet.csv \
+    --input /path/to/acdc_testing_samplesheet.csv \
     --feature_extraction.enabled true \
     --feature_extraction.mask_source predictions \
-    --feature_extraction.virtualenv_path /scratch/st-zlaksman-1/pmoheban/venvs/sorat-features-container \
+    --feature_extraction.virtualenv_path /path/to/venvs/sorat-features-container \
     --feature_extraction.require_virtualenv true \
-    --feature_extraction.results_dir /scratch/st-zlaksman-1/pmoheban/CASC/results \
-    --outdir /scratch/st-zlaksman-1/pmoheban/CASC/results_features_only
+    --feature_extraction.results_dir /path/to/results \
+    --outdir /path/to/results_features_only
 ```
 
 Important compatibility note:
