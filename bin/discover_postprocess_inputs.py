@@ -114,17 +114,6 @@ def main() -> None:
         meta = samplesheet_map.get(row["patient_id"], {})
         image = meta.get("image", "")
 
-        if row["architecture"] == "cinema":
-            preprocessed_image = (
-                results_dir
-                / "cinema"
-                / "preprocessed"
-                / f"{row['patient_id']}_preprocessed"
-                / f"{row['patient_id']}_sax_t.nii.gz"
-            )
-            if preprocessed_image.exists():
-                image = str(preprocessed_image)
-
         if not image:
             continue
         out_rows.append(

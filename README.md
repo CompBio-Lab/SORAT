@@ -213,6 +213,12 @@ Weight: 70
 | `--postprocess.use_for_metrics` | `true` | If postprocess enabled, compute metrics on corrected segmentations |
 | `--postprocess.visualize` | `true` | Generate before/after/delta postprocess visualizations |
 | `--visualization.enabled` | `true` | Generate ED/ES previews for each model output. If GT exists, previews include prediction-vs-GT overlays, per-structure DSC, and difference maps |
+| `--feature_extraction.enabled` | `false` | Enable interpretable feature extraction (volumes, wall thickness, radiomics) in the main workflow |
+| `--feature_extraction.mask_source` | `prompt` | Feature mask source: `predictions`, `postprocess`, or `prompt` |
+| `--feature_extraction.virtualenv_path` | `null` | Path to a pre-built virtualenv containing `pyradiomics` for feature extraction jobs |
+| `--feature_extraction.require_virtualenv` | `false` | If `true`, fail fast unless `--feature_extraction.virtualenv_path` is provided and valid |
+| `--feature_extraction.samplesheet` | `null` | Optional samplesheet override for `-entry FEATURES_ONLY` |
+| `--feature_extraction.results_dir` | `null` | Existing results directory to read segmentations from in `-entry FEATURES_ONLY` |
 | `--slurm_max_forks` | `30` | Maximum concurrent task submissions in `slurm` profile |
 | `--slurm_queue_size` | `64` | Max tasks queued/submitted to executor at once |
 | `--slurm_submit_rate` | `50/1min` | Submission throttling rate to reduce scheduler pressure |
@@ -238,6 +244,7 @@ Use these options when needed:
 - `--debug true`: generate debug analytics outputs.
 - `--preprocess_cache_enabled true|false`: enable or disable preprocessing cache reuse.
 - `--postprocess.enabled true`: enable optional LV -> MYO postprocessing.
+- `--feature_extraction.enabled true`: emit per-mask feature CSV files.
 
 For SLURM tuning, the main controls are `--slurm_max_forks`, `--slurm_queue_size`, `--slurm_submit_rate`, `--slurm_poll_interval`, and `--slurm_queue_stat_interval`.
 
@@ -249,6 +256,102 @@ nextflow run main.nf \
     --debug false \
     -profile slurm
 ```
+
+## Run Modules In Isolation
+
+### Postprocess Only (Existing Segmentations)
+
+Use `-entry POSTPROCESS_ONLY` to run postprocessing and delta visualizations from a prior segmentation run.
+
+```bash
+nextflow run main.nf \
+    -entry POSTPROCESS_ONLY \
+    -profile slurm \
+    --slurm_account st-zlaksman-1 \
+    --models all \
+    --input /scratch/st-zlaksman-1/pmoheban/CASC/data/acdc_testing_samplesheet.csv \
+    --postprocess.results_dir /scratch/st-zlaksman-1/pmoheban/CASC/results \
+    --outdir /scratch/st-zlaksman-1/pmoheban/CASC/results_postprocess_only
+```
+
+### Feature Extraction Only (No Re-segmentation)
+
+Use `-entry FEATURES_ONLY` to read existing segmentation masks from a previous run and produce feature CSVs without rerunning preprocess/segmentation.
+
+Important path split:
+- `--feature_extraction.results_dir` points to an existing completed SORAT results directory that already has segmentation files.
+- `--outdir` is where this new isolated run writes its outputs (`features/`, `pipeline_info/`, etc.).
+
+#### Example: Use direct model predictions
+
+```bash
+nextflow run main.nf \
+    -entry FEATURES_ONLY \
+    -profile slurm \
+    --slurm_account st-zlaksman-1 \
+    --models all \
+    --input /scratch/st-zlaksman-1/pmoheban/CASC/data/acdc_testing_samplesheet.csv \
+    --feature_extraction.enabled true \
+    --feature_extraction.mask_source predictions \
+    --feature_extraction.results_dir /scratch/st-zlaksman-1/pmoheban/CASC/results \
+    --outdir /scratch/st-zlaksman-1/pmoheban/CASC/results_features_only
+```
+
+#### Example: Use post-processed masks
+
+```bash
+nextflow run main.nf \
+    -entry FEATURES_ONLY \
+    -profile slurm \
+    --slurm_account st-zlaksman-1 \
+    --models all \
+    --input /scratch/st-zlaksman-1/pmoheban/CASC/data/acdc_testing_samplesheet.csv \
+    --feature_extraction.enabled true \
+    --feature_extraction.mask_source postprocess \
+    --feature_extraction.results_dir /scratch/st-zlaksman-1/pmoheban/CASC/results \
+    --outdir /scratch/st-zlaksman-1/pmoheban/CASC/results_features_only_pp
+```
+
+Note: On SLURM/non-interactive runs, set `--feature_extraction.mask_source` explicitly to avoid prompt fallback behavior.
+
+Sockeye offline recommendation (one-time setup on login node):
+
+```bash
+module purge
+module load CVMFS_CC apptainer/1.3.4
+
+# Use the same Python ABI as the runtime container.
+apptainer exec /scratch/st-zlaksman-1/pmoheban/SORAT/containers/sorat-cinema.sif \
+    python -m venv /scratch/st-zlaksman-1/pmoheban/venvs/sorat-features-container
+
+apptainer exec /scratch/st-zlaksman-1/pmoheban/SORAT/containers/sorat-cinema.sif \
+    /scratch/st-zlaksman-1/pmoheban/venvs/sorat-features-container/bin/python -m pip install --upgrade pip
+
+apptainer exec /scratch/st-zlaksman-1/pmoheban/SORAT/containers/sorat-cinema.sif \
+    /scratch/st-zlaksman-1/pmoheban/venvs/sorat-features-container/bin/python -m pip install pyradiomics
+```
+
+Then run with that virtualenv:
+
+```bash
+nextflow run main.nf \
+    -entry FEATURES_ONLY \
+    -profile slurm \
+    --slurm_account st-zlaksman-1 \
+    --models all \
+    --input /scratch/st-zlaksman-1/pmoheban/CASC/data/acdc_testing_samplesheet.csv \
+    --feature_extraction.enabled true \
+    --feature_extraction.mask_source predictions \
+    --feature_extraction.virtualenv_path /scratch/st-zlaksman-1/pmoheban/venvs/sorat-features-container \
+    --feature_extraction.require_virtualenv true \
+    --feature_extraction.results_dir /scratch/st-zlaksman-1/pmoheban/CASC/results \
+    --outdir /scratch/st-zlaksman-1/pmoheban/CASC/results_features_only
+```
+
+Important compatibility note:
+- `EXTRACT_FEATURES` keeps the container Python interpreter and only adds venv `site-packages` via `PYTHONPATH`.
+- Do not rely on `source <venv>/bin/activate` inside container tasks.
+- Your virtualenv must have `site-packages` for the same Python major.minor as the container runtime.
 
 ## Output Structure
 
@@ -280,6 +383,8 @@ results/
 ├── previews/
 │   ├── <model_tag>/*_ED_preview.png
 │   └── <model_tag>/*_ES_preview.png
+├── features/
+│   └── *_features.csv
 └── pipeline_info/
     ├── execution_timeline.html
     ├── execution_report.html

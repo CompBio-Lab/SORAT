@@ -1,5 +1,13 @@
 #!/usr/bin/env nextflow
 
+import groovy.io.FileType
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import groovy.transform.Field
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
 /*
 ========================================================================================
     SORAT - Segmentation Orchestration and Reproducible Analysis Toolkit
@@ -38,6 +46,7 @@ include { COMPUTE_METRICS; AGGREGATE_RESULTS; GENERATE_REPORT } from './modules/
 include { GENERATE_DEBUG_REPORT } from './modules/debug'
 include { DISCOVER_POSTPROCESS_INPUTS; POSTPROCESS_LV_MYO; VISUALIZE_POSTPROCESS_DELTA } from './modules/postprocess'
 include { GENERATE_SEGMENTATION_PREVIEWS } from './modules/visualization'
+include { EXTRACT_FEATURES } from './modules/features'
 include { validateInput } from './lib/utils'
 
 def normalizeOptionalPath(value) {
@@ -54,6 +63,347 @@ def parseModels(modelsParam) {
         .tokenize(',')
         .collect { it.trim().toLowerCase() }
         .findAll { it }
+}
+
+def countSamplesheetRows(String samplesheetPath) {
+    def path = normalizeOptionalPath(samplesheetPath)
+    if (!path) {
+        return 0
+    }
+    def f = new File(path)
+    if (!f.exists()) {
+        return 0
+    }
+    def lines = f.readLines('UTF-8')
+    if (!lines || lines.size() <= 1) {
+        return 0
+    }
+    return lines.size() - 1
+}
+
+def estimateRequestedModelCount(List modelsToRun) {
+    def normalized = (modelsToRun ?: []).collect { it.toString().toLowerCase() }
+    if (normalized.contains('all')) {
+        return 3
+    }
+    return Math.max(1, normalized.count { it in ['cinema', 'nnformer', 'vsa3l', 'atrial_nnunet'] })
+}
+
+def etaMinutesPerUnitForMode(String modeName) {
+    switch ((modeName ?: '').toUpperCase()) {
+        case 'MAIN':
+            return parseDoubleSafe(params.eta.minutes_per_case_main)
+        case 'POSTPROCESS_ONLY':
+            return parseDoubleSafe(params.eta.minutes_per_case_postprocess_only)
+        case 'FEATURES_ONLY':
+            return parseDoubleSafe(params.eta.minutes_per_case_features_only)
+        case 'DEBUG_ONLY':
+            return parseDoubleSafe(params.eta.minutes_debug_only)
+        default:
+            return Double.NaN
+    }
+}
+
+@Field
+def __etaState = [
+    timer: null,
+    mode: null,
+    startMillis: System.currentTimeMillis(),
+    expectedSeconds: null,
+    stopRequested: false
+]
+
+@Field
+def __etaFormatter = DateTimeFormatter.ofPattern('yyyy-MM-dd HH:mm:ss z')
+    .withZone(ZoneId.systemDefault())
+
+def formatElapsed(long totalSeconds) {
+    long safe = Math.max(0L, totalSeconds)
+    long hh = (long) (safe / 3600L)
+    long mm = (long) ((safe % 3600L) / 60L)
+    long ss = (long) (safe % 60L)
+    return String.format('%02d:%02d:%02d', hh, mm, ss)
+}
+
+def parseDoubleSafe(value) {
+    if (value == null) {
+        return Double.NaN
+    }
+    def text = value.toString().trim()
+    if (!text || text.equalsIgnoreCase('nan') || text.equalsIgnoreCase('na')) {
+        return Double.NaN
+    }
+    try {
+        return Double.parseDouble(text)
+    } catch (Exception ignored) {
+        return Double.NaN
+    }
+}
+
+def inferArchitectureFromModel(String modelTag) {
+    if (!modelTag) {
+        return 'unknown'
+    }
+    if (modelTag.startsWith('cinema')) {
+        return 'cinema'
+    }
+    if (modelTag.startsWith('nnformer')) {
+        return 'nnformer'
+    }
+    if (modelTag.startsWith('vsa3l')) {
+        return 'vsa3l'
+    }
+    if (modelTag.startsWith('atrial_nnunet')) {
+        return 'atrial_nnunet'
+    }
+    return 'unknown'
+}
+
+def modelFamilyKey(String modelTag) {
+    def base = (modelTag ?: '').toString()
+    base = base.replaceFirst(/_ensemble$/, '')
+    base = base.replaceFirst(/_seeds\d+$/, '')
+    base = base.replaceFirst(/_seed\d+$/, '')
+    base = base.replaceFirst(/_fold\d+$/, '')
+    return base
+}
+
+def isEnsembleVariant(String modelTag) {
+    def m = (modelTag ?: '').toString()
+    return (m ==~ /.*_ensemble$/) || (m ==~ /.*_seeds\d+$/)
+}
+
+def parseFeatureModelTagPreference() {
+    def raw = normalizeOptionalPath(params.feature_extraction.model_tag)
+    if (!raw) {
+        return [] as Set
+    }
+    return raw
+        .tokenize(',')
+        .collect { it.trim() }
+        .findAll { it }
+        .toSet()
+}
+
+def parseFeatureSeedPreference() {
+    return (normalizeOptionalPath(params.feature_extraction.seed) ?: 'ensemble').toLowerCase()
+}
+
+def discoverFeatureCandidateModels(String resultsDir, List modelsToRun, String contextLabel) {
+    def root = new File(resultsDir)
+    if (!root.exists()) {
+        log.warn "${contextLabel}: feature selection scan skipped; results_dir does not exist: ${resultsDir}"
+        return [] as Set
+    }
+
+    def allowedArchitectures = (modelsToRun ?: []).collect { it.toString().toLowerCase() }
+    boolean allowAll = allowedArchitectures.contains('all') || allowedArchitectures.isEmpty()
+
+    def models = [] as Set
+
+    root.eachFileRecurse(FileType.FILES) { f ->
+        def relParts = f.toPath().normalize().toString().split('/')*.toLowerCase()
+        if (relParts.contains('postprocess')) {
+            return
+        }
+
+        def matcher = (f.name =~ /^(.*)_ED_(.+)\.nii\.gz$/)
+        if (!matcher.matches()) {
+            return
+        }
+
+        def model = matcher[0][2]
+        if (!model || model.endsWith('_pp')) {
+            return
+        }
+
+        def arch = inferArchitectureFromModel(model)
+        if (arch == 'atrial_nnunet') {
+            return
+        }
+        if (!allowAll && !(arch in allowedArchitectures)) {
+            return
+        }
+        models << model
+    }
+
+    return models
+}
+
+def selectPreferredFeatureModels(String resultsDir, List modelsToRun, String contextLabel) {
+    def candidates = discoverFeatureCandidateModels(resultsDir, modelsToRun, contextLabel)
+    if (!candidates) {
+        log.warn "${contextLabel}: no feature candidate segmentations were discovered in ${resultsDir}; no model filtering will be applied."
+        return null
+    }
+
+    def requestedModelTags = parseFeatureModelTagPreference()
+    if (requestedModelTags) {
+        def matched = candidates.findAll { requestedModelTags.contains(it.toString()) } as Set
+        def missing = requestedModelTags.findAll { !matched.contains(it) }
+        if (missing) {
+            log.warn "${contextLabel}: requested --feature_extraction.model_tag entries were not found: ${missing.join(', ')}"
+        }
+        if (matched) {
+            log.info "${contextLabel}: using explicit feature model_tag filter: ${matched.sort().join(', ')}"
+            return matched
+        }
+
+        exit 1, "ERROR: ${contextLabel}: none of the requested --feature_extraction.model_tag entries were discovered under ${resultsDir}."
+    }
+
+    def seedPreference = parseFeatureSeedPreference()
+    def selected = [] as Set
+
+    def grouped = candidates.groupBy { modelFamilyKey(it as String) }
+    grouped.each { family, familyModels ->
+        def models = familyModels.collect { it.toString() }.unique().sort()
+        def ensembles = models.findAll { isEnsembleVariant(it) }
+
+        if (seedPreference in ['all', '*']) {
+            selected.addAll(models)
+            return
+        }
+
+        if (seedPreference in ['ensemble', 'default']) {
+            if (ensembles) {
+                selected << ensembles[0]
+                return
+            }
+
+            if (models.size() == 1) {
+                selected << models[0]
+                return
+            }
+
+            def fallback = models.find { it ==~ /.*_seed0$/ } ?: models[0]
+            log.warn "${contextLabel}: no ensemble found for ${family}; defaulting to ${fallback}."
+            selected << fallback
+            return
+        }
+
+        def seedMatcher = (seedPreference =~ /^seed?(\d+)$/)
+        if (seedMatcher.matches()) {
+            def seedNum = seedMatcher[0][1]
+            def seedMatches = models.findAll { it ==~ /.*_seed${seedNum}$/ }
+            if (seedMatches) {
+                selected.addAll(seedMatches)
+                return
+            }
+
+            if (models.size() == 1) {
+                selected << models[0]
+                return
+            }
+
+            exit 1, "ERROR: ${contextLabel}: requested seed '${seedPreference}' for ${family} was not found. Available models: ${models.join(', ')}"
+        }
+
+        exit 1, "ERROR: ${contextLabel}: invalid --feature_extraction.seed '${seedPreference}'. Valid examples: ensemble, all, seed0, 0"
+    }
+
+    log.info "${contextLabel}: selected ${selected.size()} feature models from ${candidates.size()} discovered candidates (seed preference: ${seedPreference})."
+    return selected
+}
+
+def resolveFeatureOutputDir(String resultsDir, String selectedMaskSource) {
+    def leaf = (selectedMaskSource == 'postprocess') ? 'postprocessed' : 'raw'
+    return file("${resultsDir}/features/${leaf}").toAbsolutePath().toString()
+}
+
+def loadEtaHistory() {
+    def etaFile = file("${projectDir}/.cache/eta_history.json").toFile()
+    if (!etaFile.exists()) {
+        return [:]
+    }
+    try {
+        def parsed = new JsonSlurper().parseText(etaFile.getText('UTF-8'))
+        return (parsed instanceof Map) ? parsed : [:]
+    } catch (Exception ignored) {
+        return [:]
+    }
+}
+
+def saveEtaHistory(Map history) {
+    def etaFile = file("${projectDir}/.cache/eta_history.json").toFile()
+    etaFile.parentFile?.mkdirs()
+    etaFile.text = JsonOutput.prettyPrint(JsonOutput.toJson(history)) + '\n'
+}
+
+def startEtaTimer(String modeName, int estimatedUnits = 1) {
+    if (__etaState.timer != null) {
+        return
+    }
+
+    __etaState.mode = modeName
+    __etaState.startMillis = System.currentTimeMillis()
+    __etaState.stopRequested = false
+
+    def history = loadEtaHistory()
+    def etaSec = parseDoubleSafe(history[modeName])
+    __etaState.expectedSeconds = (!Double.isNaN(etaSec) && etaSec > 0) ? Math.round(etaSec) : null
+
+    if (__etaState.expectedSeconds == null) {
+        def minutesPerUnit = etaMinutesPerUnitForMode(modeName)
+        if (!Double.isNaN(minutesPerUnit) && minutesPerUnit > 0) {
+            __etaState.expectedSeconds = Math.round(minutesPerUnit * Math.max(1, estimatedUnits) * 60.0d)
+        }
+    }
+
+    if (__etaState.expectedSeconds != null) {
+        def etaInstant = Instant.ofEpochMilli(__etaState.startMillis + (__etaState.expectedSeconds * 1000L))
+        log.info "ETA [${modeName}] baseline: ${formatElapsed(__etaState.expectedSeconds as long)} (expected completion around ${__etaFormatter.format(etaInstant)})"
+    } else {
+        log.info "ETA [${modeName}] baseline unavailable (no historical run yet)."
+    }
+
+    __etaState.timer = Thread.startDaemon("sorat-eta-${modeName}") {
+        while (!(__etaState.stopRequested as boolean)) {
+            try {
+                Thread.sleep(60_000L)
+            } catch (InterruptedException ignored) {
+                break
+            }
+
+            if (__etaState.stopRequested as boolean) {
+                break
+            }
+
+            long elapsed = Math.round((System.currentTimeMillis() - (__etaState.startMillis as long)) / 1000.0d)
+            if (__etaState.expectedSeconds == null) {
+                log.info "ETA [${modeName}] elapsed ${formatElapsed(elapsed)}"
+                continue
+            }
+
+            long remaining = (__etaState.expectedSeconds as long) - elapsed
+            long remainingSafe = Math.max(0L, remaining)
+            def etaInstant = Instant.ofEpochMilli(System.currentTimeMillis() + (remainingSafe * 1000L))
+            log.info "ETA [${modeName}] elapsed ${formatElapsed(elapsed)} | remaining ${formatElapsed(remainingSafe)} | eta ${__etaFormatter.format(etaInstant)}"
+        }
+    }
+}
+
+def finalizeEtaTimer(boolean success) {
+    if (__etaState.timer != null) {
+        __etaState.stopRequested = true
+        try {
+            __etaState.timer.interrupt()
+        } catch (Exception ignored) {
+            // Best-effort shutdown for daemon ETA thread.
+        }
+        __etaState.timer = null
+    }
+
+    def modeName = (__etaState.mode ?: 'MAIN').toString()
+    long elapsed = Math.round((System.currentTimeMillis() - (__etaState.startMillis as long)) / 1000.0d)
+
+    if (success) {
+        def history = loadEtaHistory()
+        def prev = parseDoubleSafe(history[modeName])
+        def updated = Double.isNaN(prev) ? (double) elapsed : ((0.7d * prev) + (0.3d * elapsed))
+        history[modeName] = updated
+        saveEtaHistory(history)
+    }
 }
 
 def stageMbasFile(File source, File target, String contextLabel) {
@@ -295,6 +645,35 @@ def resolveOptionalSamplesheet(inputParam, modelsToRun, saxDefault, saxRoot, sax
     return saxInput ? file(saxInput).toAbsolutePath().toString() : null
 }
 
+def resolveFeatureMaskSource(contextLabel = 'main workflow') {
+    def configured = normalizeOptionalPath(params.feature_extraction.mask_source) ?: 'predictions'
+    def source = configured.toLowerCase()
+
+    if (!(source in ['predictions', 'postprocess', 'prompt'])) {
+        exit 1, "ERROR: ${contextLabel}: Invalid --feature_extraction.mask_source '${configured}'. Valid values: predictions, postprocess, prompt."
+    }
+
+    if (source != 'prompt') {
+        return source
+    }
+
+    def console = System.console()
+    if (console == null) {
+        log.warn "Feature extraction mask source is set to 'prompt' but no interactive console is available. Falling back to 'predictions'."
+        return 'predictions'
+    }
+
+    console.printf("\nFeature extraction mask source:\n")
+    console.printf("  1) predictions (direct model output)\n")
+    console.printf("  2) postprocess (post-processed masks)\n")
+    def choice = (console.readLine("Select mask source [1/2] (default: 1): ") ?: '').trim().toLowerCase()
+
+    if (choice in ['2', 'postprocess']) {
+        return 'postprocess'
+    }
+    return 'predictions'
+}
+
 /*
 ========================================================================================
     MAIN WORKFLOW
@@ -316,6 +695,11 @@ workflow {
         normalizeOptionalPath(params.atrial_nnunet.dataset_root) ?: normalizeOptionalPath(params.atrial_nnunet.mbas_root),
         'main workflow'
     )
+
+    if (params.eta.enabled as boolean) {
+        def etaUnits = Math.max(1, countSamplesheetRows(effective_input_samplesheet) * estimateRequestedModelCount(models_to_run))
+        startEtaTimer('MAIN', etaUnits)
+    }
 
     log.info "Resolved input samplesheet : ${effective_input_samplesheet}"
 
@@ -576,6 +960,50 @@ workflow {
         VISUALIZE_POSTPROCESS_DELTA(POSTPROCESS_LV_MYO.out.before_after)
     }
 
+    if (params.feature_extraction.enabled) {
+        def selectedMaskSource = resolveFeatureMaskSource('main workflow')
+        def effectiveMaskSource = selectedMaskSource
+        def featureResultsDir = file(params.feature_extraction.results_dir ?: params.outdir).toAbsolutePath().toString()
+        def selectedModels = selectPreferredFeatureModels(featureResultsDir, models_to_run, 'main workflow')
+        def ch_features_source = ch_all_segmentations
+
+        if (selectedMaskSource == 'postprocess' && params.postprocess.enabled) {
+            ch_features_source = POSTPROCESS_LV_MYO.out.segmentations
+                .map { patient_id, model, seg_ed, seg_es, meta_pp, image_path, info_cfg ->
+                    [ patient_id, model, seg_ed, seg_es, meta_pp ]
+                }
+        } else if (selectedMaskSource == 'postprocess' && !params.postprocess.enabled) {
+            log.warn "Feature extraction requested postprocess masks, but postprocessing is disabled. Falling back to predictions."
+            effectiveMaskSource = 'predictions'
+        }
+
+        params.feature_extraction.output_dir = normalizeOptionalPath(params.feature_extraction.output_dir) ?: resolveFeatureOutputDir(featureResultsDir, effectiveMaskSource)
+
+        log.info "main workflow: feature output directory = ${params.feature_extraction.output_dir}"
+        if (selectedModels) {
+            log.info "main workflow: feature extraction model filter = ${selectedModels.sort().join(', ')}"
+        }
+
+        def ch_features_inputs = ch_features_source
+            .filter { patient_id, model, seg_ed, seg_es, meta ->
+                meta?.architecture != 'atrial_nnunet'
+            }
+            .filter { patient_id, model, seg_ed, seg_es, meta ->
+                selectedModels == null || selectedModels.contains(model.toString())
+            }
+            .combine(ch_input_context, by: 0)
+            .flatMap { patient_id, model, seg_ed, seg_es, meta, image_path, gt_path, info_cfg ->
+                def image_file = file(image_path, checkIfExists: true)
+                def safe_model = model.toString().replaceAll('[^A-Za-z0-9_.-]', '_')
+                [
+                    [ "${patient_id}_${safe_model}_ED", image_file, seg_ed, info_cfg ?: '' ],
+                    [ "${patient_id}_${safe_model}_ES", image_file, seg_es, info_cfg ?: '' ]
+                ]
+            }
+
+        EXTRACT_FEATURES(ch_features_inputs)
+    }
+
     // Compute metrics if ground truth is available
     ch_input_with_gt = ch_input
         .filter { patient_id, image, gt, info -> gt != null }
@@ -651,6 +1079,11 @@ workflow POSTPROCESS_ONLY {
         )
     def results_dir = file(params.postprocess.results_dir ?: params.outdir).toAbsolutePath().toString()
 
+    if (params.eta.enabled as boolean) {
+        def etaUnits = Math.max(1, countSamplesheetRows(samplesheet_path) * estimateRequestedModelCount(models_to_run))
+        startEtaTimer('POSTPROCESS_ONLY', etaUnits)
+    }
+
     ch_samplesheet = Channel.fromPath(samplesheet_path, checkIfExists: true)
 
     DISCOVER_POSTPROCESS_INPUTS(
@@ -689,8 +1122,105 @@ workflow POSTPROCESS_ONLY {
     VISUALIZE_POSTPROCESS_DELTA(POSTPROCESS_LV_MYO.out.before_after)
 }
 
+workflow FEATURES_ONLY {
+    assertSlurmAccountForProfile('FEATURES_ONLY')
+
+    def feature_samplesheet = normalizeOptionalPath(params.feature_extraction.samplesheet)
+    def models_to_run = parseModels(params.models)
+    def samplesheet_path = feature_samplesheet
+        ? file(feature_samplesheet).toAbsolutePath().toString()
+        : resolveEffectiveSamplesheet(
+            params.input,
+            models_to_run,
+            normalizeOptionalPath(params.default_inputs.sax) ?: normalizeOptionalPath(params.default_inputs.acdc),
+            normalizeOptionalPath(params.sax_data_root) ?: normalizeOptionalPath(params.acdc_dir),
+            normalizeOptionalPath(params.sax_data_split) ?: normalizeOptionalPath(params.acdc_dataset),
+            normalizeOptionalPath(params.default_inputs.atrial) ?: normalizeOptionalPath(params.default_inputs.mbas),
+            normalizeOptionalPath(params.atrial_nnunet.dataset_root) ?: normalizeOptionalPath(params.atrial_nnunet.mbas_root),
+            'FEATURES_ONLY'
+        )
+
+    def results_dir = file(params.feature_extraction.results_dir ?: params.outdir).toAbsolutePath().toString()
+    def selectedMaskSource = resolveFeatureMaskSource('FEATURES_ONLY')
+    def selectedModels = selectPreferredFeatureModels(results_dir, models_to_run, 'FEATURES_ONLY')
+    params.feature_extraction.output_dir = normalizeOptionalPath(params.feature_extraction.output_dir) ?: resolveFeatureOutputDir(results_dir, selectedMaskSource)
+
+    if (params.eta.enabled as boolean) {
+        def etaUnits = Math.max(1, countSamplesheetRows(samplesheet_path) * estimateRequestedModelCount(models_to_run))
+        startEtaTimer('FEATURES_ONLY', etaUnits)
+    }
+
+    log.info "FEATURES_ONLY mode: reading segmentations from ${results_dir}"
+    log.info "FEATURES_ONLY mode: outputting features to ${params.feature_extraction.output_dir}"
+    log.info "FEATURES_ONLY mode: selected mask source = ${selectedMaskSource}"
+    if (selectedModels) {
+        log.info "FEATURES_ONLY mode: feature extraction model filter = ${selectedModels.sort().join(', ')}"
+    }
+
+    ch_samplesheet = Channel.fromPath(samplesheet_path, checkIfExists: true)
+
+    DISCOVER_POSTPROCESS_INPUTS(
+        ch_samplesheet,
+        results_dir,
+        params.models
+    )
+
+    ch_features_inputs = DISCOVER_POSTPROCESS_INPUTS.out.inputs
+        .splitCsv(header: true)
+        .map { row ->
+            def segEdPath = row.seg_ed
+            def segEsPath = row.seg_es
+
+            if (selectedMaskSource == 'postprocess') {
+                def ppEd = file("${results_dir}/postprocess/${row.model}/segmentations/${row.patient_id}_ED_${row.model}_pp.nii.gz")
+                def ppEs = file("${results_dir}/postprocess/${row.model}/segmentations/${row.patient_id}_ES_${row.model}_pp.nii.gz")
+
+                if (!ppEd.exists() || !ppEs.exists()) {
+                    log.warn "Skipping ${row.patient_id} / ${row.model}: postprocess masks not found in ${results_dir}/postprocess/${row.model}/segmentations"
+                    return null
+                }
+
+                segEdPath = ppEd.toAbsolutePath().toString()
+                segEsPath = ppEs.toAbsolutePath().toString()
+            }
+
+            [
+                row.patient_id,
+                row.model,
+                (row.architecture ?: 'unknown').toLowerCase(),
+                segEdPath,
+                segEsPath,
+                row.image,
+                row.info_cfg ?: ''
+            ]
+        }
+        .filter { it != null }
+        .filter { patient_id, model, architecture, seg_ed, seg_es, image, info_cfg ->
+            architecture != 'atrial_nnunet'
+        }
+        .filter { patient_id, model, architecture, seg_ed, seg_es, image, info_cfg ->
+            selectedModels == null || selectedModels.contains(model.toString())
+        }
+        .flatMap { patient_id, model, architecture, seg_ed, seg_es, image, info_cfg ->
+            def imageFile = file(image, checkIfExists: true)
+            def segEdFile = file(seg_ed, checkIfExists: true)
+            def segEsFile = file(seg_es, checkIfExists: true)
+            def safeModel = model.toString().replaceAll('[^A-Za-z0-9_.-]', '_')
+
+            [
+                [ "${patient_id}_${safeModel}_ED", imageFile, segEdFile, info_cfg ?: '' ],
+                [ "${patient_id}_${safeModel}_ES", imageFile, segEsFile, info_cfg ?: '' ]
+            ]
+        }
+
+    EXTRACT_FEATURES(ch_features_inputs)
+}
+
 workflow DEBUG_ONLY {
     assertSlurmAccountForProfile('DEBUG_ONLY')
+    if (params.eta.enabled as boolean) {
+        startEtaTimer('DEBUG_ONLY', 1)
+    }
 
     def models_to_run = parseModels(params.models)
     def debug_source_outdir = normalizeOptionalPath(params.debug_source_outdir)
@@ -746,6 +1276,14 @@ workflow DEBUG_ONLY {
 */
 
 workflow.onComplete {
+    if (params.eta.enabled as boolean) {
+        try {
+            finalizeEtaTimer(workflow.success)
+        } catch (Exception ignored) {
+            // Keep completion reporting resilient even if ETA state is unavailable.
+        }
+    }
+
     log.info """
     ============================================================
     Pipeline execution summary
