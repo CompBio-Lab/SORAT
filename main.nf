@@ -81,6 +81,41 @@ def countSamplesheetRows(String samplesheetPath) {
     return lines.size() - 1
 }
 
+def resolveSinglePatient(samplesheetPath, targetPatientName) {
+    def path = normalizeOptionalPath(samplesheetPath)
+    if (!path) {
+        error("Cannot resolve target patient: invalid samplesheet path '$samplesheetPath'")
+    }
+    def f = new File(path)
+    if (!f.exists()) {
+        error("Cannot resolve target patient: samplesheet not found at '$path'")
+    }
+    def lines = f.readLines('UTF-8')
+    if (!lines || lines.size() <= 1) {
+        error("Cannot resolve target patient: samplesheet '$path' has no data rows")
+    }
+    def header = lines[0].split(',')
+    def patientIdIdx = header.findIndexOf { it.trim() == 'patient_id' }
+    if (patientIdIdx < 0) {
+        error("Cannot resolve target patient: samplesheet '$path' missing 'patient_id' column")
+    }
+    if (targetPatientName) {
+        def found = false
+        for (int i = 1; i < lines.size(); i++) {
+            def cols = lines[i].split(',')
+            if (cols.size() > patientIdIdx && cols[patientIdIdx].trim() == targetPatientName) {
+                found = true
+                break
+            }
+        }
+        if (!found) {
+            error("Patient '$targetPatientName' not found in samplesheet: $path")
+        }
+        return targetPatientName
+    }
+    return lines[1].split(',')[patientIdIdx].trim()
+}
+
 def estimateRequestedModelCount(List modelsToRun) {
     def normalized = (modelsToRun ?: []).collect { it.toString().toLowerCase() }
     if (normalized.contains('all')) {
@@ -717,6 +752,18 @@ workflow {
             def info_file = row.info_cfg ? file(row.info_cfg, checkIfExists: true) : null
             [ patient_id, image_file, gt_file, info_file ]
         }
+
+    def singlePatient = params.single_patient as boolean
+    def providedPatientName = params.patient_name ? params.patient_name.toString().trim() : null
+    if (providedPatientName) { singlePatient = true }
+    if (singlePatient) {
+        def targetPatient = resolveSinglePatient(effective_input_samplesheet, providedPatientName)
+        log.info "Single-patient mode: running patient '$targetPatient' only"
+        ch_input = ch_input
+            .filter { patient_id, image_file, gt_file, info_file ->
+                patient_id == targetPatient
+            }
+    }
 
     def auto_discover = params.auto_discover_models as boolean
     
