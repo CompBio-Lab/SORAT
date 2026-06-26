@@ -13,30 +13,30 @@ process GENERATE_SEGMENTATION_PREVIEWS {
     publishDir "${params.outdir}/previews", mode: params.publish_dir_mode
 
     input:
-    tuple val(patient_id), val(model), path(seg_ed), path(seg_es), val(image_path), val(ground_truth_path), val(info_cfg), val(architecture)
+    tuple val(patient_id), val(model), val(frame_tag), val(frame_idx), path(seg), val(image_path), val(ground_truth_path), val(info_cfg), val(architecture)
 
     output:
-    path "*/*_ED_preview.png", emit: ed
-    path "*/*_ES_preview.png", emit: es
+    path "*/${patient_id}_${safe_model}_${frame_tag}_preview.png", emit: previews
     path "versions.yml", emit: versions
 
     script:
     safe_model = model.replaceAll('[^A-Za-z0-9_.-]', '_')
-    def gt_arg = ground_truth_path ? "--ground_truth ${ground_truth_path}" : ""
-    def info_arg = info_cfg ? "--info_cfg ${info_cfg}" : ""
+    def gt_arg = ground_truth_path ? "--ground_truth '${ground_truth_path}'" : ""
+    def info_arg = info_cfg ? "--info_cfg '${info_cfg}'" : ""
     """
+    cp ${projectDir}/bin/frame_manifest.py . 2>/dev/null || true
     mkdir -p ${safe_model}
 
     python /app/bin/generate_segmentation_preview.py \
         --patient_id ${patient_id} \
         --model ${model} \
         --architecture ${architecture} \
-        --image ${image_path} \
+        --image '${image_path}' \
         ${gt_arg} \
-        --seg_ed ${seg_ed} \
-        --seg_es ${seg_es} \
-        --output_ed_png ${safe_model}/${patient_id}_${safe_model}_ED_preview.png \
-        --output_es_png ${safe_model}/${patient_id}_${safe_model}_ES_preview.png \
+        --seg ${seg} \
+        --frame_tag ${frame_tag} \
+        --frame_idx ${frame_idx} \
+        --output_png ${safe_model}/${patient_id}_${safe_model}_${frame_tag}_preview.png \
         ${info_arg}
 
     cat <<-END_VERSIONS > versions.yml

@@ -48,6 +48,7 @@ include { DISCOVER_POSTPROCESS_INPUTS; POSTPROCESS_LV_MYO; VISUALIZE_POSTPROCESS
 include { GENERATE_SEGMENTATION_PREVIEWS } from './modules/visualization'
 include { EXTRACT_FEATURES } from './modules/features'
 include { validateInput } from './lib/utils'
+include { parseManifest; frameTagFromFilename; discoverFramePattern; normalizeSegList } from './lib/frame_utils'
 
 def normalizeOptionalPath(value) {
     if (value == null) {
@@ -242,12 +243,12 @@ def discoverFeatureCandidateModels(String resultsDir, List modelsToRun, String c
             return
         }
 
-        def matcher = (f.name =~ /^(.*)_ED_(.+)\.nii\.gz$/)
+        def matcher = (f.name =~ discoverFramePattern())
         if (!matcher.matches()) {
             return
         }
 
-        def model = matcher[0][2]
+        def model = matcher[0][3]
         if (!model || model.endsWith('_pp')) {
             return
         }
@@ -773,11 +774,15 @@ workflow {
     ch_vsa3l_results = Channel.empty()
     ch_atrial_nnunet_results = Channel.empty()
 
-    // Deterministic cache keys for model-specific preprocessing outputs
-    def cinema_preprocess_key = 'cinema_s1.0x1.0x10.0_crop192x192_v1'
-    def nnformer_preprocess_key = 'nnformer_frame_extract_v1'
-    def vsa3l_preprocess_key = "vsa3l_input${params.vsa3l.input_size.join('x')}_v1"
-    def atrial_nnunet_preprocess_key = 'atrial_nnunet_frame_extract_v1'
+    // Deterministic cache keys for model-specific preprocessing outputs.
+    // Bumped to _v4 to invalidate _v3 caches, which wrote CineMA segmentations
+    // in the 192x192 preprocessed coordinate space; _v4 records the original
+    // image geometry in metadata.json so segmentations are mapped back into
+    // the original space (matching the ground truth + other architectures).
+    def cinema_preprocess_key = 'cinema_s1.0x1.0x10.0_crop192x192_v4'
+    def nnformer_preprocess_key = 'nnformer_frame_extract_v3'
+    def vsa3l_preprocess_key = "vsa3l_input${params.vsa3l.input_size.join('x')}_v3"
+    def atrial_nnunet_preprocess_key = 'atrial_nnunet_frame_extract_v3'
     
     // Run CineMA model
     if ('cinema' in models_to_run || 'all' in models_to_run) {
@@ -827,8 +832,14 @@ workflow {
         CINEMA_SEGMENT(ch_cinema_inputs)
 
         ch_cinema_results = CINEMA_SEGMENT.out.segmentation
-            .map { patient_id, seg_ed, seg_es, meta -> 
-                [ patient_id, meta.model_tag, seg_ed, seg_es, meta ]
+            .flatMap { patient_id, seg_list, manifest, meta ->
+                def frames = parseManifest(manifest)
+                def segs = normalizeSegList(seg_list)
+                segs.collect { seg ->
+                    def tag = frameTagFromFilename(seg)
+                    def idx = frames.find { it.tag == tag }?.idx ?: 0
+                    [ patient_id, meta.model_tag, tag, idx, seg, meta ]
+                }
             }
     }
     
@@ -859,8 +870,14 @@ workflow {
 
         NNFORMER_SEGMENT(ch_nnformer_inputs)
         ch_nnformer_results = NNFORMER_SEGMENT.out.segmentation
-            .map { patient_id, seg_ed, seg_es, meta -> 
-                [ patient_id, meta.model_tag, seg_ed, seg_es, meta ]
+            .flatMap { patient_id, seg_list, manifest, meta ->
+                def frames = parseManifest(manifest)
+                def segs = normalizeSegList(seg_list)
+                segs.collect { seg ->
+                    def tag = frameTagFromFilename(seg)
+                    def idx = frames.find { it.tag == tag }?.idx ?: 0
+                    [ patient_id, meta.model_tag, tag, idx, seg, meta ]
+                }
             }
     }
     
@@ -890,8 +907,14 @@ workflow {
 
         VSA3L_SEGMENT(ch_vsa3l_inputs)
         ch_vsa3l_results = VSA3L_SEGMENT.out.segmentation
-            .map { patient_id, seg_ed, seg_es, meta -> 
-                [ patient_id, meta.model_tag, seg_ed, seg_es, meta ]
+            .flatMap { patient_id, seg_list, manifest, meta ->
+                def frames = parseManifest(manifest)
+                def segs = normalizeSegList(seg_list)
+                segs.collect { seg ->
+                    def tag = frameTagFromFilename(seg)
+                    def idx = frames.find { it.tag == tag }?.idx ?: 0
+                    [ patient_id, meta.model_tag, tag, idx, seg, meta ]
+                }
             }
     }
 
@@ -923,8 +946,14 @@ workflow {
 
         ATRIAL_NNUNET_SEGMENT(ch_atrial_nnunet_inputs)
         ch_atrial_nnunet_results = ATRIAL_NNUNET_SEGMENT.out.segmentation
-            .map { patient_id, seg_ed, seg_es, meta ->
-                [ patient_id, meta.model_tag, seg_ed, seg_es, meta ]
+            .flatMap { patient_id, seg_list, manifest, meta ->
+                def frames = parseManifest(manifest)
+                def segs = normalizeSegList(seg_list)
+                segs.collect { seg ->
+                    def tag = frameTagFromFilename(seg)
+                    def idx = frames.find { it.tag == tag }?.idx ?: 0
+                    [ patient_id, meta.model_tag, tag, idx, seg, meta ]
+                }
             }
     }
     
@@ -943,24 +972,19 @@ workflow {
     if (params.visualization.enabled) {
         ch_preview_inputs = ch_all_segmentations
             .combine(ch_input_context, by: 0)
-            .map { patient_id, model, seg_ed, seg_es, meta, image_path, gt_path, info_cfg ->
-                def resolved_image_path = image_path
-                def resolved_gt_path = gt_path
-
-                if (meta?.architecture == 'cinema') {
-                    def preprocessed_img = file("${params.outdir}/cinema/preprocessed/${patient_id}_preprocessed/${patient_id}_sax_t.nii.gz")
-                    if (preprocessed_img.exists()) {
-                        resolved_image_path = preprocessed_img.toAbsolutePath().toString()
-                    }
-
-                    if (gt_path) {
-                        def preprocessed_gt_dir = file("${params.outdir}/cinema/preprocessed/${patient_id}_preprocessed")
-                        if (preprocessed_gt_dir.exists()) {
-                            resolved_gt_path = preprocessed_gt_dir.toAbsolutePath().toString()
-                        }
-                    }
-                }
-                [ patient_id, model, seg_ed, seg_es, resolved_image_path, resolved_gt_path, info_cfg, meta?.architecture ?: 'unknown' ]
+            .map { patient_id, model, frame_tag, frame_idx, seg, meta, image_path, gt_path, info_cfg ->
+                def architecture = meta?.architecture ?: 'unknown'
+                // CineMA segmentations are now written in the original image
+                // coordinate space (like nnFormer / VSA-3L), so the original
+                // image and ground-truth paths align with the seg directly.
+                [ patient_id, model, frame_tag, frame_idx, seg, image_path, gt_path, info_cfg, architecture ]
+            }
+            .filter { patient_id, model, frame_tag, frame_idx, seg, image_path, gt_path, info_cfg, architecture ->
+                // Always keep ED/ES frames (back-compat with ACDC)
+                if (frame_tag in ['ED', 'ES']) { return true }
+                // In all-frames mode: keep only frame00 by default, or all frames when flag is set
+                if (params.visualization.all_frames) { return true }
+                return frame_tag == 'frame00'
             }
 
         GENERATE_SEGMENTATION_PREVIEWS(ch_preview_inputs)
@@ -970,36 +994,30 @@ workflow {
 
     if (params.postprocess.enabled) {
         ch_postprocess_candidates = ch_all_segmentations
-            .filter { patient_id, model, seg_ed, seg_es, meta ->
+            .filter { patient_id, model, frame_tag, frame_idx, seg, meta ->
                 meta?.architecture != 'atrial_nnunet'
             }
 
         ch_atrial_segmentations = ch_all_segmentations
-            .filter { patient_id, model, seg_ed, seg_es, meta ->
+            .filter { patient_id, model, frame_tag, frame_idx, seg, meta ->
                 meta?.architecture == 'atrial_nnunet'
             }
 
         ch_postprocess_inputs = ch_postprocess_candidates
             .combine(ch_input_context, by: 0)
-            .map { patient_id, model, seg_ed, seg_es, meta, image_path, gt_path, info_cfg ->
-                def resolved_image_path = image_path
-                if (meta?.architecture == 'cinema') {
-                    def preprocessed_img = file("${params.outdir}/cinema/preprocessed/${patient_id}_preprocessed/${patient_id}_sax_t.nii.gz")
-                    if (preprocessed_img.exists()) {
-                        resolved_image_path = preprocessed_img.toAbsolutePath().toString()
-                    } else {
-                        log.warn "CineMA preprocessed image not found for ${patient_id}; falling back to original image for postprocess: ${image_path}"
-                    }
-                }
-                [ patient_id, model, seg_ed, seg_es, meta, resolved_image_path, info_cfg ]
+            .map { patient_id, model, frame_tag, frame_idx, seg, meta, image_path, gt_path, info_cfg ->
+                // CineMA segmentations are now in the original image space, so
+                // the original image aligns with the seg directly (no redirect
+                // to the 192x192 preprocessed volume needed).
+                [ patient_id, model, frame_tag, frame_idx, seg, meta, image_path, info_cfg ]
             }
 
         POSTPROCESS_LV_MYO(ch_postprocess_inputs)
 
         if (params.postprocess.use_for_metrics) {
             ch_segmentations_for_metrics = POSTPROCESS_LV_MYO.out.segmentations
-                .map { patient_id, model, seg_ed, seg_es, meta_pp, image_path, info_cfg ->
-                    [ patient_id, model, seg_ed, seg_es, meta_pp ]
+                .map { patient_id, model, frame_tag, frame_idx, seg, meta_pp, image_path, info_cfg ->
+                    [ patient_id, model, frame_tag, frame_idx, seg, meta_pp ]
                 }
                 .mix(ch_atrial_segmentations)
         }
@@ -1016,8 +1034,8 @@ workflow {
 
         if (selectedMaskSource == 'postprocess' && params.postprocess.enabled) {
             ch_features_source = POSTPROCESS_LV_MYO.out.segmentations
-                .map { patient_id, model, seg_ed, seg_es, meta_pp, image_path, info_cfg ->
-                    [ patient_id, model, seg_ed, seg_es, meta_pp ]
+                .map { patient_id, model, frame_tag, frame_idx, seg, meta_pp, image_path, info_cfg ->
+                    [ patient_id, model, frame_tag, frame_idx, seg, meta_pp ]
                 }
         } else if (selectedMaskSource == 'postprocess' && !params.postprocess.enabled) {
             log.warn "Feature extraction requested postprocess masks, but postprocessing is disabled. Falling back to predictions."
@@ -1032,20 +1050,17 @@ workflow {
         }
 
         def ch_features_inputs = ch_features_source
-            .filter { patient_id, model, seg_ed, seg_es, meta ->
+            .filter { patient_id, model, frame_tag, frame_idx, seg, meta ->
                 meta?.architecture != 'atrial_nnunet'
             }
-            .filter { patient_id, model, seg_ed, seg_es, meta ->
+            .filter { patient_id, model, frame_tag, frame_idx, seg, meta ->
                 selectedModels == null || selectedModels.contains(model.toString())
             }
             .combine(ch_input_context, by: 0)
-            .flatMap { patient_id, model, seg_ed, seg_es, meta, image_path, gt_path, info_cfg ->
+            .map { patient_id, model, frame_tag, frame_idx, seg, meta, image_path, gt_path, info_cfg ->
                 def image_file = file(image_path, checkIfExists: true)
                 def safe_model = model.toString().replaceAll('[^A-Za-z0-9_.-]', '_')
-                [
-                    [ "${patient_id}_${safe_model}_ED", image_file, seg_ed, info_cfg ?: '' ],
-                    [ "${patient_id}_${safe_model}_ES", image_file, seg_es, info_cfg ?: '' ]
-                ]
+                [ "${patient_id}_${safe_model}_${frame_tag}", frame_tag, frame_idx, image_file, seg, info_cfg ?: '' ]
             }
 
         EXTRACT_FEATURES(ch_features_inputs)
@@ -1058,15 +1073,12 @@ workflow {
     
     ch_for_metrics = ch_segmentations_for_metrics
         .combine(ch_input_with_gt, by: 0)
-        .map { patient_id, model, seg_ed, seg_es, meta, gt ->
-            def gt_for_metrics = gt
-            if (meta?.architecture == 'cinema') {
-                def pre_dir = "${params.outdir}/cinema/preprocessed/${patient_id}_preprocessed"
-                if (file(pre_dir).exists()) {
-                    gt_for_metrics = file(pre_dir)
-                }
-            }
-            [ patient_id, model, seg_ed, seg_es, gt_for_metrics, meta ]
+        .map { patient_id, model, frame_tag, frame_idx, seg, meta, gt ->
+            // CineMA segmentations are now in the original image coordinate
+            // space, so the original ground truth aligns directly (no redirect
+            // to the 192x192 preprocessed GT needed) -- same as nnFormer /
+            // VSA-3L.
+            [ patient_id, model, frame_tag, frame_idx, seg, gt, meta ]
         }
     
     COMPUTE_METRICS(ch_for_metrics)
@@ -1078,8 +1090,7 @@ workflow {
             .collect()
         AGGREGATE_RESULTS(ch_all_metrics)
         ch_all_seg_files = ch_segmentations_for_metrics
-            .map { patient_id, model, seg_ed, seg_es, meta -> [seg_ed, seg_es] }
-            .flatten()
+            .map { patient_id, model, frame_tag, frame_idx, seg, meta -> seg }
             .collect()
         GENERATE_REPORT(
             AGGREGATE_RESULTS.out.summary,
@@ -1143,21 +1154,19 @@ workflow POSTPROCESS_ONLY {
         .splitCsv(header: true)
         .map { row ->
             def architecture = (row.architecture ?: 'unknown').toLowerCase()
+            // CineMA segmentations are now in the original image space, so the
+            // samplesheet image aligns with the seg directly (no redirect to the
+            // 192x192 preprocessed volume needed).
             def resolvedImage = row.image
-            if (architecture == 'cinema') {
-                def preprocessedImg = file("${results_dir}/cinema/preprocessed/${row.patient_id}_preprocessed/${row.patient_id}_sax_t.nii.gz")
-                if (preprocessedImg.exists()) {
-                    resolvedImage = preprocessedImg.toAbsolutePath().toString()
-                } else {
-                    log.warn "CineMA preprocessed image not found for ${row.patient_id} in POSTPROCESS_ONLY; using samplesheet image ${row.image}"
-                }
-            }
             def meta = [architecture: row.architecture ?: 'unknown', model_tag: row.model, discovered: true]
+            def frameTag = row.frame_tag ?: 'ED'
+            def frameIdx = row.frame_idx ? row.frame_idx as int : 0
             [
                 row.patient_id,
                 row.model,
-                file(row.seg_ed, checkIfExists: true),
-                file(row.seg_es, checkIfExists: true),
+                frameTag,
+                frameIdx,
+                file(row.seg, checkIfExists: true),
                 meta,
                 resolvedImage,
                 row.info_cfg ?: ''
@@ -1215,49 +1224,42 @@ workflow FEATURES_ONLY {
     ch_features_inputs = DISCOVER_POSTPROCESS_INPUTS.out.inputs
         .splitCsv(header: true)
         .map { row ->
-            def segEdPath = row.seg_ed
-            def segEsPath = row.seg_es
+            def frameTag = row.frame_tag ?: 'ED'
+            def frameIdx = row.frame_idx ? row.frame_idx as int : 0
+            def segPath = row.seg
 
             if (selectedMaskSource == 'postprocess') {
-                def ppEd = file("${results_dir}/postprocess/${row.model}/segmentations/${row.patient_id}_ED_${row.model}_pp.nii.gz")
-                def ppEs = file("${results_dir}/postprocess/${row.model}/segmentations/${row.patient_id}_ES_${row.model}_pp.nii.gz")
-
-                if (!ppEd.exists() || !ppEs.exists()) {
-                    log.warn "Skipping ${row.patient_id} / ${row.model}: postprocess masks not found in ${results_dir}/postprocess/${row.model}/segmentations"
+                def ppSeg = file("${results_dir}/postprocess/${row.model}/segmentations/${row.patient_id}_${frameTag}_${row.model}_pp.nii.gz")
+                if (!ppSeg.exists()) {
+                    log.warn "Skipping ${row.patient_id} / ${row.model} / ${frameTag}: postprocess mask not found in ${results_dir}/postprocess/${row.model}/segmentations"
                     return null
                 }
-
-                segEdPath = ppEd.toAbsolutePath().toString()
-                segEsPath = ppEs.toAbsolutePath().toString()
+                segPath = ppSeg.toAbsolutePath().toString()
             }
 
             [
                 row.patient_id,
                 row.model,
                 (row.architecture ?: 'unknown').toLowerCase(),
-                segEdPath,
-                segEsPath,
+                frameTag,
+                frameIdx,
+                segPath,
                 row.image,
                 row.info_cfg ?: ''
             ]
         }
         .filter { it != null }
-        .filter { patient_id, model, architecture, seg_ed, seg_es, image, info_cfg ->
+        .filter { patient_id, model, architecture, frame_tag, frame_idx, seg, image, info_cfg ->
             architecture != 'atrial_nnunet'
         }
-        .filter { patient_id, model, architecture, seg_ed, seg_es, image, info_cfg ->
+        .filter { patient_id, model, architecture, frame_tag, frame_idx, seg, image, info_cfg ->
             selectedModels == null || selectedModels.contains(model.toString())
         }
-        .flatMap { patient_id, model, architecture, seg_ed, seg_es, image, info_cfg ->
+        .map { patient_id, model, architecture, frame_tag, frame_idx, seg, image, info_cfg ->
             def imageFile = file(image, checkIfExists: true)
-            def segEdFile = file(seg_ed, checkIfExists: true)
-            def segEsFile = file(seg_es, checkIfExists: true)
+            def segFile = file(seg, checkIfExists: true)
             def safeModel = model.toString().replaceAll('[^A-Za-z0-9_.-]', '_')
-
-            [
-                [ "${patient_id}_${safeModel}_ED", imageFile, segEdFile, info_cfg ?: '' ],
-                [ "${patient_id}_${safeModel}_ES", imageFile, segEsFile, info_cfg ?: '' ]
-            ]
+            [ "${patient_id}_${safeModel}_${frame_tag}", frame_tag, frame_idx, imageFile, segFile, info_cfg ?: '' ]
         }
 
     EXTRACT_FEATURES(ch_features_inputs)

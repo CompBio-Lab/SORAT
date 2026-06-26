@@ -16,24 +16,27 @@ process COMPUTE_METRICS {
     publishDir "${params.outdir}/metrics/${model}", mode: params.publish_dir_mode
     
     input:
-    tuple val(patient_id), val(model), path(seg_ed), path(seg_es), path(ground_truth), val(meta)
+    tuple val(patient_id), val(model), val(frame_tag), val(frame_idx), path(seg), path(ground_truth), val(meta)
     
     output:
-    tuple val(patient_id), val(model), path("${patient_id}_${model}_metrics.csv"), emit: metrics
+    tuple val(patient_id), val(model), path("${patient_id}_${model}_${frame_tag}_metrics.csv"), emit: metrics
     path "versions.yml", emit: versions
     
     script:
     def arch = meta?.architecture ?: ''
     """
+    cp ${projectDir}/bin/frame_manifest.py . 2>/dev/null || true
+
     compute_metrics.py \\
         --patient_id ${patient_id} \\
         --model ${model} \\
         --architecture "${arch}" \\
-        --seg_ed ${seg_ed} \\
-        --seg_es ${seg_es} \\
+        --seg ${seg} \\
+        --frame_tag ${frame_tag} \\
+        --frame_idx ${frame_idx} \\
         --ground_truth ${ground_truth} \\
-        --output ${patient_id}_${model}_metrics.csv
-    
+        --output ${patient_id}_${model}_${frame_tag}_metrics.csv
+
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         python: \$(python --version | sed 's/Python //')

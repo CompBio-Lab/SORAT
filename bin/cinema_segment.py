@@ -9,6 +9,13 @@ import argparse
 import json
 import re
 from pathlib import Path
+try:
+    from frame_manifest import read_manifest, write_manifest
+except ImportError:
+    import os as _os
+    import sys as _sys
+    _sys.path.insert(0, _os.getcwd())
+    from frame_manifest import read_manifest, write_manifest  # noqa: F401
 
 import numpy as np
 import SimpleITK as sitk
@@ -131,6 +138,97 @@ def _spatial_direction_from_any(direction: tuple) -> tuple:
         return identity
 
 
+def _load_original_geometry(input_dir: Path, patient_id: str, fallback_sitk: sitk.Image) -> dict:
+    """Load original-image geometry from preprocessed metadata.json.
+
+    Returns a dict with ``size``, ``spacing``, ``origin``, ``direction`` (3x3
+    spatial) of the *original* image, plus ``crop_origin`` and ``crop_spacing``
+    describing the 192x192 preprocessed grid.  Falls back to the preprocessed
+    4D volume's own geometry (origin 0, preprocessed spacing) when the new
+    metadata fields are absent, preserving backward compatibility with caches
+    produced by older pipeline versions.
+    """
+    import json
+
+    metadata_path = Path(input_dir) / "metadata.json"
+    meta = {}
+    if metadata_path.exists():
+        try:
+            with open(metadata_path, "r") as fh:
+                meta = json.load(fh)
+        except Exception:
+            meta = {}
+
+    if all(k in meta for k in ("original_size_3d", "original_spacing_3d", "original_origin_3d", "crop_origin_3d")):
+        return {
+            "has_original_geometry": True,
+            "size": [int(x) for x in meta["original_size_3d"]],
+            "spacing": [float(x) for x in meta["original_spacing_3d"]],
+            "origin": [float(x) for x in meta["original_origin_3d"]],
+            "direction": [float(x) for x in meta.get("original_direction_3d", [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0])],
+            "crop_origin": [float(x) for x in meta["crop_origin_3d"]],
+            "crop_spacing": [float(x) for x in meta.get("target_spacing", [1.0, 1.0, 10.0])],
+        }
+
+    # Backward compat: no original-geometry metadata -> stay in preprocessed space.
+    spacing = list(fallback_sitk.GetSpacing()[:3])
+    origin = list(fallback_sitk.GetOrigin()[:3])
+    direction = list(_spatial_direction_from_any(fallback_sitk.GetDirection()))
+    return {
+        "has_original_geometry": False,
+        "size": list(fallback_sitk.GetSize()[:3]),
+        "spacing": spacing,
+        "origin": origin,
+        "direction": direction,
+        "crop_origin": origin,
+        "crop_spacing": spacing,
+    }
+
+
+def _resample_pred_to_original(
+    pred_arr: np.ndarray,
+    geometry: dict,
+) -> sitk.Image:
+    """Resample a 192x192 prediction array back into the original image space.
+
+    The prediction array is in (x, y, z) order with the preprocessed grid's
+    spacing/origin/direction.  We build a SimpleITK image with the *cropped*
+    geometry (so physical-space mapping is correct) and resample it into a
+    reference grid described by the original image geometry.  Nearest-neighbor
+    interpolation preserves label values; the default fill is 0 (background).
+    The returned image carries the original geometry so it aligns with the
+    ground truth and the other architectures' segmentations.
+    """
+    pred_xyz = pred_arr  # (x, y, z)
+    pred_zyx = np.transpose(pred_xyz, (2, 1, 0)).astype(np.uint8)
+
+    crop_spacing = tuple(geometry["crop_spacing"][:3])
+    crop_origin = tuple(geometry["crop_origin"][:3])
+    crop_direction = tuple(geometry["direction"][:9])
+
+    pred_sitk = sitk.GetImageFromArray(pred_zyx)
+    pred_sitk.SetSpacing(crop_spacing)
+    pred_sitk.SetOrigin(crop_origin)
+    pred_sitk.SetDirection(crop_direction)
+
+    ref_sitk = sitk.Image(
+        [int(x) for x in geometry["size"][:3]],
+        sitk.sitkUInt8,
+    )
+    ref_sitk.SetSpacing(tuple(float(x) for x in geometry["spacing"][:3]))
+    ref_sitk.SetOrigin(tuple(float(x) for x in geometry["origin"][:3]))
+    ref_sitk.SetDirection(tuple(float(x) for x in geometry["direction"][:9]))
+
+    resampler = sitk.ResampleImageFilter()
+    resampler.SetReferenceImage(ref_sitk)
+    resampler.SetInterpolator(sitk.sitkNearestNeighbor)
+    resampler.SetDefaultPixelValue(0)
+    resampler.SetTransform(sitk.Transform())
+    out = resampler.Execute(pred_sitk)
+    out.CopyInformation(ref_sitk)
+    return out
+
+
 def segment_patient(
     input_dir: Path,
     patient_id: str,
@@ -172,6 +270,27 @@ def segment_patient(
     
     image_sitk = sitk.ReadImage(str(image_path))
     images = np.transpose(sitk.GetArrayFromImage(image_sitk))  # (x, y, z, t)
+
+    # Load original-image geometry so predictions can be mapped back into the
+    # original coordinate space (matching the ground truth + other models).
+    geometry = _load_original_geometry(input_dir, patient_id, image_sitk)
+
+    # Load frame manifest from preprocessed directory
+    manifest_path = input_dir / f"{patient_id}_manifest.json"
+    if manifest_path.exists():
+        manifest = read_manifest(manifest_path)
+    else:
+        # Fallback: infer ED/ES from volumes (backward compat)
+        n_frames = images.shape[-1]
+        manifest = {
+            "patient_id": patient_id,
+            "has_info_cfg": False,
+            "num_frames": n_frames,
+            "frames": [
+                {"tag": "ED", "idx": 0},
+                {"tag": "ES", "idx": n_frames - 1 if n_frames > 1 else 0},
+            ]
+        }
     
     # Load ground truth references for spacing
     ed_gt_path = input_dir / f"{patient_id}_sax_ed_gt.nii.gz"
@@ -212,30 +331,31 @@ def segment_patient(
     else:
         labels = all_predictions[0]
     
-    # Determine ED and ES frames
-    n_frames = labels.shape[-1]
-    lv_volumes = [np.sum(labels[..., t] == 3) for t in range(n_frames)]
-    ed_frame_idx = 0  # First frame is typically ED
-    es_frame_idx = np.argmin(lv_volumes)  # Minimum LV volume is ES
+    # Extract and save frames according to manifest
+    for frame in manifest["frames"]:
+        tag = frame["tag"]
+        idx = frame["idx"]
+        if idx >= labels.shape[-1]:
+            idx = labels.shape[-1] - 1
+        pred = labels[..., idx].astype(np.uint8)
+        if geometry["has_original_geometry"]:
+            pred_sitk = _resample_pred_to_original(pred, geometry)
+        else:
+            pred_sitk = sitk.GetImageFromArray(np.transpose(pred, (2, 1, 0)))
+            pred_sitk.SetSpacing(spacing)
+            pred_sitk.SetOrigin(origin)
+            pred_sitk.SetDirection(spatial_direction)
+        sitk.WriteImage(pred_sitk, f"{output_prefix}_{tag}_{model_tag}.nii.gz", useCompression=True)
     
-    # Extract ED and ES predictions
-    ed_pred = labels[..., ed_frame_idx].astype(np.uint8)
-    es_pred = labels[..., es_frame_idx].astype(np.uint8)
-    
-    # Save ED prediction
-    ed_sitk = sitk.GetImageFromArray(np.transpose(ed_pred, (2, 1, 0)))
-    ed_sitk.SetSpacing(spacing)
-    ed_sitk.SetOrigin(origin)
-    ed_sitk.SetDirection(spatial_direction)
-    sitk.WriteImage(ed_sitk, f"{output_prefix}_ED_{model_tag}.nii.gz", useCompression=True)
-    
-    # Save ES prediction
-    es_sitk = sitk.GetImageFromArray(np.transpose(es_pred, (2, 1, 0)))
-    es_sitk.SetSpacing(spacing)
-    es_sitk.SetOrigin(origin)
-    es_sitk.SetDirection(spatial_direction)
-    sitk.WriteImage(es_sitk, f"{output_prefix}_ES_{model_tag}.nii.gz", useCompression=True)
-    
+    # Write segment-level manifest confirming output files
+    segment_manifest = {
+        "patient_id": patient_id,
+        "has_info_cfg": manifest.get("has_info_cfg", False),
+        "num_frames": manifest.get("num_frames", len(manifest["frames"])),
+        "frames": manifest["frames"],
+    }
+    write_manifest(segment_manifest, f"{output_prefix}_{model_tag}_manifest.json")
+
     results = {
         'patient_id': patient_id,
         'architecture': 'cinema',
@@ -243,10 +363,8 @@ def segment_patient(
         'trained_dataset': trained_dataset,
         'seeds': seeds,
         'ensemble': ensemble,
-        'ed_frame': ed_frame_idx,
-        'es_frame': es_frame_idx,
-        'ed_output': f"{output_prefix}_ED_{model_tag}.nii.gz",
-        'es_output': f"{output_prefix}_ES_{model_tag}.nii.gz"
+        'frame_tags': [f["tag"] for f in manifest["frames"]],
+        'frame_count': len(manifest["frames"]),
     }
     
     return results
@@ -279,8 +397,7 @@ def main():
     )
     
     print(f"Segmentation complete for {args.patient_id}")
-    print(f"ED output: {results['ed_output']}")
-    print(f"ES output: {results['es_output']}")
+    print(f"Output frames: {results.get('frame_tags', [])}")
 
 
 if __name__ == '__main__':

@@ -52,10 +52,12 @@ def aggregate_metrics(input_files: list, output_aggregated: Path, output_compari
         model_df = all_metrics[all_metrics['model'] == model]
 
         architecture = model_df['architecture'].iloc[0] if 'architecture' in model_df.columns else ''
+        # Count unique patients (each patient may have multiple frame rows)
+        n_patients = model_df['patient_id'].nunique() if 'patient_id' in model_df.columns else len(model_df)
         model_stats = {
             'model': model,
             'architecture': architecture,
-            'n_patients': len(model_df)
+            'n_patients': n_patients
         }
         
         for col in metric_cols:
@@ -77,12 +79,16 @@ def aggregate_metrics(input_files: list, output_aggregated: Path, output_compari
     print(f"Created comparison summary for {len(comparison_df)} models")
     
     # Create per-patient summary (pivoted by model)
-    patient_summary = all_metrics.pivot_table(
-        index='patient_id',
-        columns='model',
-        values='overall_dice_mean' if 'overall_dice_mean' in all_metrics.columns else metric_cols[0],
-        aggfunc='first'
-    ).reset_index()
+    pivot_col = 'dice_mean' if 'dice_mean' in all_metrics.columns else (metric_cols[0] if metric_cols else 'patient_id')
+    if pivot_col in all_metrics.columns:
+        patient_summary = all_metrics.pivot_table(
+            index='patient_id',
+            columns='model',
+            values=pivot_col,
+            aggfunc='first'
+        ).reset_index()
+    else:
+        patient_summary = pd.DataFrame()
     
     patient_summary.to_csv(output_per_patient, index=False)
     print(f"Created per-patient summary for {len(patient_summary)} patients")
@@ -97,10 +103,14 @@ def aggregate_metrics(input_files: list, output_aggregated: Path, output_compari
         print(f"  Patients: {row['n_patients']}")
         if 'overall_dice_mean_mean' in row:
             print(f"  Overall Dice: {row['overall_dice_mean_mean']:.4f} ± {row.get('overall_dice_mean_std', 0):.4f}")
-        if 'ed_dice_mean_mean' in row:
-            print(f"  ED Dice: {row['ed_dice_mean_mean']:.4f} ± {row.get('ed_dice_mean_std', 0):.4f}")
-        if 'es_dice_mean_mean' in row:
-            print(f"  ES Dice: {row['es_dice_mean_mean']:.4f} ± {row.get('es_dice_mean_std', 0):.4f}")
+        if 'dice_mean_mean' in row:
+            print(f"  Dice: {row['dice_mean_mean']:.4f} ± {row.get('dice_mean_std', 0):.4f}")
+        else:
+            # Backward compat: check for ED/ES specific columns
+            if 'ed_dice_mean_mean' in row:
+                print(f"  ED Dice: {row['ed_dice_mean_mean']:.4f} ± {row.get('ed_dice_mean_std', 0):.4f}")
+            if 'es_dice_mean_mean' in row:
+                print(f"  ES Dice: {row['es_dice_mean_mean']:.4f} ± {row.get('es_dice_mean_std', 0):.4f}")
 
 
 def main():

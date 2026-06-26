@@ -13,6 +13,14 @@ import shutil
 import subprocess
 from pathlib import Path
 
+try:
+    from frame_manifest import read_manifest, write_manifest
+except ImportError:
+    import os as _os
+    import sys as _sys
+    _sys.path.insert(0, _os.getcwd())
+    from frame_manifest import read_manifest, write_manifest  # noqa: F401
+
 
 def _sanitize_tag(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_]+", "_", value).strip("_")
@@ -115,29 +123,67 @@ def run_nnunet_predict(
     subprocess.run(command, check=True, env=run_env)
 
 
-def map_outputs_to_ed_es(output_files: list[Path]) -> tuple[Path, Path]:
-    """Map nnUNet output filenames back to ED/ES outputs."""
-    ed_output = None
-    es_output = None
+def map_outputs_to_frames(output_files, expected_tags):
+    """Map nnUNet output filenames back to frame tags using the manifest.
 
+    Guarantees that *every* output file is preserved.  When the manifest is
+    missing or doesn't cover all outputs, tags are derived from filenames
+    (``_ED_``/``_ES_``/``_frameNN_``) and any remainder is assigned a
+    positional ``frameNN`` tag so no segmentation is silently dropped.
+    """
+    tag_re = re.compile(r"_(ED|ES|frame\d{2,})\.nii\.gz$", re.IGNORECASE)
+
+    def _tag_from_name(path):
+        m = tag_re.search(path.name)
+        return m.group(1) if m else None
+
+    frame_outputs = {}
+    used = set()
+
+    # Pass 1 — match each output to an expected manifest tag (case-insensitive).
     for output_file in sorted(output_files):
-        name = output_file.name.lower()
-        if "_ed" in name:
-            ed_output = output_file
-        elif "_es" in name:
-            es_output = output_file
+        name_lower = output_file.name.lower()
+        for tag in expected_tags:
+            if tag in frame_outputs:
+                continue
+            if f"_{tag.lower()}" in name_lower:
+                frame_outputs[tag] = output_file
+                used.add(output_file)
+                break
 
-    if not ed_output and output_files:
-        ed_output = sorted(output_files)[0]
-    if not es_output and len(output_files) > 1:
-        es_output = sorted(output_files)[1]
-    if not es_output and ed_output:
-        es_output = ed_output
+    # Pass 2 — assign remaining outputs in order to remaining expected tags.
+    remaining_tags = [t for t in expected_tags if t not in frame_outputs]
+    unmatched = [f for f in sorted(output_files) if f not in used]
+    for i, tag in enumerate(remaining_tags):
+        if i < len(unmatched):
+            frame_outputs[tag] = unmatched[i]
+            used.add(unmatched[i])
 
-    if not ed_output or not es_output:
-        raise RuntimeError("Could not determine ED/ES outputs from nnUNet predictions")
+    # Pass 3 — derive a tag from the filename for any still-unmatched output.
+    for output_file in sorted(output_files):
+        if output_file in used:
+            continue
+        derived = _tag_from_name(output_file)
+        if derived and derived not in frame_outputs:
+            frame_outputs[derived] = output_file
+            used.add(output_file)
 
-    return ed_output, es_output
+    # Pass 4 — any leftover outputs get a positional frameNN tag.
+    frame_counter = 0
+    for output_file in sorted(output_files):
+        if output_file in used:
+            continue
+        while f"frame{frame_counter:02d}" in frame_outputs:
+            frame_counter += 1
+        frame_outputs[f"frame{frame_counter:02d}"] = output_file
+        used.add(output_file)
+        frame_counter += 1
+
+    # Final safety net.
+    if not frame_outputs and output_files:
+        frame_outputs["frame00"] = sorted(output_files)[0]
+
+    return frame_outputs
 
 
 def segment_patient(
@@ -155,6 +201,20 @@ def segment_patient(
     temp_output = Path(f"temp_atrial_nnunet_{patient_id}")
     temp_output.mkdir(parents=True, exist_ok=True)
 
+    # Load frame manifest from preprocessed directory.  When missing (e.g.
+    # stale cache), default to an empty frame list so map_outputs_to_frames
+    # derives tags from the output filenames instead of forcing ED/ES (which
+    # would silently drop the single LGE output for an absent ES frame).
+    manifest_path = input_dir / f"{patient_id}_manifest.json"
+    if manifest_path.exists():
+        manifest = read_manifest(manifest_path)
+    else:
+        manifest = {"frames": []}
+
+    manifest_frames = manifest.get("frames", [])
+    expected_tags = [f["tag"] for f in manifest_frames]
+    idx_by_tag = {f["tag"]: f["idx"] for f in manifest_frames}
+
     try:
         run_nnunet_predict(
             input_dir=input_dir,
@@ -167,14 +227,35 @@ def segment_patient(
         )
 
         pred_files = list(temp_output.glob("*.nii.gz"))
-        ed_file, es_file = map_outputs_to_ed_es(pred_files)
+        frame_outputs = map_outputs_to_frames(pred_files, expected_tags)
 
         safe_tag = _sanitize_tag(model_tag)
-        final_ed = Path(f"{output_prefix}_ED_{safe_tag}.nii.gz")
-        final_es = Path(f"{output_prefix}_ES_{safe_tag}.nii.gz")
 
-        shutil.copy(ed_file, final_ed)
-        shutil.copy(es_file, final_es)
+        # Preserve a stable output order (ED, ES, then frameNN ascending).
+        def _sort_key(tag):
+            if tag == "ED":
+                return (0, 0)
+            if tag == "ES":
+                return (0, 1)
+            m = re.match(r"frame(\d+)", tag)
+            return (1, int(m.group(1)) if m else 9999)
+
+        ordered_tags = sorted(frame_outputs.keys(), key=_sort_key)
+        saved_tags = []
+        for i, tag in enumerate(ordered_tags):
+            output_file = frame_outputs[tag]
+            final_path = Path(f"{output_prefix}_{tag}_{safe_tag}.nii.gz")
+            shutil.copy(output_file, final_path)
+            saved_tags.append((tag, idx_by_tag.get(tag, i)))
+
+        # Write segment manifest
+        segment_manifest = {
+            "patient_id": patient_id,
+            "has_info_cfg": manifest.get("has_info_cfg", False),
+            "num_frames": manifest.get("num_frames", len(saved_tags)),
+            "frames": [{"tag": tag, "idx": idx} for tag, idx in saved_tags],
+        }
+        write_manifest(segment_manifest, f"{output_prefix}_{safe_tag}_manifest.json")
 
         results = {
             "patient_id": patient_id,
@@ -183,8 +264,8 @@ def segment_patient(
             "dataset_id": dataset_id,
             "configuration": configuration,
             "folds": folds,
-            "ed_output": str(final_ed),
-            "es_output": str(final_es),
+            "frame_tags": [tag for tag, _ in saved_tags],
+            "frame_count": len(saved_tags),
         }
 
         with open(f"{output_prefix}_{safe_tag}_metadata.json", "w", encoding="utf-8") as handle:
@@ -223,8 +304,7 @@ def main():
     )
 
     print(f"Segmentation complete for {args.patient_id}")
-    print(f"ED output: {results['ed_output']}")
-    print(f"ES output: {results['es_output']}")
+    print(f"Output frames: {results.get('frame_tags', [])}")
 
 
 if __name__ == "__main__":

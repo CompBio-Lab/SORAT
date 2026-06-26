@@ -134,7 +134,7 @@ Create a CSV file with the following columns:
 | `patient_id` | Yes | Unique patient identifier |
 | `image` | Yes | Path to 4D cardiac MRI NIfTI file |
 | `ground_truth` | No | Path to ground truth segmentation |
-| `info_cfg` | No | Optional metadata config with ED/ES frame indices (for CineMA compatibility) |
+| `info_cfg` | No | **Optional** metadata config with ED/ES frame indices. When absent, the pipeline segments all temporal frames of the cardiac cycle. |
 
 #### Example samplesheet.csv
 
@@ -171,6 +171,7 @@ Guidance:
 - Always provide stable `patient_id` values; they are used in outputs and comparisons.
 - Set `ground_truth` when you want metrics/reporting; leave empty for inference-only runs.
 - `info_cfg` is optional and mainly useful for CineMA ED/ES frame metadata.
+- When \`info_cfg\` is absent, the pipeline uses \`frames_mode=auto\` and segments all frames. Override with \`--frames_mode ed_es\` to force 2-frame mode.
 - Keep column names unchanged even if your on-disk folder names are different.
 
 ### Info.cfg Format (Optional)
@@ -226,6 +227,8 @@ Weight: 70
 | `--slurm_queue_stat_interval` | `60 sec` | Queue-stat refresh interval |
 | `--preprocess_cache_enabled` | `true` | Reuse model-specific preprocessing outputs across reruns |
 | `--preprocess_cache_dir` | `${projectDir}/.cache/preprocess` | Cache root for reusable preprocessing artifacts |
+| `--frames_mode` | `'auto'` | Frame selection: `auto` (ED/ES when info_cfg present, else all frames), `ed_es` (force 2 frames), `all` (always all frames) |
+| `--max_frames` | `null` | Cap to N frames in all-frames mode by subsampling (e.g. `10`) |
 
 Note: `--models all` currently runs SAX models (`cinema`, `nnformer`, `vsa3l`) and does not automatically include `atrial_nnunet`.
 
@@ -381,8 +384,8 @@ results/
 │   ├── comparison_report.html  # Interactive HTML report
 │   └── figures/                # Visualization plots
 ├── previews/
-│   ├── <model_tag>/*_ED_preview.png
-│   └── <model_tag>/*_ES_preview.png
+│   ├── <model_tag>/*_ED_preview.png or *_frameNN_preview.png
+│   └── <model_tag>/*_ES_preview.png or *_frameNN_preview.png
 ├── features/
 │   └── *_features.csv
 └── pipeline_info/

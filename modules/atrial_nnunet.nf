@@ -26,13 +26,17 @@ process ATRIAL_NNUNET_PREPROCESS {
     script:
     def gt_arg = ground_truth ? "--ground_truth ${ground_truth}" : ""
     def info_arg = info_cfg ? "--info_cfg ${info_cfg}" : ""
+    def frames_mode = params.frames_mode ?: 'auto'
+    def max_frames_arg = params.max_frames ? "--max_frames ${params.max_frames}" : ""
     """
     atrial_nnunet_preprocess.py \\
         --input ${image} \\
         --patient_id ${patient_id} \\
         --output_dir ${patient_id}_preprocessed \\
         ${gt_arg} \\
-        ${info_arg}
+        ${info_arg} \\
+        --frames_mode ${frames_mode} \\
+        ${max_frames_arg}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
@@ -52,7 +56,7 @@ process ATRIAL_NNUNET_SEGMENT {
     tuple val(patient_id), path(preprocessed_dir), val(ground_truth), val(info_cfg), val(folds), val(model_tag)
 
     output:
-    tuple val(patient_id), path("${patient_id}_ED_${model_tag}.nii.gz"), path("${patient_id}_ES_${model_tag}.nii.gz"), val(meta), emit: segmentation
+    tuple val(patient_id), path("${patient_id}_*_${model_tag}.nii.gz"), path("${patient_id}_${model_tag}_manifest.json"), val(meta), emit: segmentation
     path "versions.yml", emit: versions
 
     script:

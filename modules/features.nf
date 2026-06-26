@@ -13,16 +13,16 @@ process EXTRACT_FEATURES {
     publishDir "${params.feature_extraction.output_dir ?: "${params.outdir}/features"}", mode: params.publish_dir_mode
 
     input:
-    tuple val(patient_id), path(raw_image), path(mask), val(info_cfg)
+    tuple val(patient_id), val(frame_tag), val(frame_idx), path(raw_image), path(mask), val(info_cfg)
 
     output:
-    path "*_features.csv", emit: features
+    path "${patient_id}_features.csv", emit: features
     path "versions.yml", emit: versions
 
     script:
     def virtualenvPath = (params.feature_extraction.virtualenv_path ?: '').toString().trim()
     def requireVirtualenv = (params.feature_extraction.require_virtualenv == null) ? false : (params.feature_extraction.require_virtualenv as boolean)
-    def infoCfgArg = info_cfg ? "--info_cfg ${info_cfg}" : ""
+    def infoCfgArg = info_cfg ? "--info_cfg '${info_cfg}'" : ""
     """
     # Optional: use packages from a pre-built virtualenv while keeping container python.
     # Do NOT source venv/bin/activate here; that would switch to host python and can
@@ -72,10 +72,14 @@ if importlib.util.find_spec("radiomics") is None:
     sys.exit(1)
 PY
 
+    cp ${projectDir}/bin/frame_manifest.py . 2>/dev/null || true
+
     python /app/bin/extract_features.py \
         --patient_id ${patient_id} \
         --image ${raw_image} \
         --mask ${mask} \
+        --frame_tag ${frame_tag} \
+        --frame_idx ${frame_idx} \
         ${infoCfgArg} \
         --output_csv ${patient_id}_features.csv
 

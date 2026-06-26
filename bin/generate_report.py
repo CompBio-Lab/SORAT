@@ -313,36 +313,49 @@ def generate_report(
         plt.close()
 
     # 2. Per-structure Dice comparison
+    # Detect structures from dice columns (supports both flat "dice_*" and legacy "ed_dice_*"/"es_dice_*")
     structures = sorted(
-        {col.replace('ed_dice_', '') for col in df.columns if col.startswith('ed_dice_')}
-        | {col.replace('es_dice_', '') for col in df.columns if col.startswith('es_dice_')}
+        {col.replace('ed_dice_', '').replace('es_dice_', '').replace('dice_', '', 1)
+         for col in df.columns
+         if col.startswith('dice_') and not col.startswith('dice_mean') and not col.startswith('dice_std')}
     )
 
     if structures:
+        # Detect whether ED/ES phase columns exist
+        has_ed_cols = any(col.startswith('ed_dice_') for col in df.columns)
+        has_es_cols = any(col.startswith('es_dice_') for col in df.columns)
+
         plot_data = []
-        for structure in structures:
-            ed_col = f'ed_dice_{structure}'
-            es_col = f'es_dice_{structure}'
-            if ed_col in df.columns:
-                for _, row in df[['model', 'model_display', 'architecture', ed_col]].dropna().iterrows():
-                    plot_data.append({
-                        'model': row['model'],
-                        'model_display': row['model_display'],
-                        'architecture': row['architecture'],
-                        'phase': 'ED',
-                        'structure': structure.upper(),
-                        'dice': row[ed_col]
-                    })
-            if es_col in df.columns:
-                for _, row in df[['model', 'model_display', 'architecture', es_col]].dropna().iterrows():
-                    plot_data.append({
-                        'model': row['model'],
-                        'model_display': row['model_display'],
-                        'architecture': row['architecture'],
-                        'phase': 'ES',
-                        'structure': structure.upper(),
-                        'dice': row[es_col]
-                    })
+        if has_ed_cols or has_es_cols:
+            # Legacy: ED/ES phase columns
+            for structure in structures:
+                ed_col = f'ed_dice_{structure}'
+                es_col = f'es_dice_{structure}'
+                if ed_col in df.columns:
+                    for _, row in df[['model', 'model_display', 'architecture', ed_col]].dropna().iterrows():
+                        plot_data.append({
+                            'model': row['model'], 'model_display': row['model_display'],
+                            'architecture': row['architecture'], 'phase': 'ED',
+                            'structure': structure.upper(), 'dice': row[ed_col]
+                        })
+                if es_col in df.columns:
+                    for _, row in df[['model', 'model_display', 'architecture', es_col]].dropna().iterrows():
+                        plot_data.append({
+                            'model': row['model'], 'model_display': row['model_display'],
+                            'architecture': row['architecture'], 'phase': 'ES',
+                            'structure': structure.upper(), 'dice': row[es_col]
+                        })
+        else:
+            # New: flat dice_* columns (no phase dimension)
+            for structure in structures:
+                col = f'dice_{structure}'
+                if col in df.columns:
+                    for _, row in df[['model', 'model_display', 'architecture', col]].dropna().iterrows():
+                        plot_data.append({
+                            'model': row['model'], 'model_display': row['model_display'],
+                            'architecture': row['architecture'], 'phase': 'All Frames',
+                            'structure': structure.upper(), 'dice': row[col]
+                        })
 
         if plot_data:
             plot_df = pd.DataFrame(plot_data)
@@ -352,7 +365,7 @@ def generate_report(
                 axis=1
             )
             order = model_variants
-            phases = [phase for phase in ['ED', 'ES'] if phase in set(plot_df['phase'].unique())]
+            phases = sorted(set(plot_df['phase'].unique()), reverse=True) if 'phase' in plot_df.columns else ['All Frames']
             nrows = max(1, len(phases))
             ncols = max(1, len(structures))
             fig, axes = plt.subplots(nrows, ncols, figsize=(max(16, ncols * 4.8), max(5.5, nrows * 4.2)), sharey=True)
@@ -399,7 +412,10 @@ def generate_report(
                         ax.legend_.remove()
 
             fig.legend(handles=model_legend_handles, loc='upper left', title='Model', bbox_to_anchor=(1.02, 1.0))
-            fig.suptitle('Per-Structure Dice Score Comparison', y=1.02)
+            title = 'Per-Structure Dice Score Comparison'
+            if len(phases) == 1:
+                title = f'Per-Structure Dice Score Comparison ({phases[0]})'
+            fig.suptitle(title, y=1.02)
             plt.subplots_adjust(right=0.8)
             plt.tight_layout()
 

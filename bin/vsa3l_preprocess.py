@@ -14,6 +14,13 @@ from pathlib import Path
 
 import nibabel as nib
 import numpy as np
+try:
+    from frame_manifest import build_frame_manifest, write_manifest
+except ImportError:
+    import os as _os
+    import sys as _sys
+    _sys.path.insert(0, _os.getcwd())
+    from frame_manifest import build_frame_manifest, write_manifest  # noqa: F401
 
 
 def convert_to_native(obj):
@@ -31,34 +38,15 @@ def convert_to_native(obj):
     return obj
 
 
-def parse_info_cfg(info_path: Path) -> dict:
-    """Parse ACDC Info.cfg file to get ED/ES frame indices."""
-    info = {'ed_frame': 0, 'es_frame': None}
-    
-    if info_path and info_path.exists():
-        with open(info_path, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if ':' in line:
-                    key, value = line.split(':', 1)
-                    key = key.strip().lower()
-                    value = value.strip()
-                    
-                    if key == 'ed':
-                        info['ed_frame'] = int(value)
-                    elif key == 'es':
-                        info['es_frame'] = int(value)
-    
-    return info
-
-
 def preprocess_patient(
     input_path: Path,
     output_dir: Path,
     patient_id: str,
     info_cfg: Path = None,
     ground_truth: Path = None,
-    input_size: tuple = (256, 256)
+    input_size: tuple = (256, 256),
+    frames_mode: str = "auto",
+    max_frames: int = None
 ) -> dict:
     """
     Preprocess a single patient's data for VSA-3L.
@@ -82,9 +70,6 @@ def preprocess_patient(
     slices_dir = output_dir / "slices"
     slices_dir.mkdir(exist_ok=True)
     
-    # Parse info config
-    info = parse_info_cfg(info_cfg) if info_cfg else {'ed_frame': 0, 'es_frame': None}
-    
     # Load 4D image
     img = nib.load(str(input_path))
     data_4d = img.get_fdata()
@@ -93,34 +78,43 @@ def preprocess_patient(
     if len(data_4d.shape) != 4:
         raise ValueError(f"Expected 4D image, got shape {data_4d.shape}")
     
-    # Get frame indices
-    ed_frame = info['ed_frame']
-    es_frame = info['es_frame'] if info['es_frame'] is not None else data_4d.shape[-1] - 1
+    # Build frame manifest (handles ED/ES vs all-frames logic)
+    num_frames = data_4d.shape[-1]
+    manifest = build_frame_manifest(
+        info_cfg_path=info_cfg,
+        num_frames=num_frames,
+        patient_id=patient_id,
+        frames_mode=frames_mode,
+        max_frames=max_frames,
+        ground_truth_path=ground_truth,
+    )
     
     slice_items = []
-    
-    for frame_type, frame_idx in {"ED": ed_frame, "ES": es_frame}.items():
-        if frame_idx < 0 or frame_idx >= data_4d.shape[-1]:
+
+    for frame in manifest["frames"]:
+        tag = frame["tag"]
+        idx = frame["idx"]
+        if idx < 0 or idx >= data_4d.shape[-1]:
             continue
-        
-        data_3d = data_4d[:, :, :, frame_idx]
-        
+
+        data_3d = data_4d[:, :, :, idx]
+
         for slice_idx in range(data_3d.shape[2]):
             slice_2d = data_3d[:, :, slice_idx]
-            
+
             # Skip nearly empty slices
             if np.sum(slice_2d > 0) < 100:
                 continue
-            
+
             # Save slice as numpy array
-            slice_filename = f"{patient_id}_{frame_type}_slice_{slice_idx:02d}.npy"
+            slice_filename = f"{patient_id}_{tag}_slice_{slice_idx:02d}.npy"
             slice_path = slices_dir / slice_filename
             np.save(slice_path, slice_2d.astype(np.float32))
-            
+
             slice_items.append({
                 'patient': patient_id,
-                'frame_type': frame_type,
-                'frame_idx': frame_idx,
+                'frame_tag': tag,
+                'frame_idx': idx,
                 'slice_idx': int(slice_idx),
                 'npy_path': str(slice_path),
                 'original_shape': list(slice_2d.shape),
@@ -132,48 +126,54 @@ def preprocess_patient(
     if ground_truth:
         gt_path = Path(ground_truth)
         gt_dir = gt_path.parent if gt_path.is_file() else gt_path
-        
+
         gt_slices_dir = output_dir / "gt_slices"
         gt_slices_dir.mkdir(exist_ok=True)
-        
-        for frame_type, frame_idx in {"ED": ed_frame, "ES": es_frame}.items():
-            # Look for ground truth file
+
+        for frame in manifest["frames"]:
+            tag = frame["tag"]
+            idx = frame["idx"]
             gt_candidates = [
-                gt_dir / f"{patient_id}_frame{frame_idx:02d}_gt.nii.gz",
-                gt_dir / f"{patient_id}_frame{frame_idx + 1:02d}_gt.nii.gz",
-                gt_dir / f"{patient_id}_{frame_type.lower()}_gt.nii.gz"
+                gt_dir / f"{patient_id}_frame{idx + 1:02d}_gt.nii.gz",
+                gt_dir / f"{patient_id}_frame{idx:02d}_gt.nii.gz",
+                gt_dir / f"{patient_id}_{tag}_gt.nii.gz",
+                gt_dir / f"{patient_id}_{tag.lower()}_gt.nii.gz",
             ]
-            
+
             gt_file = None
             for candidate in gt_candidates:
                 if candidate.exists():
                     gt_file = candidate
                     break
-            
+
             if gt_file:
                 gt_img = nib.load(str(gt_file))
                 gt_data = gt_img.get_fdata()
-                
+
                 for slice_idx in range(gt_data.shape[2]):
                     gt_slice = gt_data[:, :, slice_idx]
-                    
-                    gt_filename = f"{patient_id}_{frame_type}_slice_{slice_idx:02d}_gt.npy"
+
+                    gt_filename = f"{patient_id}_{tag}_slice_{slice_idx:02d}_gt.npy"
                     gt_slice_path = gt_slices_dir / gt_filename
                     np.save(gt_slice_path, gt_slice.astype(np.uint8))
-                    
+
                     gt_items.append({
                         'patient': patient_id,
-                        'frame_type': frame_type,
+                        'frame_tag': tag,
                         'slice_idx': int(slice_idx),
                         'npy_path': str(gt_slice_path)
                     })
     
-    # Save metadata
+    # Save frame manifest
+    write_manifest(manifest, output_dir / f"{patient_id}_manifest.json")
+
     metadata = {
         'patient_id': patient_id,
         'original_path': str(input_path),
-        'ed_frame': ed_frame,
-        'es_frame': es_frame,
+        'frame_tags': [f["tag"] for f in manifest["frames"]],
+        'frame_count': len(manifest["frames"]),
+        'ed_frame': manifest["frames"][0]["idx"] if manifest["frames"] else 0,
+        'es_frame': manifest["frames"][-1]["idx"] if len(manifest["frames"]) > 1 else None,
         'num_frames': data_4d.shape[-1],
         'num_slices': data_4d.shape[2],
         'original_shape': list(data_4d.shape),
@@ -203,6 +203,11 @@ def main():
     parser.add_argument('--ground_truth', help='Path to ground truth directory')
     parser.add_argument('--input_size', nargs=2, type=int, default=[256, 256],
                         help='Target input size')
+    parser.add_argument('--frames_mode', default='auto',
+                        choices=['auto', 'ed_es', 'all'],
+                        help='Frame extraction mode')
+    parser.add_argument('--max_frames', type=int, default=None,
+                        help='Maximum frames when in all-frames mode')
     
     args = parser.parse_args()
     
@@ -212,7 +217,9 @@ def main():
         patient_id=args.patient_id,
         info_cfg=Path(args.info_cfg) if args.info_cfg else None,
         ground_truth=Path(args.ground_truth) if args.ground_truth else None,
-        input_size=tuple(args.input_size)
+        input_size=tuple(args.input_size),
+        frames_mode=args.frames_mode,
+        max_frames=args.max_frames
     )
     
     print(f"Preprocessing complete for {args.patient_id}")

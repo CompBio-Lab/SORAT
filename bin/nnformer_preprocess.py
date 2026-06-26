@@ -14,6 +14,13 @@ from pathlib import Path
 
 import numpy as np
 import SimpleITK as sitk
+try:
+    from frame_manifest import build_frame_manifest, write_manifest
+except ImportError:
+    import os as _os
+    import sys as _sys
+    _sys.path.insert(0, _os.getcwd())
+    from frame_manifest import build_frame_manifest, write_manifest  # noqa: F401
 
 
 def convert_to_native(obj):
@@ -29,27 +36,6 @@ def convert_to_native(obj):
     elif isinstance(obj, list):
         return [convert_to_native(i) for i in obj]
     return obj
-
-
-def parse_info_cfg(info_path: Path) -> dict:
-    """Parse ACDC Info.cfg file to get ED/ES frame indices."""
-    info = {'ed_frame': 0, 'es_frame': None}
-    
-    if info_path and info_path.exists():
-        with open(info_path, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if ':' in line:
-                    key, value = line.split(':', 1)
-                    key = key.strip().lower()
-                    value = value.strip()
-                    
-                    if key == 'ed':
-                        info['ed_frame'] = int(value)
-                    elif key == 'es':
-                        info['es_frame'] = int(value)
-    
-    return info
 
 
 def extract_frame(image_4d: sitk.Image, frame_idx: int) -> sitk.Image:
@@ -73,7 +59,9 @@ def preprocess_patient(
     output_dir: Path,
     patient_id: str,
     info_cfg: Path = None,
-    ground_truth: Path = None
+    ground_truth: Path = None,
+    frames_mode: str = "auto",
+    max_frames: int = None
 ) -> dict:
     """
     Preprocess a single patient's data for nnFormer.
@@ -91,52 +79,49 @@ def preprocess_patient(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Parse info config
-    info = parse_info_cfg(info_cfg) if info_cfg else {'ed_frame': 0, 'es_frame': None}
-    
     # Load image
     image = sitk.ReadImage(str(input_path))
     array = sitk.GetArrayFromImage(image)
     
     is_4d = len(array.shape) == 4
+
+    # Build frame manifest (handles ED/ES vs all-frames logic)
+    num_frames = array.shape[0] if is_4d else 1
+
+    manifest = build_frame_manifest(
+        info_cfg_path=info_cfg,
+        num_frames=num_frames,
+        patient_id=patient_id,
+        frames_mode=frames_mode,
+        max_frames=max_frames,
+        ground_truth_path=ground_truth,
+    )
     
     if is_4d:
-        # 4D volume: extract ED and ES frames
-        ed_frame_idx = info['ed_frame']
-        es_frame_idx = info['es_frame'] if info['es_frame'] is not None else array.shape[0] - 1
-        
-        ed_image = extract_frame(image, ed_frame_idx)
-        es_image = extract_frame(image, es_frame_idx)
-        
-        # Save with nnFormer naming convention
-        # Use ED/ES naming instead of frame numbers for cleaner case IDs
-        ed_output = output_dir / f"{patient_id}_ED_0000.nii.gz"
-        es_output = output_dir / f"{patient_id}_ES_0000.nii.gz"
-        
-        sitk.WriteImage(ed_image, str(ed_output), useCompression=True)
-        sitk.WriteImage(es_image, str(es_output), useCompression=True)
-        
-        output_files = [str(ed_output), str(es_output)]
+        # 4D volume: extract frames according to manifest
+        output_files = []
+        for frame in manifest["frames"]:
+            tag = frame["tag"]
+            idx = frame["idx"]
+            frame_image = extract_frame(image, idx)
+            output_path = output_dir / f"{patient_id}_{tag}_0000.nii.gz"
+            sitk.WriteImage(frame_image, str(output_path), useCompression=True)
+            output_files.append(str(output_path))
     else:
-        # 3D volume: assume it's already a single frame
-        # Just add the _0000 suffix
+        # 3D volume: single frame
         output_path = output_dir / f"{patient_id}_0000.nii.gz"
         sitk.WriteImage(image, str(output_path), useCompression=True)
         output_files = [str(output_path)]
-        ed_frame_idx = 0
-        es_frame_idx = 0
     
-    # NOTE: Ground truth files are NOT copied to the preprocessing directory
-    # because nnFormer's predict_from_folder gets confused by non-input files.
-    # Ground truth is passed separately for metric computation.
-    
-    # Save metadata
+    # Save frame manifest
+    write_manifest(manifest, output_dir / f"{patient_id}_manifest.json")
+
     metadata = {
         'patient_id': patient_id,
         'input_path': str(input_path),
         'is_4d': is_4d,
-        'ed_frame': ed_frame_idx if is_4d else 0,
-        'es_frame': es_frame_idx if is_4d else 0,
+        'frame_tags': [f["tag"] for f in manifest["frames"]],
+        'frame_count': len(manifest["frames"]),
         'output_files': output_files,
         'spacing': list(image.GetSpacing()[:3])
     }
@@ -157,6 +142,11 @@ def main():
     parser.add_argument('--output_dir', required=True, help='Output directory')
     parser.add_argument('--info_cfg', help='Path to Info.cfg file')
     parser.add_argument('--ground_truth', help='Path to ground truth file or directory')
+    parser.add_argument('--frames_mode', default='auto',
+                        choices=['auto', 'ed_es', 'all'],
+                        help='Frame extraction mode')
+    parser.add_argument('--max_frames', type=int, default=None,
+                        help='Maximum frames when in all-frames mode')
     
     args = parser.parse_args()
     
@@ -165,7 +155,9 @@ def main():
         output_dir=Path(args.output_dir),
         patient_id=args.patient_id,
         info_cfg=Path(args.info_cfg) if args.info_cfg else None,
-        ground_truth=Path(args.ground_truth) if args.ground_truth else None
+        ground_truth=Path(args.ground_truth) if args.ground_truth else None,
+        frames_mode=args.frames_mode,
+        max_frames=args.max_frames,
     )
     
     print(f"Preprocessing complete for {args.patient_id}")

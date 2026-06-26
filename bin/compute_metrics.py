@@ -13,6 +13,12 @@ import pandas as pd
 import SimpleITK as sitk
 from medpy.metric import binary
 
+try:
+    from frame_manifest import resolve_frame_ground_truth
+except ImportError:
+    import os as _os, sys as _sys
+    _sys.path.insert(0, _os.getcwd())
+    from frame_manifest import resolve_frame_ground_truth
 
 VENTRICULAR_LABELS = [(1, "rv"), (2, "myo"), (3, "lv")]
 ATRIAL_LABELS = [(1, "wall"), (2, "ra"), (3, "la")]
@@ -131,20 +137,22 @@ def _infer_architecture(model: str) -> str:
 def compute_patient_metrics(
     patient_id: str,
     model: str,
-    seg_ed: Path,
-    seg_es: Path,
+    seg: Path,
+    frame_tag: str,
+    frame_idx: int,
     ground_truth: Path,
     output_path: Path,
     architecture: str = None
 ) -> pd.DataFrame:
     """
-    Compute metrics for a patient's ED and ES segmentations.
+    Compute metrics for a patient's single-frame segmentation.
     
     Args:
         patient_id: Patient identifier
         model: Model name
-        seg_ed: Path to ED segmentation
-        seg_es: Path to ES segmentation
+        seg: Path to segmentation file
+        frame_tag: Frame tag (e.g. "ED", "ES", or raw frame number)
+        frame_idx: Frame index (0-based)
         ground_truth: Path to ground truth directory or file
         output_path: Path to save metrics CSV
     
@@ -157,91 +165,38 @@ def compute_patient_metrics(
 
     label_spec = get_label_spec(architecture)
     
-    results = []
+    gt = resolve_frame_ground_truth(gt_path, frame_tag, frame_idx, patient_id, architecture=architecture)
     
-    # Find ground truth files
-    if gt_path.is_dir():
-        ed_gt_candidates = [
-            gt_path / f"{patient_id}_frame01_gt.nii.gz",
-            gt_path / f"{patient_id}_ED_gt.nii.gz",
-            gt_path / f"{patient_id}_sax_ed_gt.nii.gz"
-        ]
-        es_gt_candidates = [
-            gt_path / f"{patient_id}_ES_gt.nii.gz",
-            gt_path / f"{patient_id}_sax_es_gt.nii.gz"
-        ]
-        
-        # Add frame-based naming for ES
-        for i in range(2, 30):
-            es_gt_candidates.append(gt_path / f"{patient_id}_frame{i:02d}_gt.nii.gz")
-        
-        ed_gt = None
-        es_gt = None
-        
-        for candidate in ed_gt_candidates:
-            if candidate.exists():
-                ed_gt = candidate
-                break
-        
-        for candidate in es_gt_candidates:
-            if candidate.exists():
-                es_gt = candidate
-                break
+    has_gt = gt is not None and gt.exists()
+    
+    if has_gt and Path(seg).exists():
+        metrics = compute_metrics_for_volume(seg, gt, label_spec)
+        result = {
+            'patient_id': patient_id,
+            'model': model,
+            'architecture': architecture,
+            'frame_tag': frame_tag,
+            'frame_idx': frame_idx,
+            'has_gt': True,
+            **metrics
+        }
     else:
-        # Single ground truth file (assume it's for ED)
-        ed_gt = gt_path
-        es_gt = None
-    
-    # Compute ED metrics
-    if ed_gt and ed_gt.exists() and Path(seg_ed).exists():
-        ed_metrics = compute_metrics_for_volume(seg_ed, ed_gt, label_spec)
-        ed_result = {
+        result = {
             'patient_id': patient_id,
             'model': model,
-            'frame_type': 'ED',
-            **{f'ed_{k}': v for k, v in ed_metrics.items()}
+            'architecture': architecture,
+            'frame_tag': frame_tag,
+            'frame_idx': frame_idx,
+            'has_gt': False,
         }
-        results.append(ed_result)
+        for _, name in label_spec:
+            result[f'dice_{name}'] = float('nan')
+            result[f'hd95_{name}'] = float('nan')
+        result['dice_mean'] = float('nan')
+        result['hd95_mean'] = float('nan')
     
-    # Compute ES metrics
-    if es_gt and es_gt.exists() and Path(seg_es).exists():
-        es_metrics = compute_metrics_for_volume(seg_es, es_gt, label_spec)
-        es_result = {
-            'patient_id': patient_id,
-            'model': model,
-            'frame_type': 'ES',
-            **{f'es_{k}': v for k, v in es_metrics.items()}
-        }
-        results.append(es_result)
-    
-    # Create combined result
-    if results:
-        combined = {
-            'patient_id': patient_id,
-            'model': model,
-            'architecture': architecture
-        }
-        
-        for result in results:
-            for k, v in result.items():
-                if k not in ['patient_id', 'model', 'frame_type']:
-                    combined[k] = v
-        
-        # Compute overall means
-        if 'ed_dice_mean' in combined and 'es_dice_mean' in combined:
-            combined['overall_dice_mean'] = np.mean([combined['ed_dice_mean'], combined['es_dice_mean']])
-        elif 'ed_dice_mean' in combined:
-            combined['overall_dice_mean'] = combined['ed_dice_mean']
-        elif 'es_dice_mean' in combined:
-            combined['overall_dice_mean'] = combined['es_dice_mean']
-        
-        df = pd.DataFrame([combined])
-    else:
-        df = pd.DataFrame()
-    
-    # Save to CSV
+    df = pd.DataFrame([result])
     df.to_csv(output_path, index=False)
-    
     return df
 
 
@@ -250,8 +205,9 @@ def main():
     parser.add_argument('--patient_id', required=True, help='Patient identifier')
     parser.add_argument('--model', required=True, help='Model name')
     parser.add_argument('--architecture', default=None, help='Architecture name')
-    parser.add_argument('--seg_ed', required=True, help='Path to ED segmentation')
-    parser.add_argument('--seg_es', required=True, help='Path to ES segmentation')
+    parser.add_argument('--seg', required=True, help='Path to segmentation')
+    parser.add_argument('--frame_tag', required=True, type=str, help='Frame tag (e.g., ED, ES)')
+    parser.add_argument('--frame_idx', required=True, type=int, help='Frame index (0-based)')
     parser.add_argument('--ground_truth', required=True, help='Path to ground truth')
     parser.add_argument('--output', required=True, help='Output CSV path')
     
@@ -260,16 +216,17 @@ def main():
     df = compute_patient_metrics(
         patient_id=args.patient_id,
         model=args.model,
-        seg_ed=Path(args.seg_ed),
-        seg_es=Path(args.seg_es),
+        seg=Path(args.seg),
+        frame_tag=args.frame_tag,
+        frame_idx=args.frame_idx,
         ground_truth=Path(args.ground_truth),
         output_path=Path(args.output),
         architecture=args.architecture
     )
     
-    print(f"Metrics computed for {args.patient_id} using {args.model}")
+    print(f"Metrics computed for {args.patient_id} frame {args.frame_tag} using {args.model}")
     if not df.empty:
-        print(f"Overall Dice: {df['overall_dice_mean'].values[0]:.4f}")
+        print(f"Dice Mean: {df['dice_mean'].values[0]:.4f}")
 
 
 if __name__ == '__main__':

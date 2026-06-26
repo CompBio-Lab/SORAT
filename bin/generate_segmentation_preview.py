@@ -12,6 +12,13 @@ from matplotlib.patches import Patch
 import numpy as np
 import SimpleITK as sitk
 
+try:
+    from frame_manifest import resolve_frame_ground_truth
+except ImportError:
+    import os as _os, sys as _sys
+    _sys.path.insert(0, _os.getcwd())
+    from frame_manifest import resolve_frame_ground_truth
+
 DEFAULT_LABELS = {
     1: ("RV", np.array([0.95, 0.25, 0.25], dtype=np.float32), "fill"),
     2: ("MYO", np.array([0.95, 0.80, 0.20], dtype=np.float32), "fill"),
@@ -89,6 +96,14 @@ def extract_frame(image: sitk.Image, frame_idx: int) -> sitk.Image:
 
 
 def resample_image_to_reference(image: sitk.Image, reference: sitk.Image) -> np.ndarray:
+    # When voxel grids are the same size, the image and reference share the
+    # same array shape even if their direction/origin metadata differs (e.g.
+    # M&Ms oblique images vs. identity-direction segmentations).  Skip the
+    # physical-space resampling — which would produce all-zeros due to the
+    # mismatched geometry — and return the array directly.
+    if image.GetSize() == reference.GetSize():
+        return sitk.GetArrayFromImage(image)
+
     rs = sitk.ResampleImageFilter()
     rs.SetReferenceImage(reference)
     rs.SetInterpolator(sitk.sitkLinear)
@@ -98,6 +113,9 @@ def resample_image_to_reference(image: sitk.Image, reference: sitk.Image) -> np.
 
 
 def resample_label_to_reference(label: sitk.Image, reference: sitk.Image) -> sitk.Image:
+    if label.GetSize() == reference.GetSize():
+        return label
+
     rs = sitk.ResampleImageFilter()
     rs.SetReferenceImage(reference)
     rs.SetInterpolator(sitk.sitkNearestNeighbor)
@@ -167,67 +185,6 @@ def dice_score(pred: np.ndarray, gt: np.ndarray) -> float:
     if denom == 0.0:
         return 1.0
     return float(2.0 * np.logical_and(pred, gt).sum() / denom)
-
-
-def _frame_candidates(frame_idx: Optional[int]) -> list[int]:
-    if frame_idx is None:
-        return []
-
-    candidates = []
-    for value in [frame_idx, frame_idx - 1, frame_idx + 1]:
-        if value is None:
-            continue
-        if 0 <= value <= 99 and value not in candidates:
-            candidates.append(value)
-    return candidates
-
-
-def resolve_phase_ground_truth(
-    patient_id: str,
-    phase: str,
-    ground_truth: str,
-    ed_idx: Optional[int],
-    es_idx: Optional[int],
-) -> Optional[sitk.Image]:
-    if not ground_truth:
-        return None
-
-    gt_path = Path(ground_truth)
-    if not gt_path.exists():
-        return None
-
-    if gt_path.is_file():
-        return sitk.ReadImage(str(gt_path))
-
-    candidates: list[Path] = []
-
-    if phase == "ED":
-        candidates.extend(
-            [
-                gt_path / f"{patient_id}_frame01_gt.nii.gz",
-                gt_path / f"{patient_id}_ED_gt.nii.gz",
-                gt_path / f"{patient_id}_sax_ed_gt.nii.gz",
-            ]
-        )
-        for idx in _frame_candidates(ed_idx):
-            candidates.append(gt_path / f"{patient_id}_frame{idx:02d}_gt.nii.gz")
-    else:
-        candidates.extend(
-            [
-                gt_path / f"{patient_id}_ES_gt.nii.gz",
-                gt_path / f"{patient_id}_sax_es_gt.nii.gz",
-            ]
-        )
-        for idx in _frame_candidates(es_idx):
-            candidates.append(gt_path / f"{patient_id}_frame{idx:02d}_gt.nii.gz")
-        for idx in range(2, 30):
-            candidates.append(gt_path / f"{patient_id}_frame{idx:02d}_gt.nii.gz")
-
-    for candidate in candidates:
-        if candidate.exists():
-            return sitk.ReadImage(str(candidate))
-
-    return None
 
 
 def to_overlay(gray: np.ndarray, seg: np.ndarray, label_defs: dict[int, tuple[str, np.ndarray, str]], alpha: float = 0.45) -> np.ndarray:
@@ -406,15 +363,15 @@ def render_preview(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate ED/ES segmentation preview PNGs")
+    parser = argparse.ArgumentParser(description="Generate segmentation preview PNG for a single frame")
     parser.add_argument("--patient_id", required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--image", required=True)
     parser.add_argument("--ground_truth", default="")
-    parser.add_argument("--seg_ed", required=True)
-    parser.add_argument("--seg_es", required=True)
-    parser.add_argument("--output_ed_png", required=True)
-    parser.add_argument("--output_es_png", required=True)
+    parser.add_argument("--seg", required=True)
+    parser.add_argument("--output_png", required=True)
+    parser.add_argument("--frame_tag", default="")
+    parser.add_argument("--frame_idx", type=int, default=0)
     parser.add_argument("--info_cfg", default="")
     parser.add_argument("--architecture", default="", help="Model architecture (e.g., atrial_nnunet)")
     args = parser.parse_args()
@@ -422,62 +379,39 @@ def main() -> None:
     architecture = infer_architecture(args.model, args.architecture)
 
     image = sitk.ReadImage(args.image)
-    seg_ed_img = sitk.ReadImage(args.seg_ed)
-    seg_es_img = sitk.ReadImage(args.seg_es)
-
-    ed_cfg, es_cfg = parse_info_cfg(args.info_cfg.strip() or None)
+    seg_img = sitk.ReadImage(args.seg)
 
     image_arr = sitk.GetArrayFromImage(image)
     n_frames = image_arr.shape[0] if image_arr.ndim == 4 else 1
 
-    ed_idx = ed_cfg if ed_cfg is not None else 0
-    es_idx = es_cfg if es_cfg is not None else (1 if n_frames > 1 else 0)
+    frame_idx = args.frame_idx
+    if frame_idx < 0 or frame_idx >= n_frames:
+        ed_cfg, es_cfg = parse_info_cfg(args.info_cfg.strip() or None)
+        fallback = ed_cfg if ed_cfg is not None else 0
+        frame_idx = max(0, min(fallback, n_frames - 1))
 
-    ed_frame = extract_frame(image, ed_idx)
-    es_frame = extract_frame(image, es_idx)
+    frame = extract_frame(image, frame_idx)
 
-    seg_ed_arr = sitk.GetArrayFromImage(seg_ed_img)
-    seg_es_arr = sitk.GetArrayFromImage(seg_es_img)
-
-    ed_img_arr = resample_image_to_reference(ed_frame, seg_ed_img)
-    es_img_arr = resample_image_to_reference(es_frame, seg_es_img)
+    seg_arr = sitk.GetArrayFromImage(seg_img)
+    img_arr = resample_image_to_reference(frame, seg_img)
 
     gt_arg = args.ground_truth.strip()
-    ed_gt_img = resolve_phase_ground_truth(args.patient_id, "ED", gt_arg, ed_cfg, es_cfg)
-    es_gt_img = resolve_phase_ground_truth(args.patient_id, "ES", gt_arg, ed_cfg, es_cfg)
+    gt_resolved = resolve_frame_ground_truth(gt_arg, args.frame_tag, args.frame_idx, args.patient_id, architecture=architecture)
 
-    # Single-label datasets (e.g., atrial MBAS) often provide one GT volume.
-    if es_gt_img is None and ed_gt_img is not None:
-        es_gt_img = ed_gt_img
-
-    ed_gt_arr = None
-    if ed_gt_img is not None:
-        ed_gt_arr = sitk.GetArrayFromImage(resample_label_to_reference(ed_gt_img, seg_ed_img))
-
-    es_gt_arr = None
-    if es_gt_img is not None:
-        es_gt_arr = sitk.GetArrayFromImage(resample_label_to_reference(es_gt_img, seg_es_img))
+    gt_arr = None
+    if gt_resolved is not None:
+        gt_img = sitk.ReadImage(str(gt_resolved))
+        gt_arr = sitk.GetArrayFromImage(resample_label_to_reference(gt_img, seg_img))
 
     render_preview(
         patient_id=args.patient_id,
         model=args.model,
         architecture=architecture,
-        phase="ED",
-        image_arr=ed_img_arr,
-        seg_arr=seg_ed_arr,
-        gt_arr=ed_gt_arr,
-        output_png=Path(args.output_ed_png),
-    )
-
-    render_preview(
-        patient_id=args.patient_id,
-        model=args.model,
-        architecture=architecture,
-        phase="ES",
-        image_arr=es_img_arr,
-        seg_arr=seg_es_arr,
-        gt_arr=es_gt_arr,
-        output_png=Path(args.output_es_png),
+        phase=args.frame_tag,
+        image_arr=img_arr,
+        seg_arr=seg_arr,
+        gt_arr=gt_arr,
+        output_png=Path(args.output_png),
     )
 
 

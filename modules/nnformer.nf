@@ -22,22 +22,26 @@ process NNFORMER_PREPROCESS {
     publishDir "${params.outdir}/nnformer/preprocessed", mode: params.publish_dir_mode
     
     input:
-    tuple val(patient_id), path(image), path(ground_truth), path(info_cfg), val(preprocess_key)
+    tuple val(patient_id), path(image), val(ground_truth), val(info_cfg), val(preprocess_key)
     
     output:
-    tuple val(patient_id), path("${patient_id}_preprocessed"), path(ground_truth), path(info_cfg), emit: preprocessed
+    tuple val(patient_id), path("${patient_id}_preprocessed"), val(ground_truth), val(info_cfg), emit: preprocessed
     path "versions.yml", emit: versions
     
     script:
-    def gt_arg = ground_truth ? "--ground_truth ${ground_truth}" : ""
-    def info_arg = info_cfg ? "--info_cfg ${info_cfg}" : ""
+    def gt_arg = ground_truth ? "--ground_truth '${ground_truth}'" : ""
+    def info_arg = info_cfg ? "--info_cfg '${info_cfg}'" : ""
+    def frames_mode = params.frames_mode ?: 'auto'
+    def max_frames_arg = params.max_frames ? "--max_frames ${params.max_frames}" : ""
     """
     nnformer_preprocess.py \\
         --input ${image} \\
         --patient_id ${patient_id} \\
         --output_dir ${patient_id}_preprocessed \\
         ${gt_arg} \\
-        ${info_arg}
+        ${info_arg} \\
+        --frames_mode ${frames_mode} \\
+        ${max_frames_arg}
     
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
@@ -57,10 +61,10 @@ process NNFORMER_SEGMENT {
     publishDir "${params.outdir}/nnformer/segmentations", mode: params.publish_dir_mode
     
     input:
-    tuple val(patient_id), path(preprocessed_dir), path(ground_truth), path(info_cfg), val(fold), val(model_tag)
+    tuple val(patient_id), path(preprocessed_dir), val(ground_truth), val(info_cfg), val(fold), val(model_tag)
     
     output:
-    tuple val(patient_id), path("${patient_id}_ED_${model_tag}.nii.gz"), path("${patient_id}_ES_${model_tag}.nii.gz"), val(meta), emit: segmentation
+    tuple val(patient_id), path("${patient_id}_*_${model_tag}.nii.gz"), path("${patient_id}_${model_tag}_manifest.json"), val(meta), emit: segmentation
     path "versions.yml", emit: versions
     
     script:

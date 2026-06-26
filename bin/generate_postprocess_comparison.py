@@ -179,7 +179,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Visualize postprocess delta")
     parser.add_argument("--patient_id", required=True)
     parser.add_argument("--model", required=True)
-    parser.add_argument("--frame", choices=["ED", "ES"], required=True)
+    parser.add_argument("--frame_tag", required=True)
+    parser.add_argument("--frame_idx", type=int, default=0)
     parser.add_argument("--image", required=True)
     parser.add_argument("--info_cfg", default="")
     parser.add_argument("--seg_before", required=True)
@@ -189,13 +190,14 @@ def main() -> None:
     args = parser.parse_args()
 
     image_4d = sitk.ReadImage(args.image)
-    ed_cfg, es_cfg = parse_info_cfg(args.info_cfg.strip() or None)
     arr = sitk.GetArrayFromImage(image_4d)
     n_frames = arr.shape[0] if arr.ndim == 4 else 1
-    if args.frame == "ED":
-        frame_idx = ed_cfg if ed_cfg is not None else 0
-    else:
-        frame_idx = es_cfg if es_cfg is not None else (1 if n_frames > 1 else 0)
+
+    frame_idx = args.frame_idx
+    if frame_idx < 0 or frame_idx >= n_frames:
+        ed_cfg, es_cfg = parse_info_cfg(args.info_cfg.strip() or None)
+        fallback = ed_cfg if ed_cfg is not None else 0
+        frame_idx = max(0, min(fallback, n_frames - 1))
 
     frame_img = extract_frame(image_4d, frame_idx)
     seg_before_img = sitk.ReadImage(args.seg_before)
@@ -210,7 +212,7 @@ def main() -> None:
     render(
         patient_id=args.patient_id,
         model=args.model,
-        frame_name=args.frame,
+        frame_name=args.frame_tag,
         image_arr=image_arr,
         seg_before=before_arr,
         seg_after=after_arr,

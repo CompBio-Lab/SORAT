@@ -10,6 +10,14 @@ import json
 import re
 from pathlib import Path
 
+try:
+    from frame_manifest import read_manifest, write_manifest
+except ImportError:
+    import os as _os
+    import sys as _sys
+    _sys.path.insert(0, _os.getcwd())
+    from frame_manifest import read_manifest, write_manifest  # noqa: F401
+
 import monai
 import nibabel as nib
 import numpy as np
@@ -146,45 +154,70 @@ def segment_patient(
     with open(metadata_path, 'r') as f:
         metadata = json.load(f)
     
-    # Organize slices by frame type
-    slices_by_frame = {'ED': {}, 'ES': {}}
-    for item in metadata['slice_items']:
-        frame_type = item['frame_type']
-        slice_idx = item['slice_idx']
-        slices_by_frame[frame_type][slice_idx] = item
+    # Load frame manifest (from separate file or metadata)
+    manifest_path = input_dir / f"{patient_id}_manifest.json"
+    if manifest_path.exists():
+        manifest = read_manifest(manifest_path)
+    else:
+        # Backward compat: derive from metadata
+        manifest = {
+            "patient_id": patient_id,
+            "frames": [],
+        }
+        # Check if metadata has frame_tags
+        if "frame_tags" in metadata:
+            for tag in metadata["frame_tags"]:
+                manifest["frames"].append({"tag": tag, "idx": 0})
+        else:
+            # Old format: fallback to ED/ES
+            manifest["frames"] = [
+                {"tag": "ED", "idx": metadata.get("ed_frame", 0)},
+                {"tag": "ES", "idx": metadata.get("es_frame", metadata.get("num_frames", 1) - 1)},
+            ]
     
-    # Process each frame
-    results = {}
-    for frame_type in ['ED', 'ES']:
-        if not slices_by_frame[frame_type]:
+    # Organize slices by frame tag (from manifest)
+    slices_by_frame = {}
+    known_tags = {f["tag"] for f in manifest["frames"]}
+    for item in metadata['slice_items']:
+        # Support both old 'frame_type' and new 'frame_tag' keys
+        frame_tag = item.get('frame_tag', item.get('frame_type', ''))
+        slice_idx = item['slice_idx']
+        if frame_tag not in slices_by_frame:
+            slices_by_frame[frame_tag] = {}
+        slices_by_frame[frame_tag][slice_idx] = item
+    
+    # Process each frame from the manifest
+    saved_frames = []
+    for frame in manifest["frames"]:
+        tag = frame["tag"]
+        if tag not in slices_by_frame or not slices_by_frame[tag]:
             continue
-        
-        slice_indices = sorted(slices_by_frame[frame_type].keys())
-        
+
+        slice_indices = sorted(slices_by_frame[tag].keys())
+
         # Segment each slice
         segmentations = {}
         original_shape = None
-        
+
         for slice_idx in slice_indices:
-            item = slices_by_frame[frame_type][slice_idx]
+            item = slices_by_frame[tag][slice_idx]
             slice_data = np.load(item['npy_path'])
-            
+
             if original_shape is None:
                 original_shape = slice_data.shape
-            
+
             seg = segment_slice(model, slice_data, device)
             segmentations[slice_idx] = seg
-        
+
         # Stack into 3D volume
         num_slices = max(slice_indices) + 1
         volume_shape = (original_shape[0], original_shape[1], num_slices)
         volume = np.zeros(volume_shape, dtype=np.uint8)
-        
+
         for slice_idx, seg in segmentations.items():
             if seg.shape[:2] == volume_shape[:2]:
                 volume[:, :, slice_idx] = seg
             else:
-                # Resize if needed
                 seg_resized = resize(
                     seg.astype(np.float32),
                     volume_shape[:2],
@@ -192,26 +225,30 @@ def segment_patient(
                     order=0
                 ).astype(np.uint8)
                 volume[:, :, slice_idx] = seg_resized
-        
+
         # Save as NIfTI
-        output_path = f"{output_prefix}_{frame_type}_{model_tag}.nii.gz"
-        
-        # Get voxel spacing from metadata
+        output_path = f"{output_prefix}_{tag}_{model_tag}.nii.gz"
         spacing = metadata.get('voxelspacing', [1.0, 1.0, 1.0])[:3]
-        
-        # Create SimpleITK image
         seg_sitk = sitk.GetImageFromArray(np.transpose(volume, (2, 1, 0)))
         seg_sitk.SetSpacing(spacing)
         sitk.WriteImage(seg_sitk, output_path, useCompression=True)
-        
-        results[f'{frame_type.lower()}_output'] = output_path
+        saved_frames.append({"tag": tag, "output": output_path})
     
+    # Write segment manifest
+    segment_manifest = {
+        "patient_id": patient_id,
+        "has_info_cfg": manifest.get("has_info_cfg", False),
+        "num_frames": manifest.get("num_frames", len(manifest["frames"])),
+        "frames": manifest["frames"],
+    }
+    write_manifest(segment_manifest, f"{output_prefix}_{model_tag}_manifest.json")
+
     return {
         'patient_id': patient_id,
         'architecture': 'vsa3l',
         'model_tag': model_tag,
-        'ed_output': results.get('ed_output', f"{output_prefix}_ED_{model_tag}.nii.gz"),
-        'es_output': results.get('es_output', f"{output_prefix}_ES_{model_tag}.nii.gz")
+        'frame_tags': [f["tag"] for f in manifest["frames"]],
+        'frame_count': len(saved_frames),
     }
 
 
@@ -236,8 +273,7 @@ def main():
     )
     
     print(f"Segmentation complete for {args.patient_id}")
-    print(f"ED output: {results['ed_output']}")
-    print(f"ES output: {results['es_output']}")
+    print(f"Output frames: {results.get('frame_tags', [])}")
 
 
 if __name__ == '__main__':

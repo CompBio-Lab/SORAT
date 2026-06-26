@@ -10,9 +10,6 @@ Supports:
   - M&Ms layout: {CASE_ID}/{CASE_ID}_sa.nii.gz, {CASE_ID}_sa_gt.nii.gz,
     ED/ES from metadata CSV
   - Generic layout: any case directories with .nii.gz files
-
-When a metadata CSV provides ED/ES frames but no native Info.cfg exists,
-synthetic Info.cfg files are generated in --info_cfg_dir.
 """
 
 import argparse
@@ -146,18 +143,6 @@ def _parse_metadata_csv(
     return lookup
 
 
-def _write_synthetic_info_cfg(info_cfg_dir: Path, case_id: str, ed: Optional[int], es: Optional[int]) -> str:
-    info_cfg_dir.mkdir(parents=True, exist_ok=True)
-    cfg_path = (info_cfg_dir / f"{case_id}_Info.cfg").resolve()
-    lines = []
-    if ed is not None:
-        lines.append(f"ED: {ed}")
-    if es is not None:
-        lines.append(f"ES: {es}")
-    cfg_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return str(cfg_path)
-
-
 def _discover_split_dir(data_root: Path, data_split: Optional[str]) -> Path:
     if data_split:
         split_dir = data_root / data_split
@@ -189,7 +174,6 @@ def generate_samplesheet(
     case_id_col: str = "External code",
     ed_col: str = "ED",
     es_col: str = "ES",
-    info_cfg_dir: Optional[Path] = None,
 ) -> int:
     data_dir = _discover_split_dir(data_root, data_split)
 
@@ -232,12 +216,6 @@ def generate_samplesheet(
 
         if native_info:
             info_cfg_path = str(native_info)
-        elif meta.get("ed") is not None or meta.get("es") is not None:
-            if info_cfg_dir is None:
-                info_cfg_dir = Path(".cache/generated_inputs/info_cfg").resolve()
-            info_cfg_path = _write_synthetic_info_cfg(
-                info_cfg_dir, case_id, meta.get("ed"), meta.get("es")
-            )
         else:
             info_cfg_path = ""
 
@@ -295,11 +273,6 @@ def main() -> None:
         default="ES",
         help="Column in metadata CSV for ES frame index",
     )
-    parser.add_argument(
-        "--info_cfg_dir",
-        default=None,
-        help="Directory for synthetic Info.cfg files (default: .cache/generated_inputs/info_cfg)",
-    )
 
     args = parser.parse_args()
 
@@ -313,11 +286,6 @@ def main() -> None:
         print(f"Warning: metadata_csv not found: {metadata_csv}", file=sys.stderr)
         metadata_csv = None
 
-    info_cfg_dir = (
-        Path(args.info_cfg_dir) if args.info_cfg_dir
-        else Path(".cache/generated_inputs/info_cfg")
-    )
-
     try:
         count = generate_samplesheet(
             data_root=data_root,
@@ -327,7 +295,6 @@ def main() -> None:
             case_id_col=args.case_id_col,
             ed_col=args.ed_col,
             es_col=args.es_col,
-            info_cfg_dir=info_cfg_dir,
         )
         sys.exit(0 if count > 0 else 1)
     except Exception as exc:

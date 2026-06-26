@@ -473,14 +473,13 @@ def _frame_postprocess_otsu_2d(
 def process_case(
 	patient_id: str,
 	model: str,
-	seg_ed: Path,
-	seg_es: Path,
+	seg: Path,
 	image_4d_path: Path,
 	info_cfg: Optional[str],
-	output_ed: Path,
-	output_es: Path,
-	delta_ed: Path,
-	delta_es: Path,
+	output: Path,
+	delta: Path,
+	frame_tag: str,
+	frame_idx: int,
 	summary_json: Path,
 	method: str,
 	strength: float,
@@ -495,43 +494,17 @@ def process_case(
 	smoothing_radius: int,
 	smoothing_iterations: int,
 ) -> None:
-	seg_ed_img, seg_ed_arr = _read_seg(seg_ed)
-	seg_es_img, seg_es_arr = _read_seg(seg_es)
+	seg_img, seg_arr = _read_seg(seg)
 
 	image_4d = _read_volume(image_4d_path)
-	arr4d = sitk.GetArrayFromImage(image_4d)
-	n_frames = arr4d.shape[0] if arr4d.ndim == 4 else 1
 
-	ed_idx_cfg, es_idx_cfg = _parse_info_cfg(info_cfg)
-	ed_idx = ed_idx_cfg if ed_idx_cfg is not None else 0
-	if es_idx_cfg is not None:
-		es_idx = es_idx_cfg
-	else:
-		es_idx = 1 if n_frames > 1 else 0
-
-	ed_frame_img = _extract_frame(image_4d, ed_idx)
-	es_frame_img = _extract_frame(image_4d, es_idx)
-	ed_frame_rs = _resample_to_seg(ed_frame_img, seg_ed_img)
-	es_frame_rs = _resample_to_seg(es_frame_img, seg_es_img)
+	frame_img = _extract_frame(image_4d, frame_idx)
+	frame_rs = _resample_to_seg(frame_img, seg_img)
 
 	if method == "legacy":
-		ed_out, ed_delta, ed_stats = _frame_postprocess_legacy(
-			seg=seg_ed_arr,
-			frame_img_resampled=ed_frame_rs,
-			threshold_mode=threshold_mode,
-			threshold_percentile=threshold_percentile,
-			threshold_absolute=threshold_absolute,
-			min_component_size=min_component_size,
-			boundary_band_radius=boundary_band_radius,
-			adjacency_radius=adjacency_radius,
-			max_relabel_fraction=max_relabel_fraction,
-			min_remaining_lv_fraction=min_remaining_lv_fraction,
-			smoothing_radius=smoothing_radius,
-			smoothing_iterations=smoothing_iterations,
-		)
-		es_out, es_delta, es_stats = _frame_postprocess_legacy(
-			seg=seg_es_arr,
-			frame_img_resampled=es_frame_rs,
+		out, delta_arr, stats = _frame_postprocess_legacy(
+			seg=seg_arr,
+			frame_img_resampled=frame_rs,
 			threshold_mode=threshold_mode,
 			threshold_percentile=threshold_percentile,
 			threshold_absolute=threshold_absolute,
@@ -544,34 +517,21 @@ def process_case(
 			smoothing_iterations=smoothing_iterations,
 		)
 	else:
-		ed_out, ed_delta, ed_stats = _frame_postprocess_otsu_2d(
-			seg=seg_ed_arr,
-			frame_img_resampled=ed_frame_rs,
-			strength=strength,
-			max_relabel_fraction=max_relabel_fraction,
-			min_remaining_lv_fraction=min_remaining_lv_fraction,
-		)
-		es_out, es_delta, es_stats = _frame_postprocess_otsu_2d(
-			seg=seg_es_arr,
-			frame_img_resampled=es_frame_rs,
+		out, delta_arr, stats = _frame_postprocess_otsu_2d(
+			seg=seg_arr,
+			frame_img_resampled=frame_rs,
 			strength=strength,
 			max_relabel_fraction=max_relabel_fraction,
 			min_remaining_lv_fraction=min_remaining_lv_fraction,
 		)
 
-	ed_out_img = sitk.GetImageFromArray(ed_out.astype(np.uint8))
-	ed_out_img.CopyInformation(seg_ed_img)
-	es_out_img = sitk.GetImageFromArray(es_out.astype(np.uint8))
-	es_out_img.CopyInformation(seg_es_img)
-	sitk.WriteImage(ed_out_img, str(output_ed), useCompression=True)
-	sitk.WriteImage(es_out_img, str(output_es), useCompression=True)
+	out_img = sitk.GetImageFromArray(out.astype(np.uint8))
+	out_img.CopyInformation(seg_img)
+	sitk.WriteImage(out_img, str(output), useCompression=True)
 
-	ed_delta_img = sitk.GetImageFromArray(ed_delta.astype(np.uint8))
-	ed_delta_img.CopyInformation(seg_ed_img)
-	es_delta_img = sitk.GetImageFromArray(es_delta.astype(np.uint8))
-	es_delta_img.CopyInformation(seg_es_img)
-	sitk.WriteImage(ed_delta_img, str(delta_ed), useCompression=True)
-	sitk.WriteImage(es_delta_img, str(delta_es), useCompression=True)
+	delta_img = sitk.GetImageFromArray(delta_arr.astype(np.uint8))
+	delta_img.CopyInformation(seg_img)
+	sitk.WriteImage(delta_img, str(delta), useCompression=True)
 
 	summary = {
 		"patient_id": patient_id,
@@ -579,10 +539,9 @@ def process_case(
 		"image": str(image_4d_path),
 		"info_cfg": info_cfg or "",
 		"frames": {
-			"ed": {"frame_index": int(ed_idx), **ed_stats},
-			"es": {"frame_index": int(es_idx), **es_stats},
+			frame_tag: {"frame_index": int(frame_idx), **stats},
 		},
-		"total_changed_voxels": int(ed_stats["changed_voxels"] + es_stats["changed_voxels"]),
+		"total_changed_voxels": int(stats["changed_voxels"]),
 		"params": {
 			"method": method,
 			"strength": float(strength),
@@ -605,14 +564,13 @@ def main() -> None:
 	parser = argparse.ArgumentParser(description="Optional LV->MYO postprocessing")
 	parser.add_argument("--patient_id", required=True)
 	parser.add_argument("--model", required=True)
-	parser.add_argument("--seg_ed", required=True)
-	parser.add_argument("--seg_es", required=True)
+	parser.add_argument("--seg", required=True)
 	parser.add_argument("--image", required=True, help="Original patient image (3D/4D)")
-	parser.add_argument("--info_cfg", default="", help="Optional Info.cfg with ED/ES indices")
-	parser.add_argument("--output_ed", required=True)
-	parser.add_argument("--output_es", required=True)
-	parser.add_argument("--delta_ed", required=True)
-	parser.add_argument("--delta_es", required=True)
+	parser.add_argument("--info_cfg", default="", help="Optional Info.cfg for legacy fallback")
+	parser.add_argument("--output", required=True)
+	parser.add_argument("--delta", required=True)
+	parser.add_argument("--frame_tag", required=True)
+	parser.add_argument("--frame_idx", type=int, required=True)
 	parser.add_argument("--summary_json", required=True)
 	parser.add_argument("--method", choices=["otsu", "legacy"], default="otsu")
 	parser.add_argument("--strength", type=float, default=0.5, help="Conservative-to-aggressive relabel strength [0,1]")
@@ -633,14 +591,13 @@ def main() -> None:
 	process_case(
 		patient_id=args.patient_id,
 		model=args.model,
-		seg_ed=Path(args.seg_ed),
-		seg_es=Path(args.seg_es),
+		seg=Path(args.seg),
 		image_4d_path=Path(args.image),
 		info_cfg=args.info_cfg.strip() or None,
-		output_ed=Path(args.output_ed),
-		output_es=Path(args.output_es),
-		delta_ed=Path(args.delta_ed),
-		delta_es=Path(args.delta_es),
+		output=Path(args.output),
+		delta=Path(args.delta),
+		frame_tag=args.frame_tag,
+		frame_idx=args.frame_idx,
 		summary_json=Path(args.summary_json),
 		method=args.method,
 		strength=args.strength,

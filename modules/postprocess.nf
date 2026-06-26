@@ -45,30 +45,31 @@ process POSTPROCESS_LV_MYO {
 	publishDir "${params.outdir}/postprocess/${model}/summaries", mode: params.publish_dir_mode, pattern: "*_postprocess_summary.json"
 
 	input:
-	tuple val(patient_id), val(model), path(seg_ed), path(seg_es), val(meta), val(image_path), val(info_cfg)
+	tuple val(patient_id), val(model), val(frame_tag), val(frame_idx), path(seg), val(meta), val(image_path), val(info_cfg)
 
 	output:
-	tuple val(patient_id), val(model), path("${patient_id}_ED_${model}_pp.nii.gz"), path("${patient_id}_ES_${model}_pp.nii.gz"), val(meta_pp), val(image_path), val(info_cfg), emit: segmentations
-	tuple val(patient_id), val(model), path(seg_ed), path(seg_es), path("${patient_id}_ED_${model}_pp.nii.gz"), path("${patient_id}_ES_${model}_pp.nii.gz"), path("${patient_id}_delta_ED_${model}.nii.gz"), path("${patient_id}_delta_ES_${model}.nii.gz"), val(image_path), val(info_cfg), emit: before_after
+	tuple val(patient_id), val(model), val(frame_tag), val(frame_idx), path("${patient_id}_${frame_tag}_${model}_pp.nii.gz"), val(meta_pp), val(image_path), val(info_cfg), emit: segmentations
+	tuple val(patient_id), val(model), val(frame_tag), path(seg), path("${patient_id}_${frame_tag}_${model}_pp.nii.gz"), path("${patient_id}_delta_${frame_tag}_${model}.nii.gz"), val(image_path), val(info_cfg), emit: before_after
 	path "${patient_id}_${model}_postprocess_summary.json", emit: summaries
 	path "versions.yml", emit: versions
 
 	script:
 	meta_pp = meta + [postprocessed: true, postprocess_module: 'lv_myo_otsu']
 
-	def infoArg = info_cfg ? "--info_cfg ${info_cfg}" : ""
-	"""
-	python /app/bin/postprocess_lv_myo.py \
-		--patient_id ${patient_id} \
-		--model ${model} \
-		--seg_ed ${seg_ed} \
-		--seg_es ${seg_es} \
-		--image ${image_path} \
-		${infoArg} \
-		--output_ed ${patient_id}_ED_${model}_pp.nii.gz \
-		--output_es ${patient_id}_ES_${model}_pp.nii.gz \
-		--delta_ed ${patient_id}_delta_ED_${model}.nii.gz \
-		--delta_es ${patient_id}_delta_ES_${model}.nii.gz \
+    def infoArg = info_cfg ? "--info_cfg '${info_cfg}'" : ""
+    """
+    cp ${projectDir}/bin/frame_manifest.py . 2>/dev/null || true
+
+    python /app/bin/postprocess_lv_myo.py \
+        --patient_id ${patient_id} \
+        --model ${model} \
+        --seg ${seg} \
+        --frame_tag ${frame_tag} \
+        --frame_idx ${frame_idx} \
+        --image '${image_path}' \
+        ${infoArg} \
+		--output ${patient_id}_${frame_tag}_${model}_pp.nii.gz \
+		--delta ${patient_id}_delta_${frame_tag}_${model}.nii.gz \
 		--summary_json ${patient_id}_${model}_postprocess_summary.json \
 		--method otsu \
 		--strength ${params.postprocess.strength}
@@ -90,37 +91,27 @@ process VISUALIZE_POSTPROCESS_DELTA {
 	publishDir "${params.outdir}/postprocess/${model}/figures", mode: params.publish_dir_mode
 
 	input:
-	tuple val(patient_id), val(model), path(seg_ed_before), path(seg_es_before), path(seg_ed_after), path(seg_es_after), path(delta_ed), path(delta_es), val(image_path), val(info_cfg)
+	tuple val(patient_id), val(model), val(frame_tag), path(seg_before), path(seg_after), path(delta), val(image_path), val(info_cfg)
 
 	output:
-	path "${patient_id}_${model}_ED_postprocess_comparison.png", emit: ed_figures
-	path "${patient_id}_${model}_ES_postprocess_comparison.png", emit: es_figures
+	path "${patient_id}_${model}_${frame_tag}_postprocess_comparison.png", emit: figures
 	path "versions.yml", emit: versions
 
 	script:
-	def infoArg = info_cfg ? "--info_cfg ${info_cfg}" : ""
-	"""
-	python /app/bin/generate_postprocess_comparison.py \
-		--patient_id ${patient_id} \
-		--model ${model} \
-		--frame ED \
-		--image ${image_path} \
-		${infoArg} \
-		--seg_before ${seg_ed_before} \
-		--seg_after ${seg_ed_after} \
-		--delta ${delta_ed} \
-		--output_png ${patient_id}_${model}_ED_postprocess_comparison.png
+    def infoArg = info_cfg ? "--info_cfg '${info_cfg}'" : ""
+    """
+    cp ${projectDir}/bin/frame_manifest.py . 2>/dev/null || true
 
-	python /app/bin/generate_postprocess_comparison.py \
-		--patient_id ${patient_id} \
-		--model ${model} \
-		--frame ES \
-		--image ${image_path} \
-		${infoArg} \
-		--seg_before ${seg_es_before} \
-		--seg_after ${seg_es_after} \
-		--delta ${delta_es} \
-		--output_png ${patient_id}_${model}_ES_postprocess_comparison.png
+    python /app/bin/generate_postprocess_comparison.py \
+        --patient_id ${patient_id} \
+        --model ${model} \
+        --frame_tag ${frame_tag} \
+        --image '${image_path}' \
+        ${infoArg} \
+		--seg_before ${seg_before} \
+		--seg_after ${seg_after} \
+		--delta ${delta} \
+		--output_png ${patient_id}_${model}_${frame_tag}_postprocess_comparison.png
 
 	cat <<-END_VERSIONS > versions.yml
 	"${task.process}":

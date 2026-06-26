@@ -150,21 +150,17 @@ def load_mask(mask_path: Path) -> Tuple[sitk.Image, np.ndarray]:
     return mask_img, mask_arr
 
 
-def prepare_phase_image(image_path: Path, mask_img: sitk.Image, phase: str, info_cfg: Optional[str]) -> sitk.Image:
+def prepare_phase_image(image_path: Path, mask_img: sitk.Image, frame_idx: int) -> sitk.Image:
     """Load original image and return a phase-specific 3D image in mask space."""
     image = sitk.ReadImage(str(image_path))
-    ed_idx, es_idx = parse_info_cfg(info_cfg)
-    frame_idx = choose_frame_index(phase, ed_idx, es_idx)
 
     if image.GetDimension() == 4:
         image_3d = extract_3d_frame(image, frame_idx)
     elif image.GetNumberOfComponentsPerPixel() > 1:
-        # Some NIfTI readers expose time frames as a 3D vector image.
         image_3d = extract_vector_component(image, frame_idx)
     else:
         image_3d = image
 
-    # PyRadiomics requires scalar intensity images.
     if image_3d.GetNumberOfComponentsPerPixel() > 1:
         image_3d = extract_vector_component(image_3d, 0)
 
@@ -267,8 +263,8 @@ def compute_phase_features(
     patient_id: str,
     image_path: Path,
     mask_path: Path,
-    phase: Optional[str] = None,
-    info_cfg: Optional[str] = None,
+    frame_tag: Optional[str] = None,
+    frame_idx: int = 0,
     mask_source: str = "auto",
 ) -> dict:
     """Compute all features for one phase mask."""
@@ -277,8 +273,8 @@ def compute_phase_features(
     if mask_arr.ndim != 3:
         raise ValueError(f"Expected 3D mask for {mask_path}, got array ndim={mask_arr.ndim}")
 
-    phase_name = (phase or infer_phase_from_path(mask_path)).upper()
-    image_phase = prepare_phase_image(image_path, mask_img, phase_name, info_cfg)
+    phase_name = (frame_tag or infer_phase_from_path(mask_path)).upper()
+    image_phase = prepare_phase_image(image_path, mask_img, frame_idx)
 
     voxel_volume_ml = float(np.prod(mask_img.GetSpacing()[:3]) / 1000.0)
 
@@ -356,6 +352,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mask_ed", default=None, help="Path to ED segmentation mask")
     parser.add_argument("--mask_es", default=None, help="Path to ES segmentation mask")
     parser.add_argument("--info_cfg", default=None, help="Optional Info.cfg with ED/ES frame indices")
+    parser.add_argument("--frame_tag", type=str, default=None, help="Cardiac phase tag (e.g., ED, ES)")
+    parser.add_argument("--frame_idx", type=int, default=0, help="4D frame index for intensity extraction")
     parser.add_argument("--mask_source", default="auto", help="Mask source label for tracking")
     parser.add_argument(
         "--output_csv",
@@ -381,35 +379,39 @@ def main() -> None:
 
     if args.mask_ed:
         ed_path = Path(args.mask_ed)
+        ed_cfg, es_cfg = parse_info_cfg(args.info_cfg)
+        ed_feature_idx = choose_frame_index("ED", ed_cfg, es_cfg)
         ed_features = compute_phase_features(
             patient_id=args.patient_id,
             image_path=image_path,
             mask_path=ed_path,
-            phase="ED",
-            info_cfg=args.info_cfg,
+            frame_tag="ED",
+            frame_idx=ed_feature_idx,
             mask_source=args.mask_source,
         )
 
     if args.mask_es:
         es_path = Path(args.mask_es)
+        ed_cfg, es_cfg = parse_info_cfg(args.info_cfg)
+        es_feature_idx = choose_frame_index("ES", ed_cfg, es_cfg)
         es_features = compute_phase_features(
             patient_id=args.patient_id,
             image_path=image_path,
             mask_path=es_path,
-            phase="ES",
-            info_cfg=args.info_cfg,
+            frame_tag="ES",
+            frame_idx=es_feature_idx,
             mask_source=args.mask_source,
         )
 
     if args.mask:
         mask_path = Path(args.mask)
-        inferred_phase = infer_phase_from_path(mask_path)
+        frame_tag = args.frame_tag or infer_phase_from_path(mask_path)
         single_features = compute_phase_features(
             patient_id=args.patient_id,
             image_path=image_path,
             mask_path=mask_path,
-            phase=inferred_phase,
-            info_cfg=args.info_cfg,
+            frame_tag=frame_tag,
+            frame_idx=args.frame_idx,
             mask_source=args.mask_source,
         )
 
@@ -420,7 +422,12 @@ def main() -> None:
         single_features=single_features,
     )
 
-    output_csv = Path(args.output_csv) if args.output_csv else Path(f"{args.patient_id}_features.csv")
+    if args.output_csv:
+        output_csv = Path(args.output_csv)
+    elif args.frame_tag:
+        output_csv = Path(f"{args.patient_id}_{args.frame_tag}_features.csv")
+    else:
+        output_csv = Path(f"{args.patient_id}_features.csv")
     output_csv.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(output_csv, index=False)
 

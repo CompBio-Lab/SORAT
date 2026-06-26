@@ -32,6 +32,14 @@ params {
         mbas              = null
     }
 
+    // Frame selection mode (when info_cfg is absent):
+    //   auto  — use ED/ES if info_cfg present, else all frames
+    //   ed_es — always force 2 frames (ED=frame 0, ES=last frame)
+    //   all   — always segment all temporal frames
+    frames_mode         = 'auto'
+    // Maximum frames when in all-frames mode (null = unlimited, e.g. 10 = subsample)
+    max_frames          = null
+
     // Optional atrial default root for automatic input generation.
     atrial_nnunet {
         dataset_root      = null
