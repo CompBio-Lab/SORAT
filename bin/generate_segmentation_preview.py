@@ -4,6 +4,7 @@ Generate quick segmentation preview PNGs for ED/ES outputs.
 """
 
 import argparse
+import sys
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -12,12 +13,26 @@ from matplotlib.patches import Patch
 import numpy as np
 import SimpleITK as sitk
 
+
+def _add_helper_import_paths() -> None:
+    """Add common helper locations for copied Nextflow task scripts."""
+    for path in (Path(__file__).resolve().parent, Path.cwd(), Path("/app/bin")):
+        value = str(path)
+        if path.exists() and value not in sys.path:
+            sys.path.insert(0, value)
+
+
 try:
     from frame_manifest import resolve_frame_ground_truth
 except ImportError:
-    import os as _os, sys as _sys
-    _sys.path.insert(0, _os.getcwd())
+    _add_helper_import_paths()
     from frame_manifest import resolve_frame_ground_truth
+
+try:
+    from geometry_utils import read_nifti_with_sitk_fallback
+except ImportError:
+    _add_helper_import_paths()
+    from geometry_utils import read_nifti_with_sitk_fallback
 
 DEFAULT_LABELS = {
     1: ("RV", np.array([0.95, 0.25, 0.25], dtype=np.float32), "fill"),
@@ -378,7 +393,7 @@ def main() -> None:
 
     architecture = infer_architecture(args.model, args.architecture)
 
-    image = sitk.ReadImage(args.image)
+    image = read_nifti_with_sitk_fallback(args.image)
     seg_img = sitk.ReadImage(args.seg)
 
     image_arr = sitk.GetArrayFromImage(image)
@@ -400,7 +415,7 @@ def main() -> None:
 
     gt_arr = None
     if gt_resolved is not None:
-        gt_img = sitk.ReadImage(str(gt_resolved))
+        gt_img = read_nifti_with_sitk_fallback(gt_resolved, dtype=np.uint8)
         gt_arr = sitk.GetArrayFromImage(resample_label_to_reference(gt_img, seg_img))
 
     render_preview(

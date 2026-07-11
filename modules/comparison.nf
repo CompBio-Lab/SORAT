@@ -26,8 +26,11 @@ process COMPUTE_METRICS {
     def arch = meta?.architecture ?: ''
     """
     cp ${projectDir}/bin/frame_manifest.py . 2>/dev/null || true
+    cp ${projectDir}/bin/geometry_utils.py . 2>/dev/null || true
+    cp ${projectDir}/bin/compute_metrics.py . 2>/dev/null || true
+    export PYTHONPATH="\$PWD:/app/bin:\${PYTHONPATH:-}"
 
-    compute_metrics.py \\
+    python compute_metrics.py \\
         --patient_id ${patient_id} \\
         --model ${model} \\
         --architecture "${arch}" \\
@@ -41,6 +44,7 @@ process COMPUTE_METRICS {
     "${task.process}":
         python: \$(python --version | sed 's/Python //')
         medpy: \$(python -c "import medpy; print(medpy.__version__)")
+        nibabel: \$(python -c "import nibabel; print(nibabel.__version__)" 2>/dev/null || echo "N/A")
     END_VERSIONS
     """
 }

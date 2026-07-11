@@ -779,9 +779,13 @@ workflow {
     // in the 192x192 preprocessed coordinate space; _v4 records the original
     // image geometry in metadata.json so segmentations are mapped back into
     // the original space (matching the ground truth + other architectures).
+    // VSA-3L _v4 likewise records the original origin / direction so its
+    // segmentations are physically aligned with the original image (was
+    // origin 0 + identity, which broke feature extraction on oblique / offset
+    // acquisitions such as M&Ms).
     def cinema_preprocess_key = 'cinema_s1.0x1.0x10.0_crop192x192_v4'
     def nnformer_preprocess_key = 'nnformer_frame_extract_v3'
-    def vsa3l_preprocess_key = "vsa3l_input${params.vsa3l.input_size.join('x')}_v3"
+    def vsa3l_preprocess_key = "vsa3l_input${params.vsa3l.input_size.join('x')}_v4"
     def atrial_nnunet_preprocess_key = 'atrial_nnunet_frame_extract_v3'
     
     // Run CineMA model

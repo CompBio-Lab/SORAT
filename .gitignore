@@ -128,3 +128,18 @@ containers/*.sif
 /data/
 DATASET/
 preprocessed/
+
+# M&Ms-2 dataset reorganization & samplesheet generation
+# Samplesheets (also covered by /data/ above)
+data/mms2_sa_samplesheet.csv
+data/mms2_la_samplesheet.csv
+# Helper scripts & logs (also covered by scripts/ above)
+scripts/reorganize_mms2.py
+scripts/verify_regen_mms2_cfg.py
+scripts/generate_mms2_samplesheets.py
+scripts/mms2_finisher.sh
+scripts/mms2_parallel_reorg.sh
+scripts/mms2_parallel_verify.sh
+scripts/reorganize_mms2.log
+scripts/generate_samplesheets.log
+scripts/verify_mms2.log

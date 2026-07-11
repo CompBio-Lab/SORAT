@@ -231,6 +231,13 @@ def segment_patient(
         spacing = metadata.get('voxelspacing', [1.0, 1.0, 1.0])[:3]
         seg_sitk = sitk.GetImageFromArray(np.transpose(volume, (2, 1, 0)))
         seg_sitk.SetSpacing(spacing)
+        # Apply the original image geometry so the seg is physically aligned
+        # with the original image / ground truth (matches nnFormer + CineMA).
+        # Falls back to the previous origin-0 / identity-direction behaviour
+        # when the new metadata fields are absent (old caches).
+        if all(k in metadata for k in ("original_origin_3d", "original_direction_3d")):
+            seg_sitk.SetOrigin([float(x) for x in metadata["original_origin_3d"]])
+            seg_sitk.SetDirection([float(x) for x in metadata["original_direction_3d"]])
         sitk.WriteImage(seg_sitk, output_path, useCompression=True)
         saved_frames.append({"tag": tag, "output": output_path})
     

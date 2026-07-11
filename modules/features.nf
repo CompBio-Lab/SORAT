@@ -73,8 +73,10 @@ if importlib.util.find_spec("radiomics") is None:
 PY
 
     cp ${projectDir}/bin/frame_manifest.py . 2>/dev/null || true
+    cp ${projectDir}/bin/geometry_utils.py . 2>/dev/null || true
+    cp ${projectDir}/bin/extract_features.py . 2>/dev/null || true
 
-    python /app/bin/extract_features.py \
+    python extract_features.py \
         --patient_id ${patient_id} \
         --image ${raw_image} \
         --mask ${mask} \

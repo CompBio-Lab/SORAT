@@ -20,7 +20,6 @@ except ImportError:
 import numpy as np
 import SimpleITK as sitk
 import torch
-from monai.transforms import Compose, SpatialPadd
 
 
 def load_model(model_dir: Path, trained_dataset: str, seed: int, device: torch.device):
@@ -62,6 +61,60 @@ def load_model(model_dir: Path, trained_dataset: str, seed: int, device: torch.d
     return model, config
 
 
+def _fit_frame_to_patch(frame: np.ndarray, patch_size: tuple) -> tuple:
+    """Crop/pad one ``(x, y, z)`` frame to the model patch size.
+
+    CineMA checkpoints are configured for a fixed patch grid (currently
+    192x192x16).  MONAI's ``SpatialPadd`` only padded smaller volumes, so
+    patients with more than 16 slices reached the model as 17+ slices and
+    crashed when the decoder reshaped tokens back to the fixed grid.  This
+    helper normalizes the frame before inference and returns slices that map
+    predictions back into the original preprocessed grid.
+    """
+    fitted = np.zeros(tuple(int(x) for x in patch_size), dtype=frame.dtype)
+
+    src_slices = []
+    dst_slices = []
+    for current, target in zip(frame.shape, patch_size):
+        current = int(current)
+        target = int(target)
+        if current > target:
+            start = (current - target) // 2
+            src_slices.append(slice(start, start + target))
+            dst_slices.append(slice(0, target))
+        else:
+            src_slices.append(slice(0, current))
+            dst_slices.append(slice(0, current))
+
+    fitted[tuple(dst_slices)] = frame[tuple(src_slices)]
+    return fitted, tuple(src_slices), tuple(dst_slices)
+
+
+def _restore_patch_labels(
+    labels_patch: np.ndarray,
+    output_shape: tuple,
+    src_slices: tuple,
+    dst_slices: tuple,
+) -> np.ndarray:
+    """Place patch-size labels back into the original preprocessed grid."""
+    restored = np.zeros(tuple(int(x) for x in output_shape), dtype=labels_patch.dtype)
+    patch_slices = []
+    restore_slices = []
+
+    for src_slice, dst_slice, current, target in zip(src_slices, dst_slices, output_shape, labels_patch.shape):
+        current = int(current)
+        target = int(target)
+        if current > target:
+            restore_slices.append(src_slice)
+            patch_slices.append(slice(0, target))
+        else:
+            restore_slices.append(slice(0, current))
+            patch_slices.append(dst_slice)
+
+    restored[tuple(restore_slices)] = labels_patch[tuple(patch_slices)]
+    return restored
+
+
 def run_inference(
     model,
     images: np.ndarray,
@@ -83,18 +136,17 @@ def run_inference(
         Segmentation array (x, y, z, t)
     """
     view = "sax"
-    transform = Compose([
-        SpatialPadd(keys=view, spatial_size=patch_size, method="end"),
-    ])
     
-    n_slices, n_frames = images.shape[-2:]
+    n_frames = images.shape[-1]
     labels_list = []
     
     for t in range(n_frames):
-        # Prepare input
-        batch = {view: torch.from_numpy(images[None, ..., t].astype(np.float32) / 255.0)}
-        batch = transform(batch)
-        batch = {k: v[None, ...].to(device=device, dtype=torch.float32) for k, v in batch.items()}
+        frame = images[..., t].astype(np.float32)
+        frame_patch, src_slices, dst_slices = _fit_frame_to_patch(frame, patch_size)
+
+        # Prepare input. Shape is (batch, channel, x, y, z).
+        batch = {view: torch.from_numpy(frame_patch[None, None, ...] / 255.0)}
+        batch = {k: v.to(device=device, dtype=torch.float32) for k, v in batch.items()}
         
         with torch.no_grad():
             if torch.cuda.is_available():
@@ -103,9 +155,10 @@ def run_inference(
             else:
                 logits = model(batch)[view]
         
-        labels_list.append(torch.argmax(logits, dim=1)[0, ..., :n_slices])
+        labels_patch = torch.argmax(logits, dim=1)[0].detach().to(torch.uint8).cpu().numpy()
+        labels_list.append(_restore_patch_labels(labels_patch, images.shape[:3], src_slices, dst_slices))
     
-    labels = torch.stack(labels_list, dim=-1).detach().to(torch.float32).cpu().numpy()
+    labels = np.stack(labels_list, axis=-1).astype(np.float32)
     return labels
 
 

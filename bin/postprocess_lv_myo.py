@@ -14,6 +14,14 @@ from typing import Optional, Tuple
 import numpy as np
 import SimpleITK as sitk
 
+try:
+    from geometry_utils import read_nifti_with_sitk_fallback, resample_image_to_reference_safe
+except ImportError:
+    import os as _os
+    import sys as _sys
+    _sys.path.insert(0, _os.getcwd())
+    from geometry_utils import read_nifti_with_sitk_fallback, resample_image_to_reference_safe  # noqa: E402
+
 
 LABEL_BG = 0
 LABEL_RV = 1
@@ -53,7 +61,7 @@ def _read_seg(path: Path) -> tuple[sitk.Image, np.ndarray]:
 
 
 def _read_volume(path: Path) -> sitk.Image:
-	return sitk.ReadImage(str(path))
+	return read_nifti_with_sitk_fallback(path)
 
 
 def _parse_info_cfg(info_cfg: Optional[str]) -> Tuple[Optional[int], Optional[int]]:
@@ -105,13 +113,15 @@ def _extract_frame(image_4d: sitk.Image, frame_idx: int) -> sitk.Image:
 
 
 def _resample_to_seg(image: sitk.Image, seg_ref: sitk.Image) -> np.ndarray:
-	resampler = sitk.ResampleImageFilter()
-	resampler.SetReferenceImage(seg_ref)
-	resampler.SetInterpolator(sitk.sitkLinear)
-	resampler.SetTransform(sitk.Transform())
-	resampler.SetDefaultPixelValue(0)
-	img_rs = resampler.Execute(image)
-	return sitk.GetArrayFromImage(img_rs)
+    """Resample ``image`` into the seg grid, robust to geometry gaps.
+
+    Delegates to :func:`geometry_utils.resample_image_to_reference_safe` so the
+    resample does not zero out the image when the seg carries a different
+    physical origin / direction than the original image (e.g. VSA-3L on M&Ms).
+    Returns the resampled image as a numpy array.
+    """
+    img_rs = resample_image_to_reference_safe(image, seg_ref)
+    return sitk.GetArrayFromImage(img_rs)
 
 
 def _connected_components(mask: np.ndarray) -> tuple[np.ndarray, int]:

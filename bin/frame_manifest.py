@@ -14,6 +14,17 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 
+def _read_nifti(path: Union[str, Path], dtype=None):
+    try:
+        from geometry_utils import read_nifti_with_sitk_fallback
+
+        return read_nifti_with_sitk_fallback(path, dtype=dtype)
+    except ImportError:
+        import SimpleITK as sitk
+
+        return sitk.ReadImage(str(path))
+
+
 # ---------------------------------------------------------------------------
 # Info.cfg parsing
 # ---------------------------------------------------------------------------
@@ -81,7 +92,7 @@ def discover_annotated_frames(
         import numpy as np
         import SimpleITK as sitk
 
-        gt_img = sitk.ReadImage(str(gt))
+        gt_img = _read_nifti(gt)
         gt_array = sitk.GetArrayFromImage(gt_img)
 
         if len(gt_array.shape) < 4:
@@ -254,6 +265,74 @@ def load_manifest(path: Optional[Union[str, Path]]) -> Optional[Dict[str, Any]]:
 # Frame-level ground-truth resolution
 # ---------------------------------------------------------------------------
 
+_ATRIAL_ARCHITECTURES = {"atrial_nnunet", "atrial"}
+_VENTRICULAR_ARCHITECTURES = {"cinema", "nnformer", "vsa3l", "ventricular", "sax"}
+
+
+def _architecture_family(architecture: str) -> str:
+    """Return the anatomical label family for an architecture string."""
+    arch = (architecture or "").strip().lower()
+    if arch in _ATRIAL_ARCHITECTURES or arch.startswith("atrial_nnunet"):
+        return "atrial"
+    if not arch or arch in _VENTRICULAR_ARCHITECTURES:
+        return "ventricular"
+    if arch.split("__", 1)[0] in _VENTRICULAR_ARCHITECTURES:
+        return "ventricular"
+    # Metrics default unknown architectures to ventricular labels, so keep GT
+    # canonicalization aligned with that downstream contract.
+    return "ventricular"
+
+
+def _is_atrial_architecture(architecture: str) -> bool:
+    return _architecture_family(architecture) == "atrial"
+
+
+def _canonicalize_3d_gt(gt_path: Path, architecture: str) -> Path:
+    """Canonicalize a per-frame 3-D GT file to the SORAT
+    convention (1=RV, 2=MYO, 3=LV) when the architecture is ventricular.
+
+    Datasets with a raw LV/RV ordering different from SORAT (e.g. M&Ms-2,
+    whose per-frame files use 1=LV, 2=MYO, 3=RV) are normalized before
+    metrics and previews. ACDC (1=RV, 2=MYO, 3=LV) is left unchanged by the
+    anatomy-based canonicalizer, so existing datasets are unaffected.
+
+    Atrial architectures keep their own label semantics and the raw file is
+    returned as-is.  On any error (e.g. SimpleITK unavailable) the raw file is
+    returned so behaviour never degrades below the previous logic.
+    """
+    if _is_atrial_architecture(architecture):
+        return gt_path
+
+    try:
+        import numpy as np
+        import SimpleITK as sitk
+
+        gt_img = _read_nifti(gt_path, dtype=np.int16)
+        gt_array = sitk.GetArrayFromImage(gt_img)
+
+        if gt_array.ndim != 3:
+            return gt_path  # only 3-D per-frame files are canonicalized here
+
+        canonical = _remap_cardiac_labels(gt_array.astype(np.int32), np, architecture)
+        if np.array_equal(canonical, gt_array.astype(np.int32)):
+            return gt_path  # already canonical (e.g. ACDC) — return raw, no copy
+
+        out_img = sitk.GetImageFromArray(canonical.astype(np.int16))
+        out_img.SetSpacing(gt_img.GetSpacing())
+        out_img.SetOrigin(gt_img.GetOrigin())
+        out_img.SetDirection(gt_img.GetDirection())
+
+        fd, tmp_path = tempfile.mkstemp(
+            suffix=".nii.gz",
+            prefix=f"{gt_path.stem}_canon_",
+        )
+        os.close(fd)
+        sitk.WriteImage(out_img, tmp_path, useCompression=True)
+        return Path(tmp_path)
+    except Exception:
+        return gt_path
+
+
 def resolve_frame_ground_truth(
     gt_path: Optional[Union[str, Path]],
     frame_tag: str,
@@ -291,17 +370,26 @@ def resolve_frame_ground_truth(
         candidates.append(gt / f"{patient_id}_frame{frame_idx:02d}_gt.nii.gz")
         candidates.append(gt / f"{patient_id}_{frame_tag}_gt.nii.gz")
         candidates.append(gt / f"{patient_id}_sax_{frame_tag.lower()}_gt.nii.gz")
+        # M&Ms-2 axis-tagged layout ({pid}_SA_{tag}_gt.nii.gz / {pid}_LA_{tag}_gt.nii.gz):
+        # try both SA/LA prefixes (patient_id does not carry the axis here).
+        for _axis in ("SA", "LA"):
+            candidates.append(gt / f"{patient_id}_{_axis}_{frame_tag}_gt.nii.gz")
+            candidates.append(gt / f"{patient_id}_{_axis}_{frame_tag.lower()}_gt.nii.gz")
         if frame_tag == "ED":
             candidates.append(gt / f"{patient_id}_ED_gt.nii.gz")
             candidates.append(gt / f"{patient_id}_sax_ed_gt.nii.gz")
             candidates.append(gt / f"{patient_id}_frame01_gt.nii.gz")
+            for _axis in ("SA", "LA"):
+                candidates.append(gt / f"{patient_id}_{_axis}_ED_gt.nii.gz")
         elif frame_tag == "ES":
             candidates.append(gt / f"{patient_id}_ES_gt.nii.gz")
             candidates.append(gt / f"{patient_id}_sax_es_gt.nii.gz")
+            for _axis in ("SA", "LA"):
+                candidates.append(gt / f"{patient_id}_{_axis}_ES_gt.nii.gz")
 
         for cand in candidates:
             if cand.exists():
-                return cand
+                return _canonicalize_3d_gt(cand, architecture)
         return None
 
     # --- file: MMS-style multi-frame GT ----------------------------------
@@ -309,7 +397,7 @@ def resolve_frame_ground_truth(
         import numpy as np
         import SimpleITK as sitk
 
-        gt_img = sitk.ReadImage(str(gt))
+        gt_img = _read_nifti(gt, dtype=np.int16)
         gt_array = sitk.GetArrayFromImage(gt_img)
 
         if len(gt_array.shape) >= 4:
@@ -338,16 +426,10 @@ def resolve_frame_ground_truth(
                 return Path(tmp_path)
             return None
 
-        # 3-D file → return as-is (single-frame dataset)
-        return gt
+        # 3-D file -> canonicalize like directory-resolved per-frame GT.
+        return _canonicalize_3d_gt(gt, architecture)
 
     return None
-
-
-# Architectures that segment the ventricles (RV/MYO/LV).  Anything else
-# (e.g. atrial_nnunet) has different label semantics and is left untouched by
-# the ventricular canonicalizer.
-_ATRIAL_ARCHITECTURES = {"atrial_nnunet", "atrial"}
 
 
 def _apply_label_remap(frame_data, remap, np):
@@ -358,90 +440,126 @@ def _apply_label_remap(frame_data, remap, np):
     return out
 
 
-def _canonicalize_ventricular_labels(frame_data, np, nonzero_labels):
-    """Map three ventricular labels onto 1=RV, 2=MYO, 3=LV by anatomy.
-
-    The middle-valued label is always the myocardium (true for every known
-    cardiac dataset).  The LV is the cavity *enclosed* by the myocardial
-    ring; the RV is the crescent-shaped cavity outside it.  Containment is
-    detected per axial slice with ``scipy.ndimage.binary_fill_holes``: the
-    ring closes, its interior fills, and whichever cavity label occupies
-    that interior is the LV.
-
-    Fallback chain when the ring is broken / undetectable:
-      1. centroid distance to the MYO centroid (LV sits inside the ring so
-         its centroid is closer to MYO)
-      2. sorted-order identity (low->1, mid->2, high->3)
-
-    Convention-agnostic: yields the correct canonical mapping for ACDC
-    (1=RV,2=MYO,3=LV), M&Ms (1=LV,2=MYO,3=RV), 85/170/255-style encodings,
-    and any future dataset regardless of raw label values or RV/LV order.
-    """
-    low, mid, high = nonzero_labels
-    myo_mask = (frame_data == mid)
-
-    # --- Primary: morphological containment ------------------------------
-    # binary_fill_holes closes the myocardial ring on each axial slice; the
-    # voxels that fill inside it (excluding MYO itself) mark the enclosed
-    # cavity, which is the LV.
+def _label_containment_scores(frame_data, np, labels):
+    """Score each label as a possible myocardial ring."""
     try:
         from scipy import ndimage
+    except Exception:
+        return []
 
-        enclosed = np.zeros_like(frame_data, dtype=bool)
-        saw_myo = False
-        for z in range(frame_data.shape[0]):
+    data3 = frame_data[np.newaxis, ...] if frame_data.ndim == 2 else frame_data
+    scores = []
+
+    for myo_label in labels:
+        enclosed = np.zeros_like(data3, dtype=bool)
+        myo_mask = data3 == myo_label
+        for z in range(data3.shape[0]):
             myo_slice = myo_mask[z]
             if not myo_slice.any():
                 continue
-            saw_myo = True
             filled = ndimage.binary_fill_holes(myo_slice)
             enclosed[z] = filled & ~myo_slice
 
-        if saw_myo and enclosed.any():
-            low_mask = (frame_data == low)
-            high_mask = (frame_data == high)
-            low_total = int(low_mask.sum())
-            high_total = int(high_mask.sum())
-            low_in = int((low_mask & enclosed).sum())
-            high_in = int((high_mask & enclosed).sum())
-            low_ratio = low_in / low_total if low_total > 0 else 0.0
-            high_ratio = high_in / high_total if high_total > 0 else 0.0
+        if not enclosed.any():
+            continue
 
-            # Trust containment only when the ring actually enclosed one of
-            # the cavities; otherwise fall through to the centroid method.
-            if max(low_ratio, high_ratio) > 0.1:
-                if low_ratio > high_ratio:
-                    remap = {low: 3, mid: 2, high: 1}   # low=LV, high=RV
-                else:
-                    remap = {low: 1, mid: 2, high: 3}   # high=LV, low=RV
-                return _apply_label_remap(frame_data, remap, np)
+        cavity_scores = {}
+        for label in labels:
+            if label == myo_label:
+                continue
+            label_mask = data3 == label
+            total = int(label_mask.sum())
+            if total == 0:
+                cavity_scores[label] = 0.0
+            else:
+                cavity_scores[label] = float((label_mask & enclosed).sum()) / float(total)
+
+        if not cavity_scores:
+            continue
+
+        lv_label, lv_score = max(cavity_scores.items(), key=lambda item: item[1])
+        scores.append((float(lv_score), myo_label, lv_label))
+
+    return sorted(scores, reverse=True)
+
+
+def _canonicalize_with_known_myo(frame_data, np, labels, myo_label):
+    """Map labels when the myocardium label is known or assumed."""
+    cavity_labels = [label for label in labels if label != myo_label]
+    if len(cavity_labels) != 2:
+        return None
+
+    low, high = sorted(cavity_labels)
+
+    # Prefer containment to identify the LV cavity.
+    try:
+        from scipy import ndimage
+
+        data3 = frame_data[np.newaxis, ...] if frame_data.ndim == 2 else frame_data
+        myo3 = data3 == myo_label
+        enclosed = np.zeros_like(data3, dtype=bool)
+        for z in range(data3.shape[0]):
+            if myo3[z].any():
+                enclosed[z] = ndimage.binary_fill_holes(myo3[z]) & ~myo3[z]
+
+        if enclosed.any():
+            scores = {}
+            for label in cavity_labels:
+                mask = data3 == label
+                total = int(mask.sum())
+                scores[label] = float((mask & enclosed).sum()) / float(total) if total else 0.0
+            lv_label, lv_score = max(scores.items(), key=lambda item: item[1])
+            if lv_score > 0.1:
+                rv_label = next(label for label in cavity_labels if label != lv_label)
+                return _apply_label_remap(frame_data, {rv_label: 1, myo_label: 2, lv_label: 3}, np)
     except Exception:
         pass
 
-    # --- Fallback 1: centroid distance to MYO ----------------------------
-    myo_coords = np.argwhere(myo_mask)
+    # Fallback: LV centroid should sit closer to MYO than RV.
+    myo_coords = np.argwhere(frame_data == myo_label)
     if len(myo_coords) > 0:
         myo_centroid = myo_coords.mean(axis=0)
-        low_coords = np.argwhere(frame_data == low)
-        high_coords = np.argwhere(frame_data == high)
+        distances = {}
+        for label in cavity_labels:
+            coords = np.argwhere(frame_data == label)
+            distances[label] = np.linalg.norm(coords.mean(axis=0) - myo_centroid) if len(coords) else float("inf")
+        lv_label, lv_dist = min(distances.items(), key=lambda item: item[1])
+        rv_label = next(label for label in cavity_labels if label != lv_label)
+        if np.isfinite(lv_dist):
+            return _apply_label_remap(frame_data, {rv_label: 1, myo_label: 2, lv_label: 3}, np)
 
-        dist_low = dist_high = float("inf")
-        if len(low_coords) > 0:
-            dist_low = np.linalg.norm(low_coords.mean(axis=0) - myo_centroid)
-        if len(high_coords) > 0:
-            dist_high = np.linalg.norm(high_coords.mean(axis=0) - myo_centroid)
+    # Last resort: sorted cavity identity around the assumed myocardium.
+    return _apply_label_remap(frame_data, {low: 1, myo_label: 2, high: 3}, np)
 
-        # LV is enclosed by MYO -> centroid closer to MYO.
-        # RV is the crescent -> centroid farther from MYO.
-        if dist_low != dist_high:
-            if dist_low < dist_high:
-                remap = {low: 3, mid: 2, high: 1}   # low=LV, high=RV
-            else:
-                remap = {low: 1, mid: 2, high: 3}   # low=RV, high=LV
-            return _apply_label_remap(frame_data, remap, np)
 
-    # --- Fallback 2: sorted-order identity --------------------------------
-    remap = {low: 1, mid: 2, high: 3}
+def _canonicalize_ventricular_labels(frame_data, np, nonzero_labels):
+    """Map three ventricular labels onto 1=RV, 2=MYO, 3=LV by anatomy.
+
+    Primary inference chooses the myocardium as the label whose filled ring
+    encloses another foreground label, then maps that enclosed cavity to LV.
+    If the ring is broken or ambiguous, the fallback keeps the previous
+    practical assumption that the middle-valued label is MYO and resolves the
+    two cavity labels by containment/centroid.
+    """
+    labels = list(nonzero_labels)
+
+    scores = _label_containment_scores(frame_data, np, labels)
+    if scores:
+        best_score, myo_label, lv_label = scores[0]
+        second_score = scores[1][0] if len(scores) > 1 else 0.0
+        if best_score > 0.1 and best_score >= (second_score + 0.05):
+            rv_candidates = [label for label in labels if label not in {myo_label, lv_label}]
+            if len(rv_candidates) == 1:
+                return _apply_label_remap(frame_data, {rv_candidates[0]: 1, myo_label: 2, lv_label: 3}, np)
+
+    # Silent fallback for ambiguous anatomy: preserve the previous robust
+    # behavior for known SAX datasets while still allowing LV/RV swapping.
+    assumed_myo = sorted(labels)[1]
+    fallback = _canonicalize_with_known_myo(frame_data, np, labels, assumed_myo)
+    if fallback is not None:
+        return fallback
+
+    remap = {old: new for new, old in enumerate(sorted(labels), start=1)}
     return _apply_label_remap(frame_data, remap, np)
 
 
@@ -461,9 +579,7 @@ def _remap_cardiac_labels(frame_data, np, architecture: str = "ventricular"):
     if not nonzero_labels:
         return frame_data
 
-    is_atrial = (architecture or "").strip().lower() in _ATRIAL_ARCHITECTURES
-
-    if is_atrial:
+    if _is_atrial_architecture(architecture):
         # No LV/RV containment concept; only normalize non-standard values.
         if nonzero_labels[-1] > 3:
             remap = {old: new for new, old in enumerate(nonzero_labels, start=1)}

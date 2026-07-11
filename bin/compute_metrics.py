@@ -14,6 +14,13 @@ import SimpleITK as sitk
 from medpy.metric import binary
 
 try:
+    from geometry_utils import read_nifti_with_sitk_fallback, resample_label_to_reference_safe
+except ImportError:
+    import os as _os, sys as _sys
+    _sys.path.insert(0, _os.getcwd())
+    from geometry_utils import read_nifti_with_sitk_fallback, resample_label_to_reference_safe  # noqa: E402
+
+try:
     from frame_manifest import resolve_frame_ground_truth
 except ImportError:
     import os as _os, sys as _sys
@@ -53,13 +60,12 @@ def resample_to_reference(image: sitk.Image, reference: sitk.Image, is_label: bo
     Returns:
         Resampled image
     """
+    if is_label:
+        return resample_label_to_reference_safe(image, reference)
+
     resampler = sitk.ResampleImageFilter()
     resampler.SetReferenceImage(reference)
-    
-    if is_label:
-        resampler.SetInterpolator(sitk.sitkNearestNeighbor)
-    else:
-        resampler.SetInterpolator(sitk.sitkLinear)
+    resampler.SetInterpolator(sitk.sitkLinear)
     
     resampler.SetDefaultPixelValue(0)
     resampler.SetTransform(sitk.Transform())
@@ -86,8 +92,8 @@ def compute_metrics_for_volume(pred_path: Path, gt_path: Path, label_spec: list[
         Dictionary with metrics for each structure
     """
     # Load volumes
-    pred_sitk = sitk.ReadImage(str(pred_path))
-    gt_sitk = sitk.ReadImage(str(gt_path))
+    pred_sitk = read_nifti_with_sitk_fallback(pred_path, dtype=np.uint8)
+    gt_sitk = read_nifti_with_sitk_fallback(gt_path, dtype=np.uint8)
     
     # Check if shapes match, if not resample prediction to ground truth space
     pred_size = pred_sitk.GetSize()

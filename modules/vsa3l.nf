@@ -36,7 +36,13 @@ process VSA3L_PREPROCESS {
     def max_frames_arg = params.max_frames ? "--max_frames ${params.max_frames}" : ""
     def input_size = params.vsa3l.input_size.join(' ')
     """
-    vsa3l_preprocess.py \\
+    cp ${projectDir}/bin/frame_manifest.py . 2>/dev/null || true
+    cp ${projectDir}/bin/geometry_utils.py . 2>/dev/null || true
+    cp ${projectDir}/bin/vsa3l_preprocess.py . 2>/dev/null || true
+
+    export PYTHONPATH="\$PWD:/app/bin:\${PYTHONPATH:-}"
+
+    python vsa3l_preprocess.py \\
         --input ${image} \\
         --patient_id ${patient_id} \\
         --output_dir ${patient_id}_preprocessed \\

@@ -25,9 +25,16 @@ process GENERATE_SEGMENTATION_PREVIEWS {
     def info_arg = info_cfg ? "--info_cfg '${info_cfg}'" : ""
     """
     cp ${projectDir}/bin/frame_manifest.py . 2>/dev/null || true
+    cp ${projectDir}/bin/geometry_utils.py . 2>/dev/null || true
+    cp ${projectDir}/bin/generate_segmentation_preview.py . 2>/dev/null || true
     mkdir -p ${safe_model}
 
-    python /app/bin/generate_segmentation_preview.py \
+    export PYTHONPATH="\$PWD:/app/bin:\${PYTHONPATH:-}"
+    MPL_USER="\${USER:-\${LOGNAME:-\$(id -un 2>/dev/null || echo user)}}"
+    export MPLCONFIGDIR="\${TMPDIR:-/tmp}/matplotlib-\${MPL_USER}"
+    mkdir -p "\$MPLCONFIGDIR"
+
+    python generate_segmentation_preview.py \
         --patient_id ${patient_id} \
         --model ${model} \
         --architecture ${architecture} \

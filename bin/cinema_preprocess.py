@@ -21,6 +21,13 @@ except ImportError:
 
 import numpy as np
 import SimpleITK as sitk
+try:
+    from geometry_utils import read_nifti_with_sitk_fallback
+except ImportError:
+    import os as _os
+    import sys as _sys
+    _sys.path.insert(0, _os.getcwd())
+    from geometry_utils import read_nifti_with_sitk_fallback  # noqa: F401
 
 
 def convert_to_native(obj):
@@ -185,7 +192,7 @@ def preprocess_patient(
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Load 4D image
-    image_4d = sitk.ReadImage(str(input_path))
+    image_4d = read_nifti_with_sitk_fallback(input_path)
     array_4d = sitk.GetArrayFromImage(image_4d)  # (t, z, y, x)
     
     # Build frame manifest (handles ED/ES vs all-frames logic)
@@ -260,12 +267,16 @@ def preprocess_patient(
                 gt_dir / f"{patient_id}_frame{idx:02d}_gt.nii.gz",
                 gt_dir / f"{patient_id}_{tag}_gt.nii.gz",
             ]
+            # M&Ms-2 axis-tagged layout: {pid}_{SA,LA}_{ED,ES}_gt.nii.gz
+            for _axis in ("SA", "LA"):
+                gt_candidates.append(gt_dir / f"{patient_id}_{_axis}_{tag}_gt.nii.gz")
+                gt_candidates.append(gt_dir / f"{patient_id}_{_axis}_{tag.lower()}_gt.nii.gz")
             if tag == "ED":
                 gt_candidates.append(gt_dir / f"{patient_id}_frame01_gt.nii.gz")
 
             for gt_path in gt_candidates:
                 if gt_path.exists():
-                    gt = sitk.ReadImage(str(gt_path))
+                    gt = read_nifti_with_sitk_fallback(gt_path, dtype=np.uint8)
                     gt_resampled = resample_image(gt, target_spacing, sitk.sitkNearestNeighbor)
                     gt_array = np.transpose(sitk.GetArrayFromImage(gt_resampled), (2, 1, 0))
                     gt_cropped, _ = center_crop_or_pad(gt_array, crop_size)

@@ -59,8 +59,10 @@ process POSTPROCESS_LV_MYO {
     def infoArg = info_cfg ? "--info_cfg '${info_cfg}'" : ""
     """
     cp ${projectDir}/bin/frame_manifest.py . 2>/dev/null || true
+    cp ${projectDir}/bin/geometry_utils.py . 2>/dev/null || true
+    cp ${projectDir}/bin/postprocess_lv_myo.py . 2>/dev/null || true
 
-    python /app/bin/postprocess_lv_myo.py \
+    python postprocess_lv_myo.py \
         --patient_id ${patient_id} \
         --model ${model} \
         --seg ${seg} \
@@ -101,8 +103,10 @@ process VISUALIZE_POSTPROCESS_DELTA {
     def infoArg = info_cfg ? "--info_cfg '${info_cfg}'" : ""
     """
     cp ${projectDir}/bin/frame_manifest.py . 2>/dev/null || true
+    cp ${projectDir}/bin/geometry_utils.py . 2>/dev/null || true
+    cp ${projectDir}/bin/generate_postprocess_comparison.py . 2>/dev/null || true
 
-    python /app/bin/generate_postprocess_comparison.py \
+    python generate_postprocess_comparison.py \
         --patient_id ${patient_id} \
         --model ${model} \
         --frame_tag ${frame_tag} \

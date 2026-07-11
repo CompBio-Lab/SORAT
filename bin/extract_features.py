@@ -19,6 +19,14 @@ import SimpleITK as sitk
 from radiomics import featureextractor
 from scipy import ndimage
 
+try:
+    from geometry_utils import read_nifti_with_sitk_fallback, resample_image_to_reference_safe
+except ImportError:
+    import os as _os
+    import sys as _sys
+    _sys.path.insert(0, _os.getcwd())
+    from geometry_utils import read_nifti_with_sitk_fallback, resample_image_to_reference_safe  # noqa: E402
+
 
 LABEL_BG = 0
 LABEL_RV = 1
@@ -134,13 +142,17 @@ def extract_vector_component(image: sitk.Image, component_idx: int) -> sitk.Imag
 
 
 def resample_intensity_to_reference(image: sitk.Image, reference: sitk.Image) -> sitk.Image:
-    """Resample intensity image to segmentation geometry."""
-    rs = sitk.ResampleImageFilter()
-    rs.SetReferenceImage(reference)
-    rs.SetInterpolator(sitk.sitkLinear)
-    rs.SetTransform(sitk.Transform())
-    rs.SetDefaultPixelValue(0.0)
-    return rs.Execute(image)
+    """Resample intensity image to segmentation geometry.
+
+    Delegates to :func:`geometry_utils.resample_image_to_reference_safe` so the
+    resample is robust to coordinate-space mismatches between the original
+    image and a segmentation written with a different origin / direction
+    (e.g. VSA-3L on M&Ms).  When the image and mask share the same voxel-grid
+    size, the image array is returned in the mask's geometry, avoiding the
+    all-zero resample that a naive physical-space resample would produce for
+    oblique / offset acquisitions.
+    """
+    return resample_image_to_reference_safe(image, reference)
 
 
 def load_mask(mask_path: Path) -> Tuple[sitk.Image, np.ndarray]:
@@ -152,7 +164,7 @@ def load_mask(mask_path: Path) -> Tuple[sitk.Image, np.ndarray]:
 
 def prepare_phase_image(image_path: Path, mask_img: sitk.Image, frame_idx: int) -> sitk.Image:
     """Load original image and return a phase-specific 3D image in mask space."""
-    image = sitk.ReadImage(str(image_path))
+    image = read_nifti_with_sitk_fallback(image_path)
 
     if image.GetDimension() == 4:
         image_3d = extract_3d_frame(image, frame_idx)

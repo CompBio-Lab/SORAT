@@ -22,6 +22,14 @@ except ImportError:
     _sys.path.insert(0, _os.getcwd())
     from frame_manifest import build_frame_manifest, write_manifest  # noqa: F401
 
+try:
+    from geometry_utils import read_nifti_with_sitk_fallback
+except ImportError:
+    import os as _os
+    import sys as _sys
+    _sys.path.insert(0, _os.getcwd())
+    from geometry_utils import read_nifti_with_sitk_fallback  # noqa: F401
+
 
 def convert_to_native(obj):
     """Convert numpy types to native Python types for JSON serialization."""
@@ -80,7 +88,7 @@ def preprocess_patient(
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Load image
-    image = sitk.ReadImage(str(input_path))
+    image = read_nifti_with_sitk_fallback(input_path)
     array = sitk.GetArrayFromImage(image)
     
     is_4d = len(array.shape) == 4

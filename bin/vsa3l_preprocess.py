@@ -10,17 +10,32 @@ Preprocesses cardiac MRI data for MONAI VSA-3L model:
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 import nibabel as nib
 import numpy as np
+
+
+def _add_helper_import_paths() -> None:
+    """Add common helper locations for copied Nextflow task scripts."""
+    for path in (Path(__file__).resolve().parent, Path.cwd(), Path("/app/bin")):
+        value = str(path)
+        if path.exists() and value not in sys.path:
+            sys.path.insert(0, value)
+
+
 try:
     from frame_manifest import build_frame_manifest, write_manifest
 except ImportError:
-    import os as _os
-    import sys as _sys
-    _sys.path.insert(0, _os.getcwd())
+    _add_helper_import_paths()
     from frame_manifest import build_frame_manifest, write_manifest  # noqa: F401
+
+try:
+    from geometry_utils import _spatial_direction_3d, read_nifti_with_sitk_fallback
+except ImportError:
+    _add_helper_import_paths()
+    from geometry_utils import _spatial_direction_3d, read_nifti_with_sitk_fallback  # noqa: F401
 
 
 def convert_to_native(obj):
@@ -77,6 +92,18 @@ def preprocess_patient(
     
     if len(data_4d.shape) != 4:
         raise ValueError(f"Expected 4D image, got shape {data_4d.shape}")
+
+    # Capture the original image geometry via SimpleITK so segmentation
+    # predictions can be written back into the original coordinate space
+    # (matching the ground truth + other architectures).  nibabel is kept for
+    # array loading; SimpleITK gives us LPS-convention origin / direction
+    # cosines directly, avoiding error-prone RAS->LPS affine conversion.  All
+    # frames share one spatial geometry, so a single copy is sufficient.
+    img_sitk = read_nifti_with_sitk_fallback(input_path)
+    original_size_3d = [int(x) for x in img_sitk.GetSize()[:3]]
+    original_spacing_3d = [float(x) for x in img_sitk.GetSpacing()[:3]]
+    original_origin_3d = [float(x) for x in img_sitk.GetOrigin()[:3]]
+    original_direction_3d = list(_spatial_direction_3d(img_sitk.GetDirection()))
     
     # Build frame manifest (handles ED/ES vs all-frames logic)
     num_frames = data_4d.shape[-1]
@@ -139,6 +166,10 @@ def preprocess_patient(
                 gt_dir / f"{patient_id}_{tag}_gt.nii.gz",
                 gt_dir / f"{patient_id}_{tag.lower()}_gt.nii.gz",
             ]
+            # M&Ms-2 axis-tagged layout: {pid}_{SA,LA}_{ED,ES}_gt.nii.gz
+            for _axis in ("SA", "LA"):
+                gt_candidates.append(gt_dir / f"{patient_id}_{_axis}_{tag}_gt.nii.gz")
+                gt_candidates.append(gt_dir / f"{patient_id}_{_axis}_{tag.lower()}_gt.nii.gz")
 
             gt_file = None
             for candidate in gt_candidates:
@@ -180,7 +211,13 @@ def preprocess_patient(
         'voxelspacing': list(voxelspacing),
         'input_size': list(input_size),
         'slice_items': slice_items,
-        'gt_items': gt_items
+        'gt_items': gt_items,
+        # Original-image geometry used to map predictions back into the
+        # original coordinate space (matches ground truth + other models).
+        'original_size_3d': original_size_3d,
+        'original_spacing_3d': original_spacing_3d,
+        'original_origin_3d': original_origin_3d,
+        'original_direction_3d': original_direction_3d,
     }
     
     # Convert numpy types to native Python types for JSON serialization

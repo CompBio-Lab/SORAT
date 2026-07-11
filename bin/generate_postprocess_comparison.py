@@ -12,6 +12,13 @@ from matplotlib.patches import Patch
 import numpy as np
 import SimpleITK as sitk
 
+try:
+    from geometry_utils import read_nifti_with_sitk_fallback
+except ImportError:
+    import os as _os, sys as _sys
+    _sys.path.insert(0, _os.getcwd())
+    from geometry_utils import read_nifti_with_sitk_fallback
+
 
 LABEL_COLORS = {
     1: np.array([1.0, 0.0, 0.0], dtype=np.float32),  # RV
@@ -189,7 +196,7 @@ def main() -> None:
     parser.add_argument("--output_png", required=True)
     args = parser.parse_args()
 
-    image_4d = sitk.ReadImage(args.image)
+    image_4d = read_nifti_with_sitk_fallback(args.image)
     arr = sitk.GetArrayFromImage(image_4d)
     n_frames = arr.shape[0] if arr.ndim == 4 else 1
 
