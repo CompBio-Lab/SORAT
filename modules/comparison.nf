@@ -34,6 +34,7 @@ process COMPUTE_METRICS {
         --patient_id ${patient_id} \\
         --model ${model} \\
         --architecture "${arch}" \\
+        --label_schema "${params.evaluation.label_schema}" \\
         --seg ${seg} \\
         --frame_tag ${frame_tag} \\
         --frame_idx ${frame_idx} \\

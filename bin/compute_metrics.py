@@ -29,6 +29,7 @@ except ImportError:
 
 VENTRICULAR_LABELS = [(1, "rv"), (2, "myo"), (3, "lv")]
 ATRIAL_LABELS = [(1, "wall"), (2, "ra"), (3, "la")]
+BINARY_ATRIAL_LABELS = [(1, "biatrial")]
 
 
 def dice_score(pred: np.ndarray, gt: np.ndarray) -> float:
@@ -48,7 +49,34 @@ def hd95_score(pred: np.ndarray, gt: np.ndarray, voxelspacing=None) -> float:
         return np.inf
 
 
-def resample_to_reference(image: sitk.Image, reference: sitk.Image, is_label: bool = True) -> sitk.Image:
+def _same_geometry(a: sitk.Image, b: sitk.Image, atol: float = 1e-5) -> bool:
+    """Return whether two images occupy the same physical voxel grid."""
+    return (
+        a.GetSize() == b.GetSize()
+        and np.allclose(a.GetSpacing(), b.GetSpacing(), atol=atol)
+        and np.allclose(a.GetOrigin(), b.GetOrigin(), atol=atol)
+        and np.allclose(a.GetDirection(), b.GetDirection(), atol=atol)
+    )
+
+
+def _strict_resample_label_to_reference(label: sitk.Image, reference: sitk.Image) -> sitk.Image:
+    """Physically resample a label, including when array sizes match."""
+    if _same_geometry(label, reference):
+        return label
+    resampler = sitk.ResampleImageFilter()
+    resampler.SetReferenceImage(reference)
+    resampler.SetInterpolator(sitk.sitkNearestNeighbor)
+    resampler.SetTransform(sitk.Transform())
+    resampler.SetDefaultPixelValue(0)
+    return resampler.Execute(label)
+
+
+def resample_to_reference(
+    image: sitk.Image,
+    reference: sitk.Image,
+    is_label: bool = True,
+    strict: bool = False,
+) -> sitk.Image:
     """
     Resample an image to match the reference image's size, spacing, and orientation.
     
@@ -60,6 +88,8 @@ def resample_to_reference(image: sitk.Image, reference: sitk.Image, is_label: bo
     Returns:
         Resampled image
     """
+    if is_label and strict:
+        return _strict_resample_label_to_reference(image, reference)
     if is_label:
         return resample_label_to_reference_safe(image, reference)
 
@@ -73,14 +103,28 @@ def resample_to_reference(image: sitk.Image, reference: sitk.Image, is_label: bo
     return resampler.Execute(image)
 
 
-def get_label_spec(architecture: str) -> list[tuple[int, str]]:
+def get_label_spec(architecture: str, label_schema: str = "architecture_default") -> list[tuple[int, str]]:
     """Return label ids and names for a given model architecture."""
+    if label_schema == "atrial_binary_union":
+        if architecture != "atrial_nnunet":
+            raise ValueError("label_schema=atrial_binary_union requires architecture=atrial_nnunet")
+        return BINARY_ATRIAL_LABELS
+    if label_schema != "architecture_default":
+        raise ValueError(
+            f"Unknown label schema '{label_schema}'. "
+            "Valid values: architecture_default, atrial_binary_union"
+        )
     if architecture == "atrial_nnunet":
         return ATRIAL_LABELS
     return VENTRICULAR_LABELS
 
 
-def compute_metrics_for_volume(pred_path: Path, gt_path: Path, label_spec: list[tuple[int, str]]) -> dict:
+def compute_metrics_for_volume(
+    pred_path: Path,
+    gt_path: Path,
+    label_spec: list[tuple[int, str]],
+    label_schema: str = "architecture_default",
+) -> dict:
     """
     Compute metrics for a single prediction-ground truth pair.
     
@@ -99,9 +143,16 @@ def compute_metrics_for_volume(pred_path: Path, gt_path: Path, label_spec: list[
     pred_size = pred_sitk.GetSize()
     gt_size = gt_sitk.GetSize()
     
-    if pred_size != gt_size:
+    if pred_size != gt_size or (
+        label_schema == "atrial_binary_union" and not _same_geometry(pred_sitk, gt_sitk)
+    ):
         print(f"  Resampling prediction from {pred_size} to {gt_size}")
-        pred_sitk = resample_to_reference(pred_sitk, gt_sitk, is_label=True)
+        pred_sitk = resample_to_reference(
+            pred_sitk,
+            gt_sitk,
+            is_label=True,
+            strict=(label_schema == "atrial_binary_union"),
+        )
     
     pred = sitk.GetArrayFromImage(pred_sitk)
     gt = sitk.GetArrayFromImage(gt_sitk)
@@ -112,8 +163,12 @@ def compute_metrics_for_volume(pred_path: Path, gt_path: Path, label_spec: list[
     metrics = {}
 
     for label, name in label_spec:
-        pred_mask = (pred == label).astype(np.uint8)
-        gt_mask = (gt == label).astype(np.uint8)
+        if label_schema == "atrial_binary_union":
+            pred_mask = np.isin(pred, (1, 2, 3)).astype(np.uint8)
+            gt_mask = (gt > 0).astype(np.uint8)
+        else:
+            pred_mask = (pred == label).astype(np.uint8)
+            gt_mask = (gt == label).astype(np.uint8)
 
         metrics[f'dice_{name}'] = dice_score(pred_mask, gt_mask)
         metrics[f'hd95_{name}'] = hd95_score(pred_mask, gt_mask, voxelspacing=spacing)
@@ -148,7 +203,8 @@ def compute_patient_metrics(
     frame_idx: int,
     ground_truth: Path,
     output_path: Path,
-    architecture: str = None
+    architecture: str = None,
+    label_schema: str = "architecture_default",
 ) -> pd.DataFrame:
     """
     Compute metrics for a patient's single-frame segmentation.
@@ -169,14 +225,19 @@ def compute_patient_metrics(
     if architecture is None:
         architecture = _infer_architecture(model)
 
-    label_spec = get_label_spec(architecture)
+    label_spec = get_label_spec(architecture, label_schema=label_schema)
     
     gt = resolve_frame_ground_truth(gt_path, frame_tag, frame_idx, patient_id, architecture=architecture)
     
     has_gt = gt is not None and gt.exists()
     
     if has_gt and Path(seg).exists():
-        metrics = compute_metrics_for_volume(seg, gt, label_spec)
+        metrics = compute_metrics_for_volume(
+            seg,
+            gt,
+            label_spec,
+            label_schema=label_schema,
+        )
         result = {
             'patient_id': patient_id,
             'model': model,
@@ -184,6 +245,7 @@ def compute_patient_metrics(
             'frame_tag': frame_tag,
             'frame_idx': frame_idx,
             'has_gt': True,
+            'label_schema': label_schema,
             **metrics
         }
     else:
@@ -194,6 +256,7 @@ def compute_patient_metrics(
             'frame_tag': frame_tag,
             'frame_idx': frame_idx,
             'has_gt': False,
+            'label_schema': label_schema,
         }
         for _, name in label_spec:
             result[f'dice_{name}'] = float('nan')
@@ -211,6 +274,12 @@ def main():
     parser.add_argument('--patient_id', required=True, help='Patient identifier')
     parser.add_argument('--model', required=True, help='Model name')
     parser.add_argument('--architecture', default=None, help='Architecture name')
+    parser.add_argument(
+        '--label_schema',
+        default='architecture_default',
+        choices=['architecture_default', 'atrial_binary_union'],
+        help='Ground-truth/evaluation schema for this run',
+    )
     parser.add_argument('--seg', required=True, help='Path to segmentation')
     parser.add_argument('--frame_tag', required=True, type=str, help='Frame tag (e.g., ED, ES)')
     parser.add_argument('--frame_idx', required=True, type=int, help='Frame index (0-based)')
@@ -227,7 +296,8 @@ def main():
         frame_idx=args.frame_idx,
         ground_truth=Path(args.ground_truth),
         output_path=Path(args.output),
-        architecture=args.architecture
+        architecture=args.architecture,
+        label_schema=args.label_schema,
     )
     
     print(f"Metrics computed for {args.patient_id} frame {args.frame_tag} using {args.model}")

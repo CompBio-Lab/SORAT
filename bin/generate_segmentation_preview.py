@@ -127,8 +127,16 @@ def resample_image_to_reference(image: sitk.Image, reference: sitk.Image) -> np.
     return sitk.GetArrayFromImage(rs.Execute(image))
 
 
-def resample_label_to_reference(label: sitk.Image, reference: sitk.Image) -> sitk.Image:
-    if label.GetSize() == reference.GetSize():
+def resample_label_to_reference(label: sitk.Image, reference: sitk.Image, strict: bool = False) -> sitk.Image:
+    same_geometry = (
+        label.GetSize() == reference.GetSize()
+        and np.allclose(label.GetSpacing(), reference.GetSpacing(), atol=1e-5)
+        and np.allclose(label.GetOrigin(), reference.GetOrigin(), atol=1e-5)
+        and np.allclose(label.GetDirection(), reference.GetDirection(), atol=1e-5)
+    )
+    if label.GetSize() == reference.GetSize() and not strict:
+        return label
+    if same_geometry:
         return label
 
     rs = sitk.ResampleImageFilter()
@@ -261,6 +269,7 @@ def render_preview(
     seg_arr: np.ndarray,
     gt_arr: Optional[np.ndarray],
     output_png: Path,
+    label_schema: str = "architecture_default",
 ) -> None:
     z = choose_slice_with_gt(seg_arr, gt_arr)
 
@@ -311,23 +320,39 @@ def render_preview(
         plt.close(fig)
         return
 
-    gt_overlay = to_overlay(image_2d, gt_2d, label_defs)
-    pred_mask = to_mask_rgb(seg_2d, label_defs)
-    gt_mask = to_mask_rgb(gt_2d, label_defs)
-    diff_map = make_difference_map(seg_2d, gt_2d, label_defs)
+    if label_schema == "atrial_binary_union":
+        metric_pred = (seg_2d > 0).astype(np.uint8)
+        metric_gt = (gt_2d > 0).astype(np.uint8)
+        metric_defs = {
+            1: ("Biatrial", np.array([0.25, 0.50, 1.0], dtype=np.float32), "fill")
+        }
+        gt_overlay = to_overlay(image_2d, metric_gt, metric_defs)
+        pred_mask = to_mask_rgb(seg_2d, label_defs)
+        gt_mask = to_mask_rgb(metric_gt, metric_defs)
+        diff_map = make_difference_map(metric_pred, metric_gt, metric_defs)
+        present_labels = [1]
+        metric_label_defs = metric_defs
+    else:
+        metric_pred = seg_2d
+        metric_gt = gt_2d
+        gt_overlay = to_overlay(image_2d, gt_2d, label_defs)
+        pred_mask = to_mask_rgb(seg_2d, label_defs)
+        gt_mask = to_mask_rgb(gt_2d, label_defs)
+        diff_map = make_difference_map(seg_2d, gt_2d, label_defs)
+        present_labels = sorted({int(x) for x in np.unique(seg_2d) if int(x) > 0} | {int(x) for x in np.unique(gt_2d) if int(x) > 0})
+        metric_label_defs = label_defs
 
-    present_labels = sorted({int(x) for x in np.unique(seg_2d) if int(x) > 0} | {int(x) for x in np.unique(gt_2d) if int(x) > 0})
     dice_by_label: dict[int, float] = {}
     for label in present_labels:
-        pred_mask_bin = (seg_2d == label).astype(np.uint8)
-        gt_mask_bin = (gt_2d == label).astype(np.uint8)
+        pred_mask_bin = (metric_pred == label).astype(np.uint8)
+        gt_mask_bin = (metric_gt == label).astype(np.uint8)
         dice_by_label[label] = dice_score(pred_mask_bin, gt_mask_bin)
 
     mean_dsc = float(np.mean(list(dice_by_label.values()))) if dice_by_label else float("nan")
 
     summary_parts = []
     for label in present_labels:
-        name, _, _ = label_defs.get(label, (f"Label {label}", np.array([1.0, 1.0, 0.0], dtype=np.float32), "fill"))
+        name, _, _ = metric_label_defs.get(label, (f"Label {label}", np.array([1.0, 1.0, 0.0], dtype=np.float32), "fill"))
         summary_parts.append(f"{name}={dice_by_label[label]:.3f}")
     summary_text = " | ".join(summary_parts) if summary_parts else "No foreground labels"
 
@@ -344,7 +369,7 @@ def render_preview(
     axes[0, 1].axis("off")
 
     axes[0, 2].imshow(gt_mask)
-    add_contours(axes[0, 2], gt_2d, label_defs)
+    add_contours(axes[0, 2], metric_gt, metric_label_defs)
     axes[0, 2].set_title("Ground Truth")
     axes[0, 2].axis("off")
 
@@ -354,7 +379,7 @@ def render_preview(
     axes[1, 0].axis("off")
 
     axes[1, 1].imshow(gt_overlay)
-    add_contours(axes[1, 1], gt_2d, label_defs)
+    add_contours(axes[1, 1], metric_gt, metric_label_defs)
     axes[1, 1].set_title("Ground Truth Overlay")
     axes[1, 1].axis("off")
 
@@ -365,7 +390,7 @@ def render_preview(
 
     legend_handles = []
     for label in present_labels:
-        name, color, _ = label_defs.get(label, (f"Label {label}", np.array([1.0, 1.0, 0.0], dtype=np.float32), "fill"))
+        name, color, _ = metric_label_defs.get(label, (f"Label {label}", np.array([1.0, 1.0, 0.0], dtype=np.float32), "fill"))
         legend_handles.append(Patch(facecolor=color, edgecolor="black", label=f"{name} (DSC={dice_by_label[label]:.3f})"))
 
     if legend_handles:
@@ -389,6 +414,12 @@ def main() -> None:
     parser.add_argument("--frame_idx", type=int, default=0)
     parser.add_argument("--info_cfg", default="")
     parser.add_argument("--architecture", default="", help="Model architecture (e.g., atrial_nnunet)")
+    parser.add_argument(
+        "--label_schema",
+        default="architecture_default",
+        choices=["architecture_default", "atrial_binary_union"],
+        help="Ground-truth/evaluation schema for this run",
+    )
     args = parser.parse_args()
 
     architecture = infer_architecture(args.model, args.architecture)
@@ -416,7 +447,13 @@ def main() -> None:
     gt_arr = None
     if gt_resolved is not None:
         gt_img = read_nifti_with_sitk_fallback(gt_resolved, dtype=np.uint8)
-        gt_arr = sitk.GetArrayFromImage(resample_label_to_reference(gt_img, seg_img))
+        gt_arr = sitk.GetArrayFromImage(
+            resample_label_to_reference(
+                gt_img,
+                seg_img,
+                strict=(args.label_schema == "atrial_binary_union"),
+            )
+        )
 
     render_preview(
         patient_id=args.patient_id,
@@ -427,6 +464,7 @@ def main() -> None:
         seg_arr=seg_arr,
         gt_arr=gt_arr,
         output_png=Path(args.output_png),
+        label_schema=args.label_schema,
     )
 
 
