@@ -209,6 +209,7 @@ Weight: 70
 | `--singularity_cache_dir` | `$HOME/.singularity_cache` | Per-user Singularity cache location (can use `SORAT_SINGULARITY_CACHEDIR`) |
 | `--compare` | `true` | Generate comparison report |
 | `--inference_only` | `false` | Run inference only (skip metrics + report generation) |
+| `--evaluation.label_schema` | `architecture_default` | Evaluation contract; use `atrial_binary_union` when a binary biatrial reference is compared with atrial labels 1--3 collapsed to foreground |
 | `--debug` | `false` | Generate debug analytics report (execution/runtime/GPU/scalability/success + scientific utility metrics) |
 | `--postprocess.enabled` | `false` | Enable optional LV-intensity postprocessing (LV dark regions -> MYO) |
 | `--postprocess.use_for_metrics` | `true` | If postprocess enabled, compute metrics on corrected segmentations |
@@ -244,10 +245,25 @@ When `--input` is omitted, SORAT resolves input automatically:
 
 Use these options when needed:
 - `--inference_only true`: skip metrics/report generation.
+- `--evaluation.label_schema atrial_binary_union`: evaluate the union of atrial prediction labels 1--3 against a binary foreground reference, such as AIM-ASD's biatrial mask.
 - `--debug true`: generate debug analytics outputs.
 - `--preprocess_cache_enabled true|false`: enable or disable preprocessing cache reuse.
 - `--postprocess.enabled true`: enable optional LV -> MYO postprocessing.
 - `--feature_extraction.enabled true`: emit per-mask feature CSV files.
+
+For the locally available AIM-ASD subset, use the LGE image and binary biatrial
+reference samplesheet with the atrial model:
+
+```bash
+nextflow run main.nf \
+    --input data/aim_asd_samplesheet.csv \
+    --models atrial_nnunet \
+    --evaluation.label_schema atrial_binary_union \
+    --outdir results/AIM_ASD
+```
+
+Use `--inference_only true` for prediction and preview generation without
+metrics or comparison-report outputs.
 
 For SLURM tuning, the main controls are `--slurm_max_forks`, `--slurm_queue_size`, `--slurm_submit_rate`, `--slurm_poll_interval`, and `--slurm_queue_stat_interval`.
 

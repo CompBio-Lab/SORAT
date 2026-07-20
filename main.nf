@@ -721,6 +721,14 @@ workflow {
     assertSlurmAccountForProfile('main workflow')
 
     def models_to_run = parseModels(params.models)
+    def labelSchema = (params.evaluation?.label_schema ?: 'architecture_default').toString().trim()
+    if (!(labelSchema in ['architecture_default', 'atrial_binary_union'])) {
+        exit 1, "ERROR: main workflow: invalid evaluation.label_schema '${labelSchema}'. Valid values: architecture_default, atrial_binary_union."
+    }
+    if (labelSchema == 'atrial_binary_union' && !models_to_run.contains('atrial_nnunet')) {
+        exit 1, "ERROR: evaluation.label_schema=atrial_binary_union requires atrial_nnunet in --models."
+    }
+    log.info "Evaluation label schema: ${labelSchema}"
     def effective_input_samplesheet = resolveEffectiveSamplesheet(
         params.input,
         models_to_run,
@@ -1070,54 +1078,58 @@ workflow {
         EXTRACT_FEATURES(ch_features_inputs)
     }
 
-    // Compute metrics if ground truth is available
-    ch_input_with_gt = ch_input
-        .filter { patient_id, image, gt, info -> gt != null }
-        .map { patient_id, image, gt, info -> [ patient_id, gt ] }
-    
-    ch_for_metrics = ch_segmentations_for_metrics
-        .combine(ch_input_with_gt, by: 0)
-        .map { patient_id, model, frame_tag, frame_idx, seg, meta, gt ->
-            // CineMA segmentations are now in the original image coordinate
-            // space, so the original ground truth aligns directly (no redirect
-            // to the 192x192 preprocessed GT needed) -- same as nnFormer /
-            // VSA-3L.
-            [ patient_id, model, frame_tag, frame_idx, seg, gt, meta ]
+    if (!params.inference_only) {
+        // Compute metrics if ground truth is available
+        ch_input_with_gt = ch_input
+            .filter { patient_id, image, gt, info -> gt != null }
+            .map { patient_id, image, gt, info -> [ patient_id, gt ] }
+
+        ch_for_metrics = ch_segmentations_for_metrics
+            .combine(ch_input_with_gt, by: 0)
+            .map { patient_id, model, frame_tag, frame_idx, seg, meta, gt ->
+                // CineMA segmentations are now in the original image coordinate
+                // space, so the original ground truth aligns directly (no redirect
+                // to the 192x192 preprocessed GT needed) -- same as nnFormer /
+                // VSA-3L.
+                [ patient_id, model, frame_tag, frame_idx, seg, gt, meta ]
+            }
+
+        COMPUTE_METRICS(ch_for_metrics)
+
+        // Aggregate results across all models and patients
+        if (params.compare) {
+            ch_all_metrics = COMPUTE_METRICS.out.metrics
+                .map { patient_id, model, metrics_csv -> metrics_csv }
+                .collect()
+            AGGREGATE_RESULTS(ch_all_metrics)
+            ch_all_seg_files = ch_segmentations_for_metrics
+                .map { patient_id, model, frame_tag, frame_idx, seg, meta -> seg }
+                .collect()
+            GENERATE_REPORT(
+                AGGREGATE_RESULTS.out.summary,
+                ch_all_seg_files,
+                params.models
+            )
         }
-    
-    COMPUTE_METRICS(ch_for_metrics)
-    
-    // Aggregate results across all models and patients
-    if (params.compare) {
-        ch_all_metrics = COMPUTE_METRICS.out.metrics
-            .map { patient_id, model, metrics_csv -> metrics_csv }
-            .collect()
-        AGGREGATE_RESULTS(ch_all_metrics)
-        ch_all_seg_files = ch_segmentations_for_metrics
-            .map { patient_id, model, frame_tag, frame_idx, seg, meta -> seg }
-            .collect()
-        GENERATE_REPORT(
-            AGGREGATE_RESULTS.out.summary,
-            ch_all_seg_files,
-            params.models
-        )
-    }
 
-    if (params.debug) {
-        def ch_debug_trigger = params.compare
-            ? GENERATE_REPORT.out.report.collect()
-            : COMPUTE_METRICS.out.metrics.collect()
+        if (params.debug) {
+            def ch_debug_trigger = params.compare
+                ? GENERATE_REPORT.out.report.collect()
+                : COMPUTE_METRICS.out.metrics.collect()
 
-        GENERATE_DEBUG_REPORT(
-            ch_debug_trigger,
-            debug_outdir,
-            debug_input_samplesheet,
-            params.models,
-            workflow.runName,
-            workflow.duration.toString(),
-            workflow.start.toString(),
-            workflow.success
-        )
+            GENERATE_DEBUG_REPORT(
+                ch_debug_trigger,
+                debug_outdir,
+                debug_input_samplesheet,
+                params.models,
+                workflow.runName,
+                workflow.duration.toString(),
+                workflow.start.toString(),
+                workflow.success
+            )
+        }
+    } else {
+        log.info "Inference-only mode: skipping metrics, aggregation, comparison report, and debug report."
     }
 }
 

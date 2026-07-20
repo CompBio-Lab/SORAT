@@ -43,6 +43,7 @@ process GENERATE_SEGMENTATION_PREVIEWS {
         --seg ${seg} \
         --frame_tag ${frame_tag} \
         --frame_idx ${frame_idx} \
+        --label_schema "${params.evaluation.label_schema}" \
         --output_png ${safe_model}/${patient_id}_${safe_model}_${frame_tag}_preview.png \
         ${info_arg}
 
