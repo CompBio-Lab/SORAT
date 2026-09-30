@@ -10,16 +10,17 @@
 
 > A new session saying "continue from where we left off" should read this block first, then the ticket it points to. Update this block at the end of **every** ticket or work session. It is the single source of truth for "where are we".
 
-- **Last completed:** T01, T02, T10, T11, T13, T20 (2026-09-29). Also SORAT fixes `842bc77` (non-orthonormal mask reading) and `9ccff8b` (fast mask discovery), both on `main` and merged.
+- **Last completed:** T01, T02, T10, T11, T13, T20 (2026-09-29). Also SORAT fixes `842bc77` (non-orthonormal mask reading) and `9ccff8b` (fast mask discovery), both on `main` and merged. D6 and D7 are decided.
+- **Session paused 2026-09-29, about 21:30, at the user's request.**
 - **In progress:**
-  - **T14:** four FEATURES_ONLY runs launched 2026-09-29 21:04 (see T14 log for how to check or resume).
-  - **T12:** ground-truth part done; nnFormer-vs-ground-truth agreement waits for T14.
-  - **T21:** code and tests done; build the tables after T14.
-- **Next up, when T14 finishes:**
-  1. `python -m hcmv check-features` must print `ok=True` for all four rows.
-  2. `python -m hcmv --set validation.pred_root=results_hcm_vendor/features/nnformer validate-gt` finishes T12.
-  3. Add a `feature-tables` CLI command wrapping `features.write_feature_tables` for nnFormer and ground truth, which finishes T21.
-  4. Then T22 (QC report; ask the user about D6) and T30+ (modelling framework).
+  - **T14:** four FEATURES_ONLY runs launched 21:04 via `nohup`, still running when the session paused. At the pause, `mms2/norm` had 79 of 270 CSVs and the other three combinations had not started.
+    - Check with `grep -E "^===|Succeeded|ERROR" results_hcm_vendor/logs/t14_extraction.log` and `squeue -u $USER`.
+    - If the Nextflow head was killed (login node session ended), rerun the missing combinations with `DATASETS=... CONFIGS=... nohup hcm_vendor/scripts/run_feature_extraction.sh > results_hcm_vendor/logs/t14_rerun.log 2>&1 &`.
+    - Then run `hcmv_python -m hcmv check-features`, which must print `ok=True` for all four rows.
+  - **T12:** the ground-truth part is done. After T14, run `hcmv_python -m hcmv --set validation.pred_root=results_hcm_vendor/features/nnformer validate-gt`.
+  - **T21:** code and tests are done. After T14, add a `feature-tables` CLI command wrapping `features.write_feature_tables` for nnFormer and ground truth.
+  - **T30 and T33:** code is drafted in `hcmv/{splits,preprocessing,stats}.py` but **untested**. Write the tests described in those tickets' logs first.
+- **Next up:** T14 → T12/T21 wrap-up → T30/T33 tests → T22 (QC, applying D6) → T31, T32, T34 → E1 (T40), aiming at the Nov 1 midterm.
 - **Open questions for the user:** none right now. D6 (failed-case rule) must be asked at T22.
 - **Not pushed:** `main` and `eece568-hcm-vendor` are local only. Ask before pushing.
 - **How to run things:**
@@ -75,10 +76,10 @@
 | T20 | Cohort/metadata table with vendor, disease, role | 2 Dataset | P0 | Oct 9 | T02 | DONE (2026-09-29) |
 | T21 | Feature-table builder (ED+ES merge, derived features, families) | 2 Dataset | P0 | Oct 13 | T14, T20 | DOING (code + tests done; run after T14) |
 | T22 | Data QC + exploratory report | 2 Dataset | P1 | Oct 15 | T21 | TODO |
-| T30 | CV splitting + leakage-safe preprocessing pipeline | 3 Framework | P0 | Oct 15 | T21 | TODO |
+| T30 | CV splitting + leakage-safe preprocessing pipeline | 3 Framework | P0 | Oct 15 | T21 | DOING (code drafted, **untested**) |
 | T31 | Model zoo + hyperparameter grids (LR-EN, SVM, RF, XGB) | 3 Framework | P0 | Oct 17 | T30 | TODO |
 | T32 | PyTorch MLP as a scikit-learn estimator | 3 Framework | P0 | Oct 18 | T30 | TODO |
-| T33 | Metrics, bootstrap CIs, paired bootstrap tests | 3 Framework | P0 | Oct 18 | T02 | TODO |
+| T33 | Metrics, bootstrap CIs, paired bootstrap tests | 3 Framework | P0 | Oct 18 | T02 | DOING (code drafted, **untested**) |
 | T34 | Experiment runner, result store, SLURM scripts | 3 Framework | P0 | Oct 21 | T31, T32, T33 | TODO |
 | T40 | **E1** pooled + within-vendor nested CV | 4 Experiments | P1 | Oct 25 | T34 | TODO |
 | T41 | **E2** cross-vendor transfer + generalization gap Δ | 4 Experiments | P1 | Oct 28 | T40 | TODO |
@@ -127,8 +128,8 @@ Nov 16 ─ Nov 27  Phase 6  Figures, report, reproducibility   T61 T62 T63
 | D3 | 2026-09-29 | Branch `eece568-hcm-vendor`. Analysis code in `hcm_vendor/`. Dashboard committed. | User |
 | D4 | 2026-09-29 | Midterm update due Nov 1; project complete Nov 27. | User |
 | D5 | 2026-09-29 | The `norm` config is: normalize (scale 100), binCount 32, `force2D` (dimension 0), and in-plane resample to 1.25×1.25 mm (z unchanged). `raw` = PyRadiomics defaults, as in the original runs. | User |
-| D6 | open (T22) | What counts as a "failed case"? **Recommended:** automated criteria only (missing or NaN features, radiomics error, empty LV/MYO, or implausible volumes). Report Dice against ground truth as QC only, so the pipeline stays "fully automated". | Confirm at T22 |
-| D7 | open (T33) | Threshold for balanced accuracy, sensitivity and specificity. **Recommended:** 0.5 on predicted probability, with class-balanced training. AUC is threshold-free and is the primary metric. | Confirm at T33 |
+| D6 | 2026-09-29 | Failed cases are defined by **automated criteria only**: missing or NaN features, radiomics error, empty LV/MYO, or implausible volumes (e.g. LV EDV < 20 ml, EF outside 0–100%). Dice against ground truth is reported as QC only and never used to exclude. | User |
+| D7 | 2026-09-29 | A **fixed 0.5 threshold** on predicted probability, with class-balanced training. | User |
 | D8 | open (T42) | E3 probe design. **Recommended:** primary is a 3-class (Siemens/Philips/GE) balanced accuracy with chance = 1/3; secondary is binary Siemens-vs-Philips, since those are the two training vendors. | Confirm at T42 |
 | D9 | open (T50) | SHAP evaluation set and feature grouping. **Recommended:** explain both E2 models on the same 114 pooled subjects and aggregate |φ| over correlated-feature clusters (|r| > 0.95), so the rankings compare like with like. | Confirm at T50 |
 | D10 | open (T60) | Midterm update format: slides, a written report, or a short memo? What length and template? | Ask user at T60 |
@@ -610,7 +611,7 @@ nextflow run main.nf -entry FEATURES_ONLY -profile slurm \
 ## Phase 3: Modelling framework
 
 ### T30: CV splitting + leakage-safe preprocessing
-**Status:** TODO · **Pri:** P0 · **Target:** Oct 15 · **Depends on:** T21
+**Status:** DOING · **Pri:** P0 · **Target:** Oct 15 · **Depends on:** T21
 
 **Tasks:**
 - [ ] `splits.py`:
@@ -630,6 +631,25 @@ nextflow run main.nf -entry FEATURES_ONLY -profile slurm \
   - `get_feature_names_out` round-trips.
 
 **Acceptance:** the tests pass; a pipeline object can be cloned by GridSearchCV.
+
+**Log:**
+- 2026-09-29: **Drafted, not yet tested.**
+  - `hcmv/splits.py`: `outer_splits` yields `Split(repeat, fold, train, test)`, falling back to y-only strata when a composite stratum has fewer than k members. `inner_cv` is also there.
+  - `hcmv/preprocessing.py`:
+    - `select_features(table, family_set)` orders clinical, then shape, then texture, so the correlation filter keeps clinical features.
+    - `FAMILY_SETS` covers clinical, clinical+shape, clinical+texture, all, shape and texture.
+    - `CorrelationFilter` is greedy on |Pearson r|.
+    - `build_preprocessor` and `build_pipeline` use pandas output.
+- **Next:** write `hcm_vendor/tests/test_splits_preprocessing.py`:
+  - each subject is tested once per repeat, and train/test are disjoint;
+  - splits are seeded;
+  - clinical features come first;
+  - the correlation filter keeps myo volume over the shape MeshVolume;
+  - constant columns are dropped;
+  - fitting only on train rows (leakage);
+  - the pipeline works in GridSearchCV.
+
+  Then run the tests and fix any failures.
 
 ### T31: Model zoo + hyperparameter grids
 **Status:** TODO · **Pri:** P0 · **Target:** Oct 17 · **Depends on:** T30
@@ -670,7 +690,7 @@ nextflow run main.nf -entry FEATURES_ONLY -profile slurm \
 **Acceptance:** the tests pass; one outer fold of E1 with the MLP runs in reasonable time (log the time).
 
 ### T33: Metrics, bootstrap CIs, paired bootstrap tests
-**Status:** TODO · **Pri:** P0 · **Target:** Oct 18 · **Depends on:** T02
+**Status:** DOING · **Pri:** P0 · **Target:** Oct 18 · **Depends on:** T02
 
 **Tasks:**
 - [ ] `stats.py`:
@@ -688,6 +708,21 @@ nextflow run main.nf -entry FEATURES_ONLY -profile slurm \
 - [ ] Tests: AUC against sklearn; a CI covers the true value on simulated data about 95% of the time (a quick simulation); paired-test sanity checks (identical predictions give p≈1).
 
 **Acceptance:** the tests pass; the API is documented in docstrings.
+
+**Log:**
+- 2026-09-29: **Drafted, not yet tested.** `hcmv/stats.py` contains:
+  - `fast_auc` (Mann–Whitney ranks) and `metric_value` / `binary_metrics` at the fixed 0.5 threshold (D7);
+  - `repeated_metric` over P = (subjects × repeats);
+  - `stratified_bootstrap_indices`, and `summarize`, which computes all metrics from one bootstrap loop;
+  - `bootstrap_ci`, `paired_bootstrap` (difference, CI, two-sided p), `permutation_p_value`, `holm` and `wilson_ci`.
+- **Next:** write `hcm_vendor/tests/test_stats.py`:
+  - `fast_auc` equals sklearn with ties;
+  - metrics at the threshold on a hand example;
+  - `repeated_metric` averaging;
+  - CIs are seeded and contain the estimate;
+  - about 95% coverage in a simulation (normals separated by 1, true AUC 0.760);
+  - identical predictions give p = 1, and a clear difference is detected;
+  - permutation p, Holm on [0.01, 0.04, 0.03] gives [0.03, 0.06, 0.06], and the Wilson CI.
 
 ### T34: Experiment runner, result store, SLURM scripts
 **Status:** TODO · **Pri:** P0 · **Target:** Oct 21 · **Depends on:** T31, T32, T33
