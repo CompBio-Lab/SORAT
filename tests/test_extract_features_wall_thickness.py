@@ -126,5 +126,30 @@ class WallThicknessTests(unittest.TestCase):
         )
 
 
+@unittest.skipIf(np is None, "numpy, scipy, and SimpleITK are required for this test")
+class LoadMaskGeometryTests(unittest.TestCase):
+    def test_load_mask_accepts_non_orthonormal_sform(self):
+        try:
+            import nibabel as nib
+        except ModuleNotFoundError:  # pragma: no cover
+            self.skipTest("nibabel is required")
+        import tempfile
+
+        from extract_features import load_mask
+
+        mask = np.zeros((6, 7, 5), dtype=np.uint8)
+        mask[2:4, 2:5, 1:4] = LABEL_MYO
+        affine = np.array(
+            [[1.0, 0.25, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "sheared_mask.nii.gz"
+            nib.save(nib.Nifti1Image(mask, affine), path)
+
+            _, loaded = load_mask(path)
+
+        self.assertEqual(int((loaded == LABEL_MYO).sum()), int((mask == LABEL_MYO).sum()))
+
+
 if __name__ == "__main__":
     unittest.main()
