@@ -11,6 +11,7 @@
 > A new session saying "continue from where we left off" should read this block first, then the ticket it points to. Update this block at the end of **every** ticket or work session. It is the single source of truth for "where are we".
 
 - **Working rules (set by the user 2026-09-30):**
+  - **No AI attribution in the repository.** Commits are authored by Parsa only. Add no `Co-Authored-By` or other assistant trailers to commit messages, and no assistant attribution lines in repo files. The user will write any acknowledgement in the README themselves.
   - **The user runs every Nextflow pipeline run** on their GPU allocation, which has no internet. Claude prepares the command, the user runs it and says when the results are ready.
   - **Work in agreed batches.** Do the batch the user approved, stop at a clean checkpoint (tests green, committed, this block updated), then wait for the user to say continue. Do not roll on into the next batch.
 - **Last completed:** Batch 3 on 2026-09-30: T22 (`qc-report`, no D6 exclusions, texture direction reverses between vendors) and T31 (model zoo, grids, one-fold timing). Also the correlation filter now keeps myocardial mass over myo volume. Batch 2: T30, T33 tested. Batch 1: T14, T12, T21. Earlier: T00–T02, T10, T11, T13, T20.
