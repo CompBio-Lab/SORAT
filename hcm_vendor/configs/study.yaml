@@ -48,3 +48,23 @@ cv:
   inner_splits: 5
 bootstrap_resamples: 2000
 permutations: 1000
+
+# T31: model zoo. Grids are searched by GridSearchCV inside each outer training fold
+# (inner CV scoring: roc_auc). All models are class-balanced (D7). `null` means None.
+inner_scoring: roc_auc
+models:
+  lr_en:        # C = logspace(-3, 2, 8)
+    C: [0.001, 0.005179, 0.026827, 0.138950, 0.719686, 3.727594, 19.306977, 100.0]
+    l1_ratio: [0.1, 0.5, 0.9]
+  svm:          # RBF; gamma = 1 / sigma^2 in the proposal's notation
+    C: [0.1, 1.0, 10.0, 100.0]
+    gamma: [scale, 0.001, 0.01, 0.1]
+  rf:
+    max_depth: [null, 3, 5]
+    max_features: [sqrt, 0.3]
+    min_samples_leaf: [1, 3, 5]
+  xgb:
+    n_estimators: [100, 300]
+    learning_rate: [0.03, 0.1]
+    max_depth: [2, 3]
+    min_child_weight: [1, 3]

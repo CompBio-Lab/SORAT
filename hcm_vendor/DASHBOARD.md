@@ -13,12 +13,12 @@
 - **Working rules (set by the user 2026-09-30):**
   - **The user runs every Nextflow pipeline run** on their GPU allocation, which has no internet. Claude prepares the command, the user runs it and says when the results are ready.
   - **Work in agreed batches.** Do the batch the user approved, stop at a clean checkpoint (tests green, committed, this block updated), then wait for the user to say continue. Do not roll on into the next batch.
-- **Last completed:** Batch 2 on 2026-09-30: T30 and T33 tested (23 new tests, 52 in total, no code changes needed). Batch 1 on 2026-09-30: T14, T12 (with ICC), T21 (8 feature tables). Earlier: T00–T02, T10, T11, T13, T20.
-- **Paused at a checkpoint 2026-09-30, waiting for the user's go on Batch 3.**
+- **Last completed:** Batch 3 on 2026-09-30: T22 (`qc-report`, no D6 exclusions, texture direction reverses between vendors) and T31 (model zoo, grids, one-fold timing). Also the correlation filter now keeps myocardial mass over myo volume. Batch 2: T30, T33 tested. Batch 1: T14, T12, T21. Earlier: T00–T02, T10, T11, T13, T20.
+- **Paused at a checkpoint 2026-09-30, waiting for the user's go on Batch 4.**
 - **Planned batches:**
-  - **Batch 3:** T22 (QC and exploratory report, applying D6) together with T31 (model zoo and grids).
-  - **Then:** T32 (MLP) and T34 (experiment runner, smoke run), then E1 (T40), aiming at the Nov 1 midterm. T34/T40 submit CPU sbatch jobs (not Nextflow); ask the user whether they want to submit those themselves.
-- **Open questions for the user:** none right now. D6 (failed-case rule) is already decided; apply it at T22.
+  - **Batch 4:** T32 (PyTorch MLP) and T34 (experiment runner, result store, sbatch script, smoke run).
+  - **Batch 5:** E1 (T40), then E2/E3 preliminaries for the Nov 1 midterm (T60). T34/T40 submit CPU sbatch jobs (not Nextflow); ask the user whether they want to submit those themselves.
+- **Open question for the user (raised 2026-09-30):** HCM vs NOR is nearly perfectly separable from ED max wall thickness alone (within-vendor AUC 0.99–1.0; every model scores about 1.0 on fold 0). E1 on the `all` family set will hit a ceiling. Proposed: add a `no-wall-thickness` family set (clinical without wall thickness, plus shape and texture) as a sensitivity analysis, and lean on the texture and shape family sets (E4) for the vendor story. Waiting for the user's answer.
 - **Pushed (2026-09-30):** `main` and `eece568-hcm-vendor` are on `origin` (CompBio-Lab/SORAT), and the project branch tracks `origin/eece568-hcm-vendor`. The user is the only developer and allows direct pushes to `main` (no PR needed). Push at each checkpoint.
 - **How to run things:**
   - Analysis tests and CLI: `source hcm_vendor/scripts/env.sh`, then `hcmv_python -m pytest hcm_vendor/tests -q -p no:cacheprovider` (29 tests) or `hcmv_python -m hcmv <cmd>`.
@@ -72,9 +72,9 @@
 | T14 | Re-extract nnFormer features (normalized + raw) on SLURM | 1 Features | P0 | Oct 11 | T12, T13 | DONE (2026-09-30) |
 | T20 | Cohort/metadata table with vendor, disease, role | 2 Dataset | P0 | Oct 9 | T02 | DONE (2026-09-29) |
 | T21 | Feature-table builder (ED+ES merge, derived features, families) | 2 Dataset | P0 | Oct 13 | T14, T20 | DONE (2026-09-30) |
-| T22 | Data QC + exploratory report | 2 Dataset | P1 | Oct 15 | T21 | TODO |
+| T22 | Data QC + exploratory report | 2 Dataset | P1 | Oct 15 | T21 | DONE (2026-09-30) |
 | T30 | CV splitting + leakage-safe preprocessing pipeline | 3 Framework | P0 | Oct 15 | T21 | DONE (2026-09-30) |
-| T31 | Model zoo + hyperparameter grids (LR-EN, SVM, RF, XGB) | 3 Framework | P0 | Oct 17 | T30 | TODO |
+| T31 | Model zoo + hyperparameter grids (LR-EN, SVM, RF, XGB) | 3 Framework | P0 | Oct 17 | T30 | DONE (2026-09-30) |
 | T32 | PyTorch MLP as a scikit-learn estimator | 3 Framework | P0 | Oct 18 | T30 | TODO |
 | T33 | Metrics, bootstrap CIs, paired bootstrap tests | 3 Framework | P0 | Oct 18 | T02 | DONE (2026-09-30) |
 | T34 | Experiment runner, result store, SLURM scripts | 3 Framework | P0 | Oct 21 | T31, T32, T33 | TODO |
@@ -595,7 +595,7 @@ nextflow run main.nf -entry FEATURES_ONLY -profile slurm \
   - Pruning dropped only the 8 meta columns (mask file, mask source, voxel volume and radiomics settings, ×2 phases). No constant or duplicate columns were found.
 
 ### T22: Data QC + exploratory report
-**Status:** TODO · **Pri:** P1 · **Target:** Oct 15 · **Depends on:** T21
+**Status:** DONE (2026-09-30) · **Pri:** P1 · **Target:** Oct 15 · **Depends on:** T21
 
 **Tasks:**
 - [ ] Decide D6 (failed-case rule) with the user, apply it, and log the excluded subjects with reasons. Report nnFormer Dice by vendor from `results/MMS_2/comparison/aggregated_metrics.csv` as QC. That file is in long format with unpadded IDs, so normalize them.
@@ -607,6 +607,17 @@ nextflow run main.nf -entry FEATURES_ONLY -profile slurm \
 - [ ] Output: `results_hcm_vendor/qc/` (figures + `qc_summary.md`). Some of these feed the midterm.
 
 **Acceptance:** the report is generated by one command; key observations are copied into this ticket's log.
+
+**Log:**
+- 2026-09-30: `python -m hcmv qc-report` (code in `hcmv/explore.py`, 4 tests in `tests/test_explore.py`) writes `results_hcm_vendor/qc/t22/`: `qc_summary.md`, 7 figures, and CSVs. D6 is implemented as `explore.apply_d6` so the runner can reuse it.
+- **D6: no subject fails** in any dataset or config, so nothing is excluded. Nothing is missing either (0 NaN cells in all 4 nnFormer tables).
+- **Dice QC** (median, M&Ms-2): LV 0.83–0.86 at ED and 0.69–0.77 at ES; MYO 0.71–0.79 at ED; RV 0.92–0.95 at ED. GE NOR has the lowest MYO Dice (0.71 at ED). ACDC is similar or better.
+- **Clinical features separate HCM well within every vendor.** ED max wall thickness has an AUC of 0.99 on Siemens and 1.00 on Philips. Median family separation (max(AUC, 1−AUC)) is: clinical 0.81/0.89/0.74, shape 0.61/0.75/0.60, texture 0.67/0.65/0.59 (Siemens/Philips/GE).
+- **Key finding: texture HCM signal reverses between vendors.** Siemens-vs-Philips per-feature AUC correlation is 0.88 for clinical and 0.85 for shape, but **−0.25 for texture**. 59 of 84 texture features point in opposite directions, 14 of them strongly (|AUC−0.5| > 0.15 on both vendors). E.g. ES first-order InterquartileRange has AUC 0.83 on Siemens and 0.20 on Philips.
+  - Not explained by scanner mix: restricted to Siemens SymphonyTim (the only Siemens model with NOR), the correlation with Philips is still −0.39. (All 22 Siemens NOR are on SymphonyTim; 10 of 30 Siemens HCM are on Symphony/Avanto.)
+  - Prediction for E2 (H1/H2): texture models should transfer poorly between Siemens and Philips; clinical and shape should transfer well.
+- **Vendor effect among NOR** (η², norm): clinical median 0.04, shape 0.05, **texture 0.43** (98% of texture features p < 0.05). Normalization lowers the nnFormer texture median η² from 0.64 (raw) to 0.42 (norm), matching the GT result in T12.
+- **PCA:** on raw texture, PC1 (71% of variance) separates GE from the other vendors almost completely; after normalization that cluster is gone, but Siemens vs Philips still separate along PC1.
 
 ---
 
@@ -665,7 +676,7 @@ nextflow run main.nf -entry FEATURES_ONLY -profile slurm \
   | texture | 84 | 43 / 44 / 45 |
 
 ### T31: Model zoo + hyperparameter grids
-**Status:** TODO · **Pri:** P0 · **Target:** Oct 17 · **Depends on:** T30
+**Status:** DONE (2026-09-30) · **Pri:** P0 · **Target:** Oct 17 · **Depends on:** T30
 
 **Models** (all class-balanced, since vendor class ratios differ: Siemens 30/22, Philips 27/35):
 - **Elastic-net LR:** `LogisticRegression(penalty='elasticnet', solver='saga', max_iter=10000, class_weight='balanced')`. Grid: `C ∈ logspace(-3, 2, 8)`, `l1_ratio ∈ {0.1, 0.5, 0.9}`.
@@ -679,6 +690,14 @@ nextflow run main.nf -entry FEATURES_ONLY -profile slurm \
 - [ ] Tests: each model fits and predicts probabilities on a toy dataset inside the full pipeline.
 
 **Acceptance:** all four models work in `GridSearchCV(Pipeline)`.
+
+**Log:**
+- 2026-09-30: `hcmv/models.py`: `get_model(name, config) -> (estimator, model__-prefixed grid)` for `lr_en`, `svm`, `rf`, `xgb`, all seeded from config. Grids live in `configs/study.yaml → models` (24/16/18/16 combinations) with `inner_scoring: roc_auc`.
+  - XGBoost uses `BalancedXGBClassifier`, which sets `scale_pos_weight = n_neg/n_pos` from whatever data it is fitted on, so balancing is recomputed inside each inner and outer fold.
+  - 9 tests in `tests/test_models.py`: grid sizes, YAML parsing (`null`, `scale`), balancing and seeds, each model inside `GridSearchCV(build_pipeline(...))`, and the XGB weight. The suite is now 65 tests.
+- Also in this batch (T30 follow-up): `select_features` puts `*_myocardial_mass_g` first within clinical, so the correlation filter keeps **mass** and drops myo volume (r = 1.00).
+- **One-fold timing on real data** (M&Ms-2 pool, all features, fold 0, full grids, 5-fold inner CV, 4 cores; `results_hcm_vendor/qc/t31_one_fold_timing.csv`): LR-EN 14 s, SVM 3 s, RF 30 s, XGB 8 s, so about 55 s per outer fold for the four models, or about 25 min for a 5×5 nested CV of one cohort and family set on 4 cores.
+- **Ceiling warning:** fold-0 test AUC is 0.99–1.00 for every model (inner AUC 0.995–1.0), because ED max wall thickness alone nearly separates the classes. See the open question in "Resume here".
 
 ### T32: PyTorch MLP as a scikit-learn estimator
 **Status:** TODO · **Pri:** P0 · **Target:** Oct 18 · **Depends on:** T30

@@ -85,6 +85,14 @@ def cmd_feature_tables(config: dict, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_qc_report(config: dict, args: argparse.Namespace) -> int:
+    from .explore import qc_report
+
+    print(qc_report(config))
+    write_manifest(output_dir(config, "qc", "t22"), config, "qc-report")
+    return 0
+
+
 def radiomics_cli_flags(options: dict) -> list:
     """Nextflow --feature_extraction.radiomics.* flags for one named feature config."""
     flags = []
@@ -110,6 +118,7 @@ COMMANDS = {
     "check-features": (cmd_check_features, "T14 checks; --set checks.root=... checks.source=gt for GT"),
     "radiomics-flags": (cmd_radiomics_flags, "Print Nextflow radiomics flags; --set feature_config=<name>"),
     "feature-tables": (cmd_feature_tables, "Build nnFormer and GT feature tables (T21)"),
+    "qc-report": (cmd_qc_report, "T22 data QC + exploratory report -> results_hcm_vendor/qc/t22"),
     "validate-gt": (cmd_validate_gt, "T12 report; --set validation.pred_root=<dir> adds nnFormer-vs-GT"),
 }
 

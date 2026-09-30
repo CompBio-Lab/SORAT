@@ -92,6 +92,15 @@ def test_select_features_orders_clinical_first_and_filters_families():
     assert select_features(_features(), "clinical") == ["ed_myo_volume_ml", "ed_lv_volume_ml"]
 
 
+def test_myocardial_mass_is_ordered_before_myo_volume():
+    X = _features()
+    X["ed_myocardial_mass_g"] = X["ed_myo_volume_ml"] * 1.05
+    cols = select_features(X, "clinical")
+    assert cols[0] == "ed_myocardial_mass_g"
+    kept = CorrelationFilter(0.95).fit(X[cols]).get_feature_names_out()
+    assert "ed_myocardial_mass_g" in kept and "ed_myo_volume_ml" not in kept
+
+
 def test_correlation_filter_keeps_clinical_over_shape_duplicate():
     X = _features()[select_features(_features(), "all")]
     kept = CorrelationFilter(0.95).fit(X).get_feature_names_out()

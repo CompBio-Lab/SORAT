@@ -12,6 +12,9 @@ from sklearn.utils.validation import check_is_fitted
 from .features import feature_family
 
 FAMILY_PRIORITY = {"clinical": 0, "shape": 1, "texture": 2, "sensitivity": 3}
+# Within a family, these win the correlation filter over their near-duplicates:
+# myocardial mass (the familiar HCM measure) over myo volume, which is mass / 1.05.
+PREFERRED_SUFFIXES = ("_myocardial_mass_g",)
 FAMILY_SETS = {
     "clinical": ("clinical",),
     "clinical+shape": ("clinical", "shape"),
@@ -23,11 +26,12 @@ FAMILY_SETS = {
 
 
 def select_features(table: pd.DataFrame, family_set: str) -> list:
-    """Feature columns for a named family set, clinical first so the correlation
-    filter keeps interpretable clinical measures over correlated radiomics."""
+    """Feature columns for a named family set, clinical first (mass leading) so the
+    correlation filter keeps interpretable clinical measures over correlated radiomics."""
     families = FAMILY_SETS[family_set]
     columns = [c for c in table.columns if feature_family(c) in families]
-    return sorted(columns, key=lambda c: (FAMILY_PRIORITY[feature_family(c)], columns.index(c)))
+    return sorted(columns, key=lambda c: (FAMILY_PRIORITY[feature_family(c)],
+                                          not c.endswith(PREFERRED_SUFFIXES), columns.index(c)))
 
 
 class CorrelationFilter(BaseEstimator, TransformerMixin):
