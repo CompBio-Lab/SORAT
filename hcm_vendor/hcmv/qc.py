@@ -1,18 +1,13 @@
 """Feature validation and QC reports (T12, T22)."""
 
-import matplotlib
+import numpy as np
+import pandas as pd
+from scipy import stats
 
-matplotlib.use("Agg")
+from .config import output_dir, repo_path
+from .features import build_feature_table, feature_columns
+from .figures import VENDOR_ORDER, plot_gt_wall_thickness, plot_texture_vendor_effect
 
-import matplotlib.pyplot as plt  # noqa: E402
-import numpy as np  # noqa: E402
-import pandas as pd  # noqa: E402
-from scipy import stats  # noqa: E402
-
-from .config import output_dir, repo_path  # noqa: E402
-from .features import build_feature_table, feature_columns  # noqa: E402
-
-VENDOR_ORDER = ["Siemens", "Philips", "GE"]
 WT_COLUMNS = ["ed_wall_thickness_max_mm", "ed_wall_thickness_p95_mm", "ed_wall_thickness_mean_mm"]
 CLINICAL_AGREEMENT = [
     "ed_lv_volume_ml", "es_lv_volume_ml", "ed_rv_volume_ml", "ed_myocardial_mass_g",
@@ -101,36 +96,6 @@ def agreement(pred: pd.DataFrame, gt: pd.DataFrame, columns) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def plot_wall_thickness(table: pd.DataFrame, path) -> None:
-    data = table.assign(group=group_label(table))
-    groups = sorted(data["group"].unique())
-    fig, ax = plt.subplots(figsize=(10, 4.5))
-    ax.boxplot([data.loc[data["group"] == g, "ed_wall_thickness_max_mm"].dropna() for g in groups],
-               labels=groups, showfliers=True)
-    ax.axhline(15, color="crimson", linestyle="--", linewidth=1, label="15 mm HCM criterion")
-    ax.set_ylabel("ED max wall thickness (mm)")
-    ax.set_title("Ground-truth masks: max wall thickness by dataset, vendor and disease")
-    ax.legend(loc="upper left")
-    plt.setp(ax.get_xticklabels(), rotation=35, ha="right")
-    fig.tight_layout()
-    fig.savefig(path, dpi=150)
-    plt.close(fig)
-
-
-def plot_vendor_effect(effects: dict, path) -> None:
-    fig, ax = plt.subplots(figsize=(6, 4))
-    bins = np.linspace(0, 1, 21)
-    for name, frame in effects.items():
-        ax.hist(frame["eta2"], bins=bins, alpha=0.55, label=f"{name} (median {frame['eta2'].median():.2f})")
-    ax.set_xlabel("Vendor effect size η² among M&Ms-2 NOR (Kruskal–Wallis)")
-    ax.set_ylabel("Texture features")
-    ax.set_title("Texture vendor signal: raw vs normalized radiomics")
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig(path, dpi=150)
-    plt.close(fig)
-
-
 def validate_gt(config: dict, pred_root: str = None) -> str:
     """T12 report. ``pred_root`` (e.g. T14 nnFormer features) adds pred-vs-GT agreement."""
     cohort = pd.read_parquet(output_dir(config, "tables") / "cohort.parquet")
@@ -140,12 +105,13 @@ def validate_gt(config: dict, pred_root: str = None) -> str:
 
     wt = wall_thickness_summary(gt["norm"])
     wt.to_csv(out / "gt_wall_thickness_by_group.csv")
-    plot_wall_thickness(gt["norm"], out / "gt_wall_thickness_by_group.png")
+    plot_gt_wall_thickness(gt["norm"], out / "gt_wall_thickness_by_group.png")
 
     effects = {cfg: vendor_effect(gt[cfg], feature_columns(gt[cfg], ["texture"])) for cfg in ("raw", "norm")}
     for cfg, frame in effects.items():
         frame.to_csv(out / f"gt_texture_vendor_effect_{cfg}.csv", index=False)
-    plot_vendor_effect(effects, out / "gt_texture_vendor_effect.png")
+    plot_texture_vendor_effect(effects, out / "gt_texture_vendor_effect.png",
+                               masks="Manual (ground-truth) segmentations")
 
     lines = [
         "# T12 validation: ground-truth-mask features", "",

@@ -22,14 +22,21 @@ FAMILY_SETS = {
     "all": ("clinical", "shape", "texture"),
     "shape": ("shape",),
     "texture": ("texture",),
+    "all-no-wt": ("clinical", "shape", "texture"),
 }
+# Column substrings removed from a family set. `all-no-wt` drops every wall-thickness
+# feature (ED/ES mean and max), the direct diagnostic criterion for HCM, so the models
+# must rely on the remaining evidence (sensitivity analysis, D11).
+FAMILY_SET_EXCLUDE = {"all-no-wt": ("wall_thickness",)}
 
 
 def select_features(table: pd.DataFrame, family_set: str) -> list:
     """Feature columns for a named family set, clinical first (mass leading) so the
     correlation filter keeps interpretable clinical measures over correlated radiomics."""
     families = FAMILY_SETS[family_set]
-    columns = [c for c in table.columns if feature_family(c) in families]
+    exclude = FAMILY_SET_EXCLUDE.get(family_set, ())
+    columns = [c for c in table.columns
+               if feature_family(c) in families and not any(x in c for x in exclude)]
     return sorted(columns, key=lambda c: (FAMILY_PRIORITY[feature_family(c)],
                                           not c.endswith(PREFERRED_SUFFIXES), columns.index(c)))
 

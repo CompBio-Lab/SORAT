@@ -1,31 +1,32 @@
 """Data QC and exploratory report (T22): D6 exclusions, Dice QC, missingness,
 univariate AUCs, vendor effects, correlation structure and PCA."""
 
-import matplotlib
+import numpy as np
+import pandas as pd
+from scipy.cluster import hierarchy
+from sklearn.decomposition import PCA
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler
 
-matplotlib.use("Agg")
-
-import matplotlib.pyplot as plt  # noqa: E402
-import numpy as np  # noqa: E402
-import pandas as pd  # noqa: E402
-from mpl_toolkits.axes_grid1 import make_axes_locatable  # noqa: E402
-from scipy.cluster import hierarchy  # noqa: E402
-from sklearn.decomposition import PCA  # noqa: E402
-from sklearn.impute import SimpleImputer  # noqa: E402
-from sklearn.preprocessing import StandardScaler  # noqa: E402
-
-from .config import output_dir, repo_path  # noqa: E402
-from .features import feature_columns, feature_family  # noqa: E402
-from .qc import VENDOR_ORDER, md_table, vendor_effect  # noqa: E402
-from .stats import fast_auc  # noqa: E402
+from .config import output_dir, repo_path
+from .features import feature_columns, feature_family
+from .figures import (
+    VENDOR_ORDER,
+    plot_auc_agreement,
+    plot_auc_heatmap,
+    plot_clinical_distributions,
+    plot_feature_clustermap,
+    plot_pca,
+    plot_texture_vendor_effect,
+)
+from .qc import md_table, vendor_effect
+from .stats import fast_auc
 
 FAMILIES = ("clinical", "shape", "texture")
 KEY_CLINICAL = [
     "ed_lv_volume_ml", "ed_myocardial_mass_g", "ed_wall_thickness_max_mm",
     "ed_wall_thickness_mean_mm", "lvef_pct", "mass_to_volume_g_per_ml",
 ]
-VENDOR_COLOURS = {"Siemens": "#1f77b4", "Philips": "#ff7f0e", "GE": "#2ca02c"}
-DISEASE_COLOURS = {"NOR": "#4c72b0", "HCM": "#c44e52"}
 
 # D6: failed cases are defined by automated criteria only (Dice is QC, never a filter).
 MIN_LV_EDV_ML = 20.0
@@ -107,105 +108,19 @@ def _standardized(table: pd.DataFrame, columns) -> np.ndarray:
     return StandardScaler().fit_transform(X)
 
 
-def plot_distributions(table: pd.DataFrame, path) -> None:
-    fig, axes = plt.subplots(2, 3, figsize=(13, 7))
-    groups = [(v, d) for v in VENDOR_ORDER for d in ("NOR", "HCM")]
-    for ax, col in zip(axes.flat, KEY_CLINICAL):
-        data = [table.loc[(table.vendor == v) & (table.disease == d), col].dropna() for v, d in groups]
-        box = ax.boxplot(data, patch_artist=True, showfliers=True)
-        for patch, (_, d) in zip(box["boxes"], groups):
-            patch.set_facecolor(DISEASE_COLOURS[d])
-            patch.set_alpha(0.6)
-        ax.set_xticks(range(1, len(groups) + 1))
-        ax.set_xticklabels([f"{v}\n{d}" for v, d in groups], fontsize=8)
-        ax.set_title(col, fontsize=10)
-    fig.suptitle("M&Ms-2 nnFormer features by vendor and disease (norm)")
-    fig.tight_layout()
-    fig.savefig(path, dpi=150)
-    plt.close(fig)
-
-
-def plot_auc_heatmap(aucs: pd.DataFrame, path, top: int = 25) -> list:
-    pivot = aucs.pivot_table(index="feature", columns="vendor", values="auc")[VENDOR_ORDER]
-    order = aucs[aucs.vendor.isin(["Siemens", "Philips"])].groupby("feature")["separation"].mean()
-    features = order.sort_values(ascending=False).index[:top].tolist()
-    data = pivot.loc[features]
-    fig, ax = plt.subplots(figsize=(7, 0.32 * len(features) + 1.5))
-    im = ax.imshow(data.to_numpy(), cmap="RdBu_r", vmin=0, vmax=1, aspect="auto")
-    ax.set_xticks(range(len(VENDOR_ORDER)))
-    ax.set_xticklabels([f"{v}" for v in VENDOR_ORDER])
-    ax.set_yticks(range(len(features)))
-    ax.set_yticklabels([f.replace("radiomics_original_", "") for f in features], fontsize=7)
-    for i in range(len(features)):
-        for j in range(len(VENDOR_ORDER)):
-            ax.text(j, i, f"{data.iat[i, j]:.2f}", ha="center", va="center", fontsize=6)
-    fig.colorbar(im, ax=ax, label="HCM-vs-NOR AUC")
-    ax.set_title(f"Top {top} features by mean separation (Siemens, Philips)\nGE has only 3 HCM", fontsize=9)
-    fig.tight_layout()
-    fig.savefig(path, dpi=150)
-    plt.close(fig)
-    return features
-
-
-def plot_clustermap(table: pd.DataFrame, columns, path) -> None:
-    corr = np.clip(pd.DataFrame(_standardized(table, columns)).corr().abs().to_numpy(), 0, 1)
+def correlation_order(table: pd.DataFrame, columns):
+    """|Pearson r| matrix of standardized features in hierarchical-clustering order."""
     kept = [c for c in columns if table[c].std() > 0]
+    corr = np.clip(pd.DataFrame(_standardized(table, kept)).corr().abs().to_numpy(), 0, 1)
     link = hierarchy.linkage(1 - corr[np.triu_indices(len(corr), 1)], method="average")
     order = hierarchy.leaves_list(link)
-    colours = {"clinical": "#2ca02c", "shape": "#9467bd", "texture": "#8c564b"}
-    fig, ax = plt.subplots(figsize=(10, 9))
-    divider = make_axes_locatable(ax)
-    ax_bar = divider.append_axes("top", size="3%", pad=0.05)
-    ax_cbar = divider.append_axes("right", size="3%", pad=0.1)
-    fams = [feature_family(kept[i]) for i in order]
-    ax_bar.imshow([[matplotlib.colors.to_rgb(colours[f]) for f in fams]], aspect="auto")
-    ax_bar.set_axis_off()
-    ax_bar.set_title("|Pearson r| between features, hierarchically ordered "
-                     "(bar: green clinical, purple shape, brown texture)", fontsize=9)
-    im = ax.imshow(corr[np.ix_(order, order)], cmap="viridis", vmin=0, vmax=1)
-    ax.set_xticks([])
-    ax.set_yticks([])
-    fig.colorbar(im, cax=ax_cbar)
-    fig.savefig(path, dpi=150, bbox_inches="tight")
-    plt.close(fig)
+    return corr[np.ix_(order, order)], [kept[i] for i in order]
 
 
-def plot_pca(tables: dict, columns_by_panel: dict, path) -> pd.DataFrame:
-    """One row per panel (table, columns); left coloured by vendor, right by disease."""
-    rows = []
-    fig, axes = plt.subplots(len(columns_by_panel), 2, figsize=(10, 4.2 * len(columns_by_panel)), squeeze=False)
-    for (title, (key, columns)), row_axes in zip(columns_by_panel.items(), axes):
-        table = tables[key]
-        scores = PCA(n_components=2, random_state=0).fit(_standardized(table, columns))
-        Z = scores.transform(_standardized(table, columns))
-        var = scores.explained_variance_ratio_
-        for ax, (by, colours) in zip(row_axes, (("vendor", VENDOR_COLOURS), ("disease", DISEASE_COLOURS))):
-            for label, colour in colours.items():
-                m = (table[by] == label).to_numpy()
-                ax.scatter(Z[m, 0], Z[m, 1], s=14, alpha=0.75, c=colour, label=f"{label} (n={m.sum()})")
-            ax.set_xlabel(f"PC1 ({var[0]:.0%})")
-            ax.set_ylabel(f"PC2 ({var[1]:.0%})")
-            ax.set_title(f"{title}: coloured by {by}", fontsize=10)
-            ax.legend(fontsize=7)
-        rows.append({"panel": title, "pc1_var": var[0], "pc2_var": var[1]})
-    fig.tight_layout()
-    fig.savefig(path, dpi=150)
-    plt.close(fig)
-    return pd.DataFrame(rows)
-
-
-def plot_texture_norm_effect(effects: dict, path) -> None:
-    fig, ax = plt.subplots(figsize=(6, 4))
-    bins = np.linspace(0, 1, 21)
-    for name, frame in effects.items():
-        ax.hist(frame["eta2"], bins=bins, alpha=0.55, label=f"{name} (median {frame['eta2'].median():.2f})")
-    ax.set_xlabel("Vendor effect η² among M&Ms-2 NOR (Kruskal–Wallis)")
-    ax.set_ylabel("Texture features")
-    ax.set_title("nnFormer masks: texture vendor signal, raw vs normalized")
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig(path, dpi=150)
-    plt.close(fig)
+def pca_scores(table: pd.DataFrame, columns):
+    X = _standardized(table, columns)
+    pca = PCA(n_components=2, random_state=0).fit(X)
+    return pca.transform(X), pca.explained_variance_ratio_
 
 
 def qc_report(config: dict) -> str:
@@ -262,7 +177,7 @@ def qc_report(config: dict) -> str:
 
     # --- Distributions (M&Ms-2 norm)
     mms2 = tables[("mms2", "norm")]
-    plot_distributions(mms2, out / "clinical_distributions.png")
+    plot_clinical_distributions(mms2, KEY_CLINICAL, out / "clinical_distributions.png")
     med = mms2.groupby(["vendor", "disease"])[KEY_CLINICAL].median().round(1)
     med.to_csv(out / "clinical_medians.csv")
     lines += ["## Key clinical features, median by vendor × disease (M&Ms-2)", "",
@@ -272,13 +187,16 @@ def qc_report(config: dict) -> str:
     feats = feature_columns(mms2, FAMILIES)
     aucs = univariate_auc(mms2, feats)
     aucs.to_csv(out / "univariate_auc_by_vendor.csv", index=False)
-    top = plot_auc_heatmap(aucs, out / "univariate_auc_top25.png")
+    counts = {v: mms2[mms2.vendor == v]["disease"].value_counts().to_dict() for v in VENDOR_ORDER}
+    top = plot_auc_heatmap(aucs, counts, out / "univariate_auc_top25.png")
+    plot_auc_agreement(aucs, counts, out / "auc_agreement_siemens_philips.png")
     fam = aucs.groupby(["family", "vendor"])["separation"].median().unstack()[VENDOR_ORDER].round(3)
     wide = aucs.pivot_table(index="feature", columns="vendor", values="auc")
     agreement = auc_agreement(aucs).round(2)
     agreement.to_csv(out / "auc_agreement_siemens_philips.csv")
     lines += ["## Univariate HCM-vs-NOR AUC within vendor (M&Ms-2, norm)", "",
-              "`separation` = max(AUC, 1 − AUC). Figure: `univariate_auc_top25.png`.", "",
+              "`separation` = max(AUC, 1 − AUC). Figures: `univariate_auc_top25.png`, "
+              "`auc_agreement_siemens_philips.png`.", "",
               "Median separation by family:", "", md_table(fam), "",
               "Top 10 features by mean Siemens/Philips separation:", "",
               md_table(wide.loc[top[:10], VENDOR_ORDER].round(3)), "",
@@ -302,7 +220,8 @@ def qc_report(config: dict) -> str:
     # --- Raw vs norm texture
     tex_effects = {cfg: vendor_effect(tables[("mms2", cfg)], feature_columns(tables[("mms2", cfg)], ["texture"]))
                    for cfg in ("raw", "norm")}
-    plot_texture_norm_effect(tex_effects, out / "texture_vendor_effect_raw_vs_norm.png")
+    plot_texture_vendor_effect(tex_effects, out / "texture_vendor_effect_raw_vs_norm.png",
+                               masks="nnFormer (automatic) segmentations")
     lines += ["## Raw vs normalized texture (nnFormer masks, M&Ms-2 NOR)", "",
               "| config | median η² | share p < 0.05 |", "|---|---|---|"]
     for cfg, frame in tex_effects.items():
@@ -310,13 +229,22 @@ def qc_report(config: dict) -> str:
     lines += ["", "Figure: `texture_vendor_effect_raw_vs_norm.png`.", ""]
 
     # --- Correlation structure and PCA
-    plot_clustermap(mms2, feats, out / "feature_correlation_clustermap.png")
-    panels = {
-        "All features (norm)": (("mms2", "norm"), feats),
-        "Texture only (norm)": (("mms2", "norm"), feature_columns(mms2, ["texture"])),
-        "Texture only (raw)": (("mms2", "raw"), feature_columns(tables[("mms2", "raw")], ["texture"])),
-    }
-    pca = plot_pca(tables, panels, out / "pca_vendor_disease.png").round(3)
+    corr, ordered = correlation_order(mms2, feats)
+    plot_feature_clustermap(corr, ordered, out / "feature_correlation_clustermap.png", len(mms2))
+    raw = tables[("mms2", "raw")]
+    panels, pca_rows = [], []
+    for title, table, columns in (
+        ("All 129 features, normalized", mms2, feats),
+        ("84 texture features, normalized", mms2, feature_columns(mms2, ["texture"])),
+        ("84 texture features, raw (no normalization)", raw, feature_columns(raw, ["texture"])),
+    ):
+        Z, var = pca_scores(table, columns)
+        panels.append((title, table, Z, var))
+        pca_rows.append({"panel": title, "pc1_var": var[0], "pc2_var": var[1]})
+    plot_pca(panels, out / "pca_vendor_disease.png",
+             "PCA of M&Ms-2 nnFormer features (standardized; n=135)\n"
+             "Left: do subjects cluster by scanner vendor? Right: by diagnosis?")
+    pca = pd.DataFrame(pca_rows).round(3)
     lines += ["## Correlation structure and PCA (M&Ms-2)", "",
               "Figures: `feature_correlation_clustermap.png`, `pca_vendor_disease.png`.", "",
               md_table(pca.set_index("panel")), ""]

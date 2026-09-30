@@ -14,11 +14,13 @@
   - **The user runs every Nextflow pipeline run** on their GPU allocation, which has no internet. Claude prepares the command, the user runs it and says when the results are ready.
   - **Work in agreed batches.** Do the batch the user approved, stop at a clean checkpoint (tests green, committed, this block updated), then wait for the user to say continue. Do not roll on into the next batch.
 - **Last completed:** Batch 3 on 2026-09-30: T22 (`qc-report`, no D6 exclusions, texture direction reverses between vendors) and T31 (model zoo, grids, one-fold timing). Also the correlation filter now keeps myocardial mass over myo volume. Batch 2: T30, T33 tested. Batch 1: T14, T12, T21. Earlier: T00–T02, T10, T11, T13, T20.
-- **Paused at a checkpoint 2026-09-30, waiting for the user's go on Batch 4.**
+- **Paused at a checkpoint 2026-09-30 at the user's request (pause for the day). Wait for the user's go before starting Batch 4.**
+- **Batch 3 follow-up (2026-09-30):** all figures were redrawn to stand alone (plain titles, units, n per group, legends), and a Siemens-vs-Philips AUC scatter (`auc_agreement_siemens_philips.png`) was added. The `all-no-wt` family set was added (D11), along with `FIGURES.md`.
 - **Planned batches:**
-  - **Batch 4:** T32 (PyTorch MLP) and T34 (experiment runner, result store, sbatch script, smoke run).
+  - **Batch 4:** T32 (PyTorch MLP, the 4th model family: linear LR-EN, kernel SVM, tree ensembles RF+XGB, neural MLP) and T34 (experiment runner, result store, sbatch script, smoke run). Include `all-no-wt` in the E1/E2 family sets.
   - **Batch 5:** E1 (T40), then E2/E3 preliminaries for the Nov 1 midterm (T60). T34/T40 submit CPU sbatch jobs (not Nextflow); ask the user whether they want to submit those themselves.
-- **Open question for the user (raised 2026-09-30):** HCM vs NOR is nearly perfectly separable from ED max wall thickness alone (within-vendor AUC 0.99–1.0; every model scores about 1.0 on fold 0). E1 on the `all` family set will hit a ceiling. Proposed: add a `no-wall-thickness` family set (clinical without wall thickness, plus shape and texture) as a sensitivity analysis, and lean on the texture and shape family sets (E4) for the vendor story. Waiting for the user's answer.
+- **Open questions for the user:** none. The ceiling question was answered by D11.
+- **Figures and tables:** every figure, the command that makes it, its inputs, how to read it and its key numbers are catalogued in `hcm_vendor/FIGURES.md`. All plotting code is in `hcmv/figures.py`. Keep both in sync.
 - **Pushed (2026-09-30):** `main` and `eece568-hcm-vendor` are on `origin` (CompBio-Lab/SORAT), and the project branch tracks `origin/eece568-hcm-vendor`. The user is the only developer and allows direct pushes to `main` (no PR needed). Push at each checkpoint.
 - **How to run things:**
   - Analysis tests and CLI: `source hcm_vendor/scripts/env.sh`, then `hcmv_python -m pytest hcm_vendor/tests -q -p no:cacheprovider` (29 tests) or `hcmv_python -m hcmv <cmd>`.
@@ -130,6 +132,7 @@ Nov 16 ─ Nov 27  Phase 6  Figures, report, reproducibility   T61 T62 T63
 | D8 | open (T42) | E3 probe design. **Recommended:** primary is a 3-class (Siemens/Philips/GE) balanced accuracy with chance = 1/3; secondary is binary Siemens-vs-Philips, since those are the two training vendors. | Confirm at T42 |
 | D9 | open (T50) | SHAP evaluation set and feature grouping. **Recommended:** explain both E2 models on the same 114 pooled subjects and aggregate |φ| over correlated-feature clusters (|r| > 0.95), so the rankings compare like with like. | Confirm at T50 |
 | D10 | open (T60) | Midterm update format: slides, a written report, or a short memo? What length and template? | Ask user at T60 |
+| D11 | 2026-09-30 | Add the `all-no-wt` family set (all features except every wall-thickness feature) as a sensitivity analysis, because wall thickness is the direct diagnostic criterion. A quick check shows it barely lowers the ceiling (LR-EN 5-fold AUC 0.998 → 0.978), so pooled classification is easy with any clinical or shape evidence. The study's weight therefore rests on cross-vendor transfer (E2), the vendor probe (E3) and family ablations (E4). | User ("if it strengthens the work") |
 
 ---
 

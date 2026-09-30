@@ -92,6 +92,15 @@ def test_select_features_orders_clinical_first_and_filters_families():
     assert select_features(_features(), "clinical") == ["ed_myo_volume_ml", "ed_lv_volume_ml"]
 
 
+def test_all_no_wt_drops_every_wall_thickness_feature():
+    X = _features()
+    X["ed_wall_thickness_max_mm"] = 1.0
+    X["es_wall_thickness_mean_mm"] = 1.0
+    cols = select_features(X, "all-no-wt")
+    assert not any("wall_thickness" in c for c in cols)
+    assert set(cols) == set(select_features(X, "all")) - {"ed_wall_thickness_max_mm", "es_wall_thickness_mean_mm"}
+
+
 def test_myocardial_mass_is_ordered_before_myo_volume():
     X = _features()
     X["ed_myocardial_mass_g"] = X["ed_myo_volume_ml"] * 1.05
