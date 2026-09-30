@@ -45,11 +45,39 @@ def cmd_make_samplesheets(config: dict, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_validate_gt(config: dict, args: argparse.Namespace) -> int:
+    from .qc import validate_gt
+
+    pred_root = config.get("validation", {}).get("pred_root")
+    print(validate_gt(config, pred_root=pred_root))
+    write_manifest(output_dir(config, "qc", "t12_validation"), config, "validate-gt")
+    return 0
+
+
+def radiomics_cli_flags(options: dict) -> list:
+    """Nextflow --feature_extraction.radiomics.* flags for one named feature config."""
+    flags = []
+    for key, value in (options or {}).items():
+        if value is None or value is False:
+            continue
+        value = "true" if value is True else value
+        flags.append(f"--feature_extraction.radiomics.{key} {value}")
+    return flags
+
+
+def cmd_radiomics_flags(config: dict, args: argparse.Namespace) -> int:
+    name = config.get("feature_config", "norm")
+    print(" ".join(radiomics_cli_flags(config["feature_configs"][name])))
+    return 0
+
+
 COMMANDS = {
     "show-config": (cmd_show_config, "Print the resolved study config and its hash"),
     "manifest": (cmd_manifest, "Write a run manifest (git, config hash, packages)"),
     "cohort": (cmd_cohort, "Build the study cohort table (T20)"),
     "make-samplesheets": (cmd_make_samplesheets, "Write SORAT samplesheets for the study cohort (T13)"),
+    "radiomics-flags": (cmd_radiomics_flags, "Print Nextflow radiomics flags; --set feature_config=<name>"),
+    "validate-gt": (cmd_validate_gt, "T12 report; --set validation.pred_root=<dir> adds nnFormer-vs-GT"),
 }
 
 

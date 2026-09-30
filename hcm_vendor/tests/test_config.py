@@ -36,3 +36,15 @@ def test_manifest_records_config_hash(tmp_path):
     assert manifest["command"] == "unit-test"
     assert manifest["config_hash"] == config_hash(config)
     assert manifest["packages"]["python"]
+
+
+def test_radiomics_cli_flags_from_study_config():
+    from hcmv.__main__ import radiomics_cli_flags
+
+    config = load_config()
+    assert radiomics_cli_flags(config["feature_configs"]["raw"]) == []
+    flags = radiomics_cli_flags(config["feature_configs"]["norm"])
+    assert "--feature_extraction.radiomics.normalize true" in flags
+    assert "--feature_extraction.radiomics.bin_count 32" in flags
+    assert "--feature_extraction.radiomics.resample_spacing 1.25,1.25,0" in flags
+    assert "--feature_extraction.radiomics.force2d true" in flags

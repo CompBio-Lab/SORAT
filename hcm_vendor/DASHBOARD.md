@@ -62,11 +62,11 @@
 | T02 | `hcm_vendor/` package skeleton, config, run manifest | 0 Setup | P0 | Oct 2 | T01 | DONE (2026-09-29) |
 | T10 | Fix wall thickness in `bin/extract_features.py` | 1 Features | P0 | Oct 5 | T01 | DONE (2026-09-29, `3e3972d` on main) |
 | T11 | Configurable, normalized radiomics settings | 1 Features | P0 | Oct 6 | T01 | DONE (2026-09-29, `fa597fa` on main) |
-| T12 | Ground-truth-mask features + validate T10/T11 | 1 Features | P0 | Oct 8 | T10, T11, T02 | TODO |
+| T12 | Ground-truth-mask features + validate T10/T11 | 1 Features | P0 | Oct 8 | T10, T11, T02 | DOING (GT done; pred-vs-GT waits on T14) |
 | T13 | Study-cohort samplesheets (M&Ms-2 NOR/HCM, ACDC NOR/HCM) | 1 Features | P0 | Oct 7 | T02 | DONE (2026-09-29) |
 | T14 | Re-extract nnFormer features (normalized + raw) on SLURM | 1 Features | P0 | Oct 11 | T12, T13 | TODO |
 | T20 | Cohort/metadata table with vendor, disease, role | 2 Dataset | P0 | Oct 9 | T02 | DONE (2026-09-29) |
-| T21 | Feature-table builder (ED+ES merge, derived features, families) | 2 Dataset | P0 | Oct 13 | T14, T20 | TODO |
+| T21 | Feature-table builder (ED+ES merge, derived features, families) | 2 Dataset | P0 | Oct 13 | T14, T20 | DOING (code + tests done; run after T14) |
 | T22 | Data QC + exploratory report | 2 Dataset | P1 | Oct 15 | T21 | TODO |
 | T30 | CV splitting + leakage-safe preprocessing pipeline | 3 Framework | P0 | Oct 15 | T21 | TODO |
 | T31 | Model zoo + hyperparameter grids (LR-EN, SVM, RF, XGB) | 3 Framework | P0 | Oct 17 | T30 | TODO |
@@ -398,7 +398,7 @@ MRI intensities are in arbitrary units that differ by vendor, so the texture fea
 ---
 
 ### T12: Ground-truth-mask features + validation of T10/T11
-**Status:** TODO · **Pri:** P0 · **Target:** Oct 8 · **Depends on:** T10, T11, T02
+**Status:** DOING · **Pri:** P0 · **Target:** Oct 8 · **Depends on:** T10, T11, T02
 
 **Goal:**
 - Prove the fixed features are clinically plausible before spending the SLURM run.
@@ -422,6 +422,30 @@ MRI intensities are in arbitrary units that differ by vendor, so the texture fea
 **Acceptance:**
 - Ground-truth wall-thickness distributions look clinically plausible. If not, go back to T10 before T14.
 - A validation summary with a table and two figures is saved and summarized in this ticket's log.
+
+**Log:**
+- 2026-09-29: `hcm_vendor/scripts/extract_gt_features.py` and its `.sbatch` wrapper (sorat-cinema.sif plus the feature venv on PYTHONPATH; 16 workers).
+  - Ground-truth labels are canonicalized with `frame_manifest._remap_cardiac_labels`. `results_hcm_vendor/features/gt/label_mapping.csv` confirms M&Ms-2 was swapped (RV←3, LV←1) and ACDC was left as-is.
+  - Both configs (`norm`, `raw`) are read from `study.yaml`.
+  - Existing outputs are skipped unless `--overwrite` is passed.
+- First run (job 13153051): 4/310 failed. M&Ms-2 **263 and 268** have non-orthonormal sforms that `sitk.ReadImage` rejects.
+  - Fixed in SORAT `load_mask` (commit `842bc77` on main) and in the script, both via `read_nifti_with_sitk_fallback`.
+  - The rerun (job 13153063) finished 310/310 with 0 failures.
+  - Also, the sbatch log filter had dropped the failure lines, because ITK error text contains `itkNiftiImageIO`. It is narrowed to `^WARNING: In .*itkNiftiImageIO`.
+- `python -m hcmv validate-gt` → `results_hcm_vendor/qc/t12_validation/` (summary.md, CSVs, 2 PNGs). Ground-truth findings:
+  - ED max wall thickness, median mm:
+
+    | | NOR | HCM |
+    |---|---|---|
+    | ACDC | 11.3 | 19.2 |
+    | M&Ms-2 GE | 9.4 | 13.4 (n=3) |
+    | M&Ms-2 Philips | 9.5 | 14.4 |
+    | M&Ms-2 Siemens | 11.2 | 14.8 |
+
+  - **ACDC is a clean external check:** 100% of HCM are ≥15 mm (min 16.5) and 0% of NOR (max 14.4). This matches ACDC's diagnostic rule, so the T10 measurement is validated.
+  - **M&Ms-2:** only 43% of HCM and 1% of NOR are ≥15 mm. This is a property of the dataset labels and a point for the report; NOR and HCM are still well separated.
+  - **Texture vendor signal among M&Ms-2 NOR** (Kruskal–Wallis): median η² is 0.66 for `raw` vs **0.47 for `norm`**, and 96% vs 92% of the 84 texture features have p < 0.05. Normalization shrinks the vendor signal but does not remove it. This is relevant to E3 and H2.
+- **Remaining:** after T14, run `python -m hcmv --set validation.pred_root=results_hcm_vendor/features/nnformer validate-gt` to add nnFormer-vs-ground-truth agreement (Pearson r and bias per vendor), then mark this ticket DONE.
 
 ### T13: Study-cohort samplesheets
 **Status:** DONE (2026-09-29) · **Pri:** P0 · **Target:** Oct 7 · **Depends on:** T02
@@ -508,7 +532,7 @@ nextflow run main.nf -entry FEATURES_ONLY -profile slurm \
 - Tests: `hcm_vendor/tests/test_cohort.py` (8 tests), including padding rows, ID padding, roles, challenge split, unmapped vendor, count mismatch, samplesheet layout and reference cross-check.
 
 ### T21: Feature-table builder
-**Status:** TODO · **Pri:** P0 · **Target:** Oct 13 · **Depends on:** T14, T20
+**Status:** DOING · **Pri:** P0 · **Target:** Oct 13 · **Depends on:** T14, T20
 
 **Tasks:**
 - [ ] `hcmv/features.py`: `build_feature_table(dataset, source={nnformer,gt}, cfg={norm,raw})`.
@@ -533,6 +557,16 @@ nextflow run main.nf -entry FEATURES_ONLY -profile slurm \
 - [ ] Unit tests with fixture CSVs for the ID parsing, merge, derived-feature arithmetic, family assignment and duplicate removal.
 
 **Acceptance:** one row per subject; 135 M&Ms-2 + 20 ACDC; the family counts are logged; the tests pass.
+
+**Log:**
+- 2026-09-29: `hcmv/features.py` is implemented as specified, with 10 tests in `hcm_vendor/tests/test_features.py`:
+  - filename ID parsing;
+  - rejecting empty files, missing phases and `radiomics_error`;
+  - dropping meta, constant and duplicate columns (the `radiomics_settings` column is dropped as meta);
+  - derived features with divide-by-zero guarded to NaN;
+  - family assignment and the cohort join.
+- Checked against the old real nnFormer M&Ms-2 CSVs: 135 subjects × 129 features (17 clinical, 28 shape, 84 texture), matching d≈130. LVEF median is 64%.
+- **Remaining:** once T14 lands, run `write_feature_tables(config, cohort, "nnformer__fold0", "results_hcm_vendor/features/nnformer")` (and `source="gt"` for the ground-truth root), add a CLI command, and record the pruning log here.
 
 ### T22: Data QC + exploratory report
 **Status:** TODO · **Pri:** P1 · **Target:** Oct 15 · **Depends on:** T21
