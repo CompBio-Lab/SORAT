@@ -985,6 +985,7 @@ Nested CV runs on each cohort: outer 5×5, inner 5.
 **Status:** TODO · **Pri:** P1 · **Target:** Nov 25 · **Depends on:** T51
 
 **Tasks:**
+- [ ] **Remove ticket and decision tags from code and config** (user request 2026-09-30): strip references like `T31`, `D6`, `(T22)` from comments, docstrings, CLI help text and `study.yaml`. Keep them in `DASHBOARD.md` and `FIGURES.md`. Replace each with a plain description of what the code does, e.g. `# model zoo` rather than `# T31: model zoo`. Find them with `grep -rnE '\b[TD][0-9]{1,2}\b' hcm_vendor/hcmv hcm_vendor/configs hcm_vendor/scripts hcm_vendor/tests`.
 - [ ] `hcm_vendor/README.md`: environment setup (T01), the feature re-extraction (T14), and one-command analysis with `hcm_vendor/scripts/run_all.sh`, an sbatch chain with dependencies.
 - [ ] Clean rerun of at least E1 and E2 from scratch, checking that the metrics match the stored ones within seed determinism.
 - [ ] All tests green, both repo `tests/` and `hcm_vendor/tests/`.
