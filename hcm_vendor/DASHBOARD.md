@@ -13,12 +13,11 @@
 - **Working rules (set by the user 2026-09-30):**
   - **The user runs every Nextflow pipeline run** on their GPU allocation, which has no internet. Claude prepares the command, the user runs it and says when the results are ready.
   - **Work in agreed batches.** Do the batch the user approved, stop at a clean checkpoint (tests green, committed, this block updated), then wait for the user to say continue. Do not roll on into the next batch.
-- **Last completed:** Batch 1 on 2026-09-30: T14 (check-features all ok), T12 (nnFormer-vs-GT agreement with ICC), T21 (`feature-tables` command, 8 tables built). Earlier: T01, T02, T10, T11, T13, T20, and SORAT fixes `842bc77` and `9ccff8b` on `main`.
-- **Paused at a checkpoint 2026-09-30, waiting for the user's go on Batch 2.**
+- **Last completed:** Batch 2 on 2026-09-30: T30 and T33 tested (23 new tests, 52 in total, no code changes needed). Batch 1 on 2026-09-30: T14, T12 (with ICC), T21 (8 feature tables). Earlier: T00–T02, T10, T11, T13, T20.
+- **Paused at a checkpoint 2026-09-30, waiting for the user's go on Batch 3.**
 - **Planned batches:**
-  - **Batch 2:** tests for T30 and T33. The code is drafted in `hcmv/{splits,preprocessing,stats}.py` but **untested**. Write the tests described in those tickets' logs, fix what they catch, and mark both DONE.
-  - **Batch 3:** T22 (QC and exploratory report, applying D6) together with T31 (model zoo).
-  - **After that:** T31, T32, T34, then E1 (T40), aiming at the Nov 1 midterm. T34/T40 submit CPU sbatch jobs (not Nextflow); ask the user whether they want to submit those themselves.
+  - **Batch 3:** T22 (QC and exploratory report, applying D6) together with T31 (model zoo and grids).
+  - **Then:** T32 (MLP) and T34 (experiment runner, smoke run), then E1 (T40), aiming at the Nov 1 midterm. T34/T40 submit CPU sbatch jobs (not Nextflow); ask the user whether they want to submit those themselves.
 - **Open questions for the user:** none right now. D6 (failed-case rule) is already decided; apply it at T22.
 - **Pushed (2026-09-30):** `main` and `eece568-hcm-vendor` are on `origin` (CompBio-Lab/SORAT), and the project branch tracks `origin/eece568-hcm-vendor`. The user is the only developer and allows direct pushes to `main` (no PR needed). Push at each checkpoint.
 - **How to run things:**
@@ -74,10 +73,10 @@
 | T20 | Cohort/metadata table with vendor, disease, role | 2 Dataset | P0 | Oct 9 | T02 | DONE (2026-09-29) |
 | T21 | Feature-table builder (ED+ES merge, derived features, families) | 2 Dataset | P0 | Oct 13 | T14, T20 | DONE (2026-09-30) |
 | T22 | Data QC + exploratory report | 2 Dataset | P1 | Oct 15 | T21 | TODO |
-| T30 | CV splitting + leakage-safe preprocessing pipeline | 3 Framework | P0 | Oct 15 | T21 | DOING (code drafted, **untested**) |
+| T30 | CV splitting + leakage-safe preprocessing pipeline | 3 Framework | P0 | Oct 15 | T21 | DONE (2026-09-30) |
 | T31 | Model zoo + hyperparameter grids (LR-EN, SVM, RF, XGB) | 3 Framework | P0 | Oct 17 | T30 | TODO |
 | T32 | PyTorch MLP as a scikit-learn estimator | 3 Framework | P0 | Oct 18 | T30 | TODO |
-| T33 | Metrics, bootstrap CIs, paired bootstrap tests | 3 Framework | P0 | Oct 18 | T02 | DOING (code drafted, **untested**) |
+| T33 | Metrics, bootstrap CIs, paired bootstrap tests | 3 Framework | P0 | Oct 18 | T02 | DONE (2026-09-30) |
 | T34 | Experiment runner, result store, SLURM scripts | 3 Framework | P0 | Oct 21 | T31, T32, T33 | TODO |
 | T40 | **E1** pooled + within-vendor nested CV | 4 Experiments | P1 | Oct 25 | T34 | TODO |
 | T41 | **E2** cross-vendor transfer + generalization gap Δ | 4 Experiments | P1 | Oct 28 | T40 | TODO |
@@ -614,7 +613,7 @@ nextflow run main.nf -entry FEATURES_ONLY -profile slurm \
 ## Phase 3: Modelling framework
 
 ### T30: CV splitting + leakage-safe preprocessing
-**Status:** DOING · **Pri:** P0 · **Target:** Oct 15 · **Depends on:** T21
+**Status:** DONE (2026-09-30) · **Pri:** P0 · **Target:** Oct 15 · **Depends on:** T21
 
 **Tasks:**
 - [ ] `splits.py`:
@@ -653,6 +652,17 @@ nextflow run main.nf -entry FEATURES_ONLY -profile slurm \
   - the pipeline works in GridSearchCV.
 
   Then run the tests and fix any failures.
+- 2026-09-30: `hcm_vendor/tests/test_splits_preprocessing.py` (12 tests) passes against the drafted code unchanged. It covers everything listed above, plus: the y × vendor mix is identical in every test fold, the GE fallback for small strata, and the filter being order-dependent by design.
+- Real-data check on the M&Ms-2 train pool (n=114, Siemens + Philips), with 5×5 outer folds stratified on y × vendor. Each fold 0 test set has 6/7/6/4 subjects per vendor × disease cell. Features kept after impute → variance → |r| > 0.95 filter, over the 25 training folds (`results_hcm_vendor/qc/t30_features_after_filter.csv`):
+
+  | family set | input | kept (min / median / max) |
+  |---|---|---|
+  | clinical | 17 | 13 / 14 / 14 |
+  | clinical+shape | 45 | 35 / 36 / 38 |
+  | clinical+texture | 101 | 57 / 58 / 59 |
+  | all | 129 | 79 / 81 / 82 |
+  | shape | 28 | 23 / 23 / 25 |
+  | texture | 84 | 43 / 44 / 45 |
 
 ### T31: Model zoo + hyperparameter grids
 **Status:** TODO · **Pri:** P0 · **Target:** Oct 17 · **Depends on:** T30
@@ -693,7 +703,7 @@ nextflow run main.nf -entry FEATURES_ONLY -profile slurm \
 **Acceptance:** the tests pass; one outer fold of E1 with the MLP runs in reasonable time (log the time).
 
 ### T33: Metrics, bootstrap CIs, paired bootstrap tests
-**Status:** DOING · **Pri:** P0 · **Target:** Oct 18 · **Depends on:** T02
+**Status:** DONE (2026-09-30) · **Pri:** P0 · **Target:** Oct 18 · **Depends on:** T02
 
 **Tasks:**
 - [ ] `stats.py`:
@@ -726,6 +736,7 @@ nextflow run main.nf -entry FEATURES_ONLY -profile slurm \
   - about 95% coverage in a simulation (normals separated by 1, true AUC 0.760);
   - identical predictions give p = 1, and a clear difference is detected;
   - permutation p, Holm on [0.01, 0.04, 0.03] gives [0.03, 0.06, 0.06], and the Wilson CI.
+- 2026-09-30: `hcm_vendor/tests/test_stats.py` (11 tests) passes against the drafted code unchanged. The coverage simulation (200 datasets of n=100, 300 resamples each) lands inside the accepted 88–99% band around the nominal 95%, and takes about 15 s. The full suite is now 52 tests.
 
 ### T34: Experiment runner, result store, SLURM scripts
 **Status:** TODO · **Pri:** P0 · **Target:** Oct 21 · **Depends on:** T31, T32, T33
