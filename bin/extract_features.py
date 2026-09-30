@@ -16,7 +16,6 @@ from typing import Optional, Tuple
 import numpy as np
 import pandas as pd
 import SimpleITK as sitk
-from radiomics import featureextractor
 from scipy import ndimage
 
 try:
@@ -195,56 +194,75 @@ def compute_volumes(mask_arr: np.ndarray, voxel_volume_ml: float) -> dict:
     }
 
 
+def _empty_wall_thickness() -> dict:
+    return {
+        "wall_thickness_mean_mm": np.nan,
+        "wall_thickness_max_mm": np.nan,
+        "wall_thickness_p95_mm": np.nan,
+    }
+
+
 def compute_wall_thickness(mask_arr: np.ndarray, spacing_xyz: Tuple[float, ...]) -> dict:
     """
-    Estimate myocardial wall thickness from LV-facing to epicardial MYO boundary.
+    Estimate myocardial wall thickness in-plane, slice by slice.
 
-    Steps:
-      1) Identify inner MYO boundary voxels touching LV (label 3).
-      2) Identify outer MYO boundary voxels touching BG (label 0).
-      3) Compute distance transform from outer boundary and sample on inner boundary.
+    Short-axis stacks are strongly anisotropic (slices are typically 8-10 mm
+    apart), so thickness is measured within each slice rather than in 3-D:
+
+      1) The slice axis is the array axis with the largest spacing.
+      2) In each slice, endocardial samples are MYO pixels 4-connected to LV.
+      3) The exterior is every pixel that is neither MYO nor LV. This includes
+         the RV, so the septum is measured to its RV border rather than around
+         to the RV insertion points.
+      4) Thickness at an endocardial sample is its in-plane Euclidean distance
+         (mm) to the nearest exterior pixel. Pixel-centre distances make this
+         accurate to about one pixel.
+
+    Returns the mean, max, and 95th percentile over all samples in all slices.
     """
     lv_mask = mask_arr == LABEL_LV
     myo_mask = mask_arr == LABEL_MYO
-    bg_mask = mask_arr == LABEL_BG
 
-    if not np.any(lv_mask) or not np.any(myo_mask):
-        return {
-            "wall_thickness_mean_mm": np.nan,
-            "wall_thickness_max_mm": np.nan,
-        }
-
-    structure = ndimage.generate_binary_structure(mask_arr.ndim, 1)
-
-    inner_boundary = myo_mask & ndimage.binary_dilation(lv_mask, structure=structure)
-    outer_boundary = myo_mask & ndimage.binary_dilation(bg_mask, structure=structure)
-
-    if not np.any(inner_boundary) or not np.any(outer_boundary):
-        return {
-            "wall_thickness_mean_mm": np.nan,
-            "wall_thickness_max_mm": np.nan,
-        }
+    if mask_arr.ndim != 3 or not np.any(lv_mask) or not np.any(myo_mask):
+        return _empty_wall_thickness()
 
     spacing_zyx = tuple(reversed(tuple(float(s) for s in spacing_xyz[:3])))
-    distance_to_outer_mm = ndimage.distance_transform_edt(~outer_boundary, sampling=spacing_zyx)
+    slice_axis = int(np.argmax(spacing_zyx))
+    inplane_spacing = tuple(s for axis, s in enumerate(spacing_zyx) if axis != slice_axis)
+    structure_2d = ndimage.generate_binary_structure(2, 1)
 
-    thickness_values_mm = distance_to_outer_mm[inner_boundary]
-    thickness_values_mm = thickness_values_mm[thickness_values_mm > 0]
+    samples = []
+    for idx in range(mask_arr.shape[slice_axis]):
+        lv_2d = np.take(lv_mask, idx, axis=slice_axis)
+        myo_2d = np.take(myo_mask, idx, axis=slice_axis)
+        if not np.any(lv_2d) or not np.any(myo_2d):
+            continue
 
-    if thickness_values_mm.size == 0:
-        return {
-            "wall_thickness_mean_mm": np.nan,
-            "wall_thickness_max_mm": np.nan,
-        }
+        endo = myo_2d & ndimage.binary_dilation(lv_2d, structure=structure_2d)
+        exterior = ~(myo_2d | lv_2d)
+        if not np.any(endo) or not np.any(exterior):
+            continue
 
+        distance_to_exterior_mm = ndimage.distance_transform_edt(~exterior, sampling=inplane_spacing)
+        samples.append(distance_to_exterior_mm[endo])
+
+    if not samples:
+        return _empty_wall_thickness()
+
+    thickness_values_mm = np.concatenate(samples)
     return {
         "wall_thickness_mean_mm": float(np.mean(thickness_values_mm)),
         "wall_thickness_max_mm": float(np.max(thickness_values_mm)),
+        "wall_thickness_p95_mm": float(np.percentile(thickness_values_mm, 95)),
     }
 
 
 def extract_radiomics_features(image_img: sitk.Image, mask_img: sitk.Image) -> dict:
     """Extract PyRadiomics features for MYO (label 2) using interpretable classes only."""
+    # Imported lazily so the geometric features stay importable (and testable)
+    # in runtimes without PyRadiomics.
+    from radiomics import featureextractor
+
     extractor = featureextractor.RadiomicsFeatureExtractor()
     extractor.disableAllFeatures()
     extractor.enableFeatureClassByName("shape")
@@ -377,6 +395,9 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+
+    # Fail fast when PyRadiomics is missing rather than recording a per-phase radiomics_error.
+    import radiomics  # noqa: F401
 
     image_path = Path(args.image)
     if not image_path.exists():
