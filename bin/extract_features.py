@@ -156,8 +156,8 @@ def resample_intensity_to_reference(image: sitk.Image, reference: sitk.Image) ->
 
 
 def load_mask(mask_path: Path) -> Tuple[sitk.Image, np.ndarray]:
-    """Load segmentation mask image and array."""
-    mask_img = sitk.ReadImage(str(mask_path))
+    """Load segmentation mask image and array (tolerates non-orthonormal NIfTI sforms)."""
+    mask_img = read_nifti_with_sitk_fallback(mask_path)
     mask_arr = sitk.GetArrayFromImage(mask_img)
     return mask_img, mask_arr
 
