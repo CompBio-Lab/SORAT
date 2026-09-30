@@ -23,7 +23,7 @@ CLINICAL_AGREEMENT = [
 def md_table(frame: pd.DataFrame) -> str:
     """Render a DataFrame as a GitHub markdown table (index included)."""
     frame = frame.reset_index()
-    header = ["" if str(c).startswith("index") else " / ".join(map(str, c)) if isinstance(c, tuple) else str(c)
+    header = ["" if str(c).startswith("index") else " / ".join(str(p) for p in c if str(p)) if isinstance(c, tuple) else str(c)
               for c in frame.columns]
     lines = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
     for row in frame.itertuples(index=False):
@@ -68,6 +68,19 @@ def vendor_effect(table: pd.DataFrame, columns) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def icc_3_1(a, b) -> float:
+    """ICC(3,1), two-way mixed, consistency, single rater (Shrout & Fleiss), for two raters."""
+    x = np.column_stack([np.asarray(a, float), np.asarray(b, float)])
+    n, k = x.shape
+    grand = x.mean()
+    ss_rows = k * ((x.mean(axis=1) - grand) ** 2).sum()
+    ss_cols = n * ((x.mean(axis=0) - grand) ** 2).sum()
+    ss_err = ((x - grand) ** 2).sum() - ss_rows - ss_cols
+    ms_rows, ms_err = ss_rows / (n - 1), ss_err / ((n - 1) * (k - 1))
+    denom = ms_rows + (k - 1) * ms_err
+    return float((ms_rows - ms_err) / denom) if denom > 0 else float("nan")
+
+
 def agreement(pred: pd.DataFrame, gt: pd.DataFrame, columns) -> pd.DataFrame:
     """Per-vendor agreement between predicted-mask and GT-mask features."""
     joined = pred[["vendor", "dataset"] + columns].join(gt[columns], rsuffix="_gt", how="inner")
@@ -81,7 +94,7 @@ def agreement(pred: pd.DataFrame, gt: pd.DataFrame, columns) -> pd.DataFrame:
             diff = a[ok] - b[ok]
             rows.append({
                 "dataset": dataset, "vendor": vendor, "feature": col, "n": int(ok.sum()),
-                "pearson_r": stats.pearsonr(a[ok], b[ok])[0],
+                "pearson_r": stats.pearsonr(a[ok], b[ok])[0], "icc_3_1": icc_3_1(a[ok], b[ok]),
                 "bias": diff.mean(), "loa_low": diff.mean() - 1.96 * diff.std(),
                 "loa_high": diff.mean() + 1.96 * diff.std(),
             })
@@ -149,8 +162,10 @@ def validate_gt(config: dict, pred_root: str = None) -> str:
         agree = agreement(pred, gt["norm"], CLINICAL_AGREEMENT)
         agree.to_csv(out / "pred_vs_gt_agreement.csv", index=False)
         pivot = agree.pivot_table(index="feature", columns=["dataset", "vendor"], values="pearson_r").round(2)
+        icc = agree.pivot_table(index="feature", columns=["dataset", "vendor"], values="icc_3_1").round(2)
         bias = agree.pivot_table(index="feature", columns=["dataset", "vendor"], values="bias").round(1)
         lines += ["", "## nnFormer vs ground truth: Pearson r", "", md_table(pivot),
+                  "", "## nnFormer vs ground truth: ICC(3,1)", "", md_table(icc),
                   "", "## nnFormer vs ground truth: mean bias (pred − GT)", "", md_table(bias)]
 
     report = "\n".join(lines) + "\n"

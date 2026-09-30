@@ -67,6 +67,24 @@ def cmd_check_features(config: dict, args: argparse.Namespace) -> int:
     return 0 if report["ok"].all() else 1
 
 
+def cmd_feature_tables(config: dict, args: argparse.Namespace) -> int:
+    import pandas as pd
+
+    from .features import write_feature_tables
+
+    cohort = pd.read_parquet(output_dir(config, "tables") / "cohort.parquet")
+    sources = {
+        config["segmentation_model_tag"]: "results_hcm_vendor/features/nnformer",
+        "gt": "results_hcm_vendor/features/gt",
+    }
+    for source, root in sources.items():
+        for (dataset, cfg), path in write_feature_tables(config, cohort, source, root).items():
+            table = pd.read_parquet(path)
+            print(f"{source} {dataset} {cfg}: {len(table)} subjects -> {path}")
+    write_manifest(output_dir(config, "tables"), config, "feature-tables")
+    return 0
+
+
 def radiomics_cli_flags(options: dict) -> list:
     """Nextflow --feature_extraction.radiomics.* flags for one named feature config."""
     flags = []
@@ -91,6 +109,7 @@ COMMANDS = {
     "make-samplesheets": (cmd_make_samplesheets, "Write SORAT samplesheets for the study cohort (T13)"),
     "check-features": (cmd_check_features, "T14 checks; --set checks.root=... checks.source=gt for GT"),
     "radiomics-flags": (cmd_radiomics_flags, "Print Nextflow radiomics flags; --set feature_config=<name>"),
+    "feature-tables": (cmd_feature_tables, "Build nnFormer and GT feature tables (T21)"),
     "validate-gt": (cmd_validate_gt, "T12 report; --set validation.pred_root=<dir> adds nnFormer-vs-GT"),
 }
 

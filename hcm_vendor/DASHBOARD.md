@@ -10,14 +10,15 @@
 
 > A new session saying "continue from where we left off" should read this block first, then the ticket it points to. Update this block at the end of **every** ticket or work session. It is the single source of truth for "where are we".
 
-- **Last completed:** T01, T02, T10, T11, T13, T20 (2026-09-29). Also SORAT fixes `842bc77` (non-orthonormal mask reading) and `9ccff8b` (fast mask discovery), both on `main` and merged. D6 and D7 are decided.
-- **Session paused 2026-09-29, about 21:30, at the user's request.**
-- **In progress:**
-  - **T14:** all four FEATURES_ONLY runs **finished without failures** on 2026-09-29 at 21:31: mms2/norm and mms2/raw had 271 tasks each, acdc/norm and acdc/raw 41 each (see `results_hcm_vendor/logs/t14_extraction.log`). **Not yet verified:** first run `hcmv_python -m hcmv check-features`, which must print `ok=True` for all four rows, then mark T14 DONE.
-  - **T12:** the ground-truth part is done. After T14, run `hcmv_python -m hcmv --set validation.pred_root=results_hcm_vendor/features/nnformer validate-gt`.
-  - **T21:** code and tests are done. After T14, add a `feature-tables` CLI command wrapping `features.write_feature_tables` for nnFormer and ground truth.
-  - **T30 and T33:** code is drafted in `hcmv/{splits,preprocessing,stats}.py` but **untested**. Write the tests described in those tickets' logs first.
-- **Next up:** T14 check-features → T12/T21 wrap-up → T30/T33 tests → T22 (QC, applying D6) → T31, T32, T34 → E1 (T40), aiming at the Nov 1 midterm.
+- **Working rules (set by the user 2026-09-30):**
+  - **The user runs every Nextflow pipeline run** on their GPU allocation, which has no internet. Claude prepares the command, the user runs it and says when the results are ready.
+  - **Work in agreed batches.** Do the batch the user approved, stop at a clean checkpoint (tests green, committed, this block updated), then wait for the user to say continue. Do not roll on into the next batch.
+- **Last completed:** Batch 1 on 2026-09-30: T14 (check-features all ok), T12 (nnFormer-vs-GT agreement with ICC), T21 (`feature-tables` command, 8 tables built). Earlier: T01, T02, T10, T11, T13, T20, and SORAT fixes `842bc77` and `9ccff8b` on `main`.
+- **Paused at a checkpoint 2026-09-30, waiting for the user's go on Batch 2.**
+- **Planned batches:**
+  - **Batch 2:** tests for T30 and T33. The code is drafted in `hcmv/{splits,preprocessing,stats}.py` but **untested**. Write the tests described in those tickets' logs, fix what they catch, and mark both DONE.
+  - **Batch 3:** T22 (QC and exploratory report). Ask the user for the D6 failed-case rule first.
+  - **After that:** T31, T32, T34, then E1 (T40), aiming at the Nov 1 midterm. T34/T40 submit CPU sbatch jobs (not Nextflow); ask the user whether they want to submit those themselves.
 - **Open questions for the user:** none right now. D6 (failed-case rule) must be asked at T22.
 - **Not pushed:** `main` and `eece568-hcm-vendor` are local only. Ask before pushing.
 - **How to run things:**
@@ -67,11 +68,11 @@
 | T02 | `hcm_vendor/` package skeleton, config, run manifest | 0 Setup | P0 | Oct 2 | T01 | DONE (2026-09-29) |
 | T10 | Fix wall thickness in `bin/extract_features.py` | 1 Features | P0 | Oct 5 | T01 | DONE (2026-09-29, `3e3972d` on main) |
 | T11 | Configurable, normalized radiomics settings | 1 Features | P0 | Oct 6 | T01 | DONE (2026-09-29, `fa597fa` on main) |
-| T12 | Ground-truth-mask features + validate T10/T11 | 1 Features | P0 | Oct 8 | T10, T11, T02 | DOING (GT done; pred-vs-GT waits on T14) |
+| T12 | Ground-truth-mask features + validate T10/T11 | 1 Features | P0 | Oct 8 | T10, T11, T02 | DONE (2026-09-30) |
 | T13 | Study-cohort samplesheets (M&Ms-2 NOR/HCM, ACDC NOR/HCM) | 1 Features | P0 | Oct 7 | T02 | DONE (2026-09-29) |
-| T14 | Re-extract nnFormer features (normalized + raw) on SLURM | 1 Features | P0 | Oct 11 | T12, T13 | DOING (runs finished 21:31; run check-features) |
+| T14 | Re-extract nnFormer features (normalized + raw) on SLURM | 1 Features | P0 | Oct 11 | T12, T13 | DONE (2026-09-30) |
 | T20 | Cohort/metadata table with vendor, disease, role | 2 Dataset | P0 | Oct 9 | T02 | DONE (2026-09-29) |
-| T21 | Feature-table builder (ED+ES merge, derived features, families) | 2 Dataset | P0 | Oct 13 | T14, T20 | DOING (code + tests done; run after T14) |
+| T21 | Feature-table builder (ED+ES merge, derived features, families) | 2 Dataset | P0 | Oct 13 | T14, T20 | DONE (2026-09-30) |
 | T22 | Data QC + exploratory report | 2 Dataset | P1 | Oct 15 | T21 | TODO |
 | T30 | CV splitting + leakage-safe preprocessing pipeline | 3 Framework | P0 | Oct 15 | T21 | DOING (code drafted, **untested**) |
 | T31 | Model zoo + hyperparameter grids (LR-EN, SVM, RF, XGB) | 3 Framework | P0 | Oct 17 | T30 | TODO |
@@ -403,7 +404,7 @@ MRI intensities are in arbitrary units that differ by vendor, so the texture fea
 ---
 
 ### T12: Ground-truth-mask features + validation of T10/T11
-**Status:** DOING · **Pri:** P0 · **Target:** Oct 8 · **Depends on:** T10, T11, T02
+**Status:** DONE (2026-09-30) · **Pri:** P0 · **Target:** Oct 8 · **Depends on:** T10, T11, T02
 
 **Goal:**
 - Prove the fixed features are clinically plausible before spending the SLURM run.
@@ -450,7 +451,9 @@ MRI intensities are in arbitrary units that differ by vendor, so the texture fea
   - **ACDC is a clean external check:** 100% of HCM are ≥15 mm (min 16.5) and 0% of NOR (max 14.4). This matches ACDC's diagnostic rule, so the T10 measurement is validated.
   - **M&Ms-2:** only 43% of HCM and 1% of NOR are ≥15 mm. This is a property of the dataset labels and a point for the report; NOR and HCM are still well separated.
   - **Texture vendor signal among M&Ms-2 NOR** (Kruskal–Wallis): median η² is 0.66 for `raw` vs **0.47 for `norm`**, and 96% vs 92% of the 84 texture features have p < 0.05. Normalization shrinks the vendor signal but does not remove it. This is relevant to E3 and H2.
-- **Remaining:** after T14, run `python -m hcmv --set validation.pred_root=results_hcm_vendor/features/nnformer validate-gt` to add nnFormer-vs-ground-truth agreement (Pearson r and bias per vendor), then mark this ticket DONE.
+- 2026-09-30: nnFormer-vs-ground-truth agreement added (`--set validation.pred_root=results_hcm_vendor/features/nnformer validate-gt`). `agreement()` now also reports ICC(3,1) (`qc.icc_3_1`, with a unit test), next to Pearson r, bias and 95% limits of agreement. See `pred_vs_gt_agreement.csv` and `summary.md`.
+  - Volumes and mass agree well everywhere (ICC 0.91–0.99). ACDC is near-perfect on every feature (ICC ≥ 0.90 except RVEF 0.76).
+  - **Weak spots are EF and GE wall thickness.** In M&Ms-2, LVEF ICC is 0.59–0.71, RVEF 0.56–0.73, and GE ED max wall thickness 0.56 (n=21). Mass is overestimated by about 11–12 g on M&Ms-2, and LVEF by about 5 points on Philips and Siemens. These are vendor-dependent segmentation errors to discuss in the report (H1/E3), and a reason to consider the GT-feature comparison (stretch S1).
 
 ### T13: Study-cohort samplesheets
 **Status:** DONE (2026-09-29) · **Pri:** P0 · **Target:** Oct 7 · **Depends on:** T02
@@ -472,7 +475,7 @@ MRI intensities are in arbitrary units that differ by vendor, so the texture fea
 - The FEATURES_ONLY dry run is deferred to the start of T14 (the one-subject run).
 
 ### T14: Re-extract nnFormer features (normalized + raw) on SLURM
-**Status:** DOING · **Pri:** P0 · **Target:** Oct 11 · **Depends on:** T12, T13
+**Status:** DONE (2026-09-30) · **Pri:** P0 · **Target:** Oct 11 · **Depends on:** T12, T13
 
 **Runs:** 2 datasets × 2 configs. The existing nnFormer masks are reused; nothing is re-segmented.
 
@@ -517,6 +520,7 @@ nextflow run main.nf -entry FEATURES_ONLY -profile slurm \
 - `hcm_vendor/scripts/run_feature_extraction.sh` runs the four runs in sequence, taking radiomics flags from `study.yaml` via `python -m hcmv --set feature_config=<cfg> radiomics-flags`.
   - Launched with `nohup ... > results_hcm_vendor/logs/t14_extraction.log`.
   - Outputs go to `results_hcm_vendor/features/nnformer/{mms2,acdc}/{norm,raw}/`, with per-run pipeline info in `results_hcm_vendor/pipeline_runs/<dataset>_<cfg>/`.
+- 2026-09-30: `check-features` printed `ok=True` for all four rows: mms2 raw/norm 270 files and 135 subjects each, acdc raw/norm 40 files and 20 subjects each, with no empty files, missing subjects, radiomics errors or all-NaN columns, and settings matching. ED max wall-thickness median is 11.8 mm (M&Ms-2) and 15.4 mm (ACDC). **T14 DONE.**
 - **Acceptance check:** `python -m hcmv check-features` (nnFormer root by default; add `--set checks.root=results_hcm_vendor/features/gt --set checks.source=gt` for ground truth). The ground-truth features already pass every check.
 - **If a new session finds T14 incomplete:**
   1. `grep -E "^===|Succeeded|ERROR" results_hcm_vendor/logs/t14_extraction.log`.
@@ -553,7 +557,7 @@ nextflow run main.nf -entry FEATURES_ONLY -profile slurm \
 - Tests: `hcm_vendor/tests/test_cohort.py` (8 tests), including padding rows, ID padding, roles, challenge split, unmapped vendor, count mismatch, samplesheet layout and reference cross-check.
 
 ### T21: Feature-table builder
-**Status:** DOING · **Pri:** P0 · **Target:** Oct 13 · **Depends on:** T14, T20
+**Status:** DONE (2026-09-30) · **Pri:** P0 · **Target:** Oct 13 · **Depends on:** T14, T20
 
 **Tasks:**
 - [ ] `hcmv/features.py`: `build_feature_table(dataset, source={nnformer,gt}, cfg={norm,raw})`.
@@ -587,7 +591,9 @@ nextflow run main.nf -entry FEATURES_ONLY -profile slurm \
   - derived features with divide-by-zero guarded to NaN;
   - family assignment and the cohort join.
 - Checked against the old real nnFormer M&Ms-2 CSVs: 135 subjects × 129 features (17 clinical, 28 shape, 84 texture), matching d≈130. LVEF median is 64%.
-- **Remaining:** once T14 lands, run `write_feature_tables(config, cohort, "nnformer__fold0", "results_hcm_vendor/features/nnformer")` (and `source="gt"` for the ground-truth root), add a CLI command, and record the pruning log here.
+- 2026-09-30: `python -m hcmv feature-tables` builds all 8 tables ({nnformer-fold0, gt} × {mms2, acdc} × {norm, raw}) in `results_hcm_vendor/tables/features_<dataset>_<source>_<cfg>.parquet`, each with `_pruned.csv` and `_dictionary.csv`.
+  - Every table has one row per subject (135 M&Ms-2, 20 ACDC) and 129 model features: 17 clinical, 28 shape and 84 texture, plus 2 `sensitivity` columns.
+  - Pruning dropped only the 8 meta columns (mask file, mask source, voxel volume and radiomics settings, ×2 phases). No constant or duplicate columns were found.
 
 ### T22: Data QC + exploratory report
 **Status:** TODO · **Pri:** P1 · **Target:** Oct 15 · **Depends on:** T21

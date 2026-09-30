@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from hcmv.qc import agreement, md_table, vendor_effect, wall_thickness_summary
+from hcmv.qc import agreement, icc_3_1, md_table, vendor_effect, wall_thickness_summary
 
 
 def _table(seed=0):
@@ -45,6 +45,16 @@ def test_agreement_reports_bias_and_correlation():
     assert noise["pearson_r"] == pytest.approx(1.0)
     shifted = out[(out.feature == "ed_wall_thickness_mean_mm") & (out.vendor == "GE")]
     assert shifted.empty or shifted.iloc[0]["bias"] == pytest.approx(1.0)
+
+
+def test_icc_3_1_matches_reference_and_ignores_offset():
+    # Shrout & Fleiss style check: a constant offset keeps consistency ICC at 1.
+    a = np.array([9.0, 6.0, 8.0, 7.0, 10.0, 6.0])
+    assert icc_3_1(a, a + 2.0) == pytest.approx(1.0)
+    b = np.array([2.0, 1.0, 4.0, 1.0, 5.0, 2.0])
+    # Reference value computed by hand from the two-way ANOVA mean squares.
+    assert icc_3_1(a, b) == pytest.approx(0.7453, abs=1e-3)
+    assert icc_3_1(a, -a) < 0
 
 
 def test_md_table_renders_header_and_nan():
