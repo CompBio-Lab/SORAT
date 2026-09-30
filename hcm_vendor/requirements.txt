@@ -1,0 +1,21 @@
+# Documentation only: nothing installs from this file.
+# The analysis runs in jupyter-datascience.sif (see scripts/env.sh). Versions below
+# were verified on 2026-09-29. Entries marked "user site" were added with
+# `pip install --user -c constraints` inside the container, landing in
+# /scratch/st-zlaksman-1/pmoheban/my_jupyter/.local, and must not upgrade the image's core packages.
+python==3.11.6
+numpy==1.26.4
+pandas==2.2.3
+scipy==1.15.2
+scikit-learn==1.6.1
+torch==2.8.0
+matplotlib==3.10.1
+seaborn==0.13.0
+statsmodels==0.14.0
+pyarrow==13.0.0
+PyYAML==6.0.1
+joblib==1.3.2
+pytest==8.3.5
+SimpleITK==2.5.0
+xgboost==3.0.5   # user site; >=3.1 breaks shap 0.49 TreeExplainer (base_score format)
+shap==0.49.1     # user site

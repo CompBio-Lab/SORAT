@@ -1,0 +1,44 @@
+# EECE 568 study configuration. Paths are absolute or relative to the repo root.
+# Values here are read by hcmv.config.load_config(); CLI overrides use dotted keys.
+
+paths:
+  repo_root: /scratch/st-zlaksman-1/pmoheban/SORAT
+  output_root: results_hcm_vendor
+  mms2_info_csv: "/scratch/st-zlaksman-1/pmoheban/M&Ms_2/MnM2/dataset_information.csv"
+  mms2_sa_root: "/scratch/st-zlaksman-1/pmoheban/M&Ms_2/MnM2/SA"
+  mms2_samplesheet: data/mms2_sa_samplesheet_full.csv
+  acdc_testing_root: /scratch/st-zlaksman-1/pmoheban/ACDC/database/testing
+  acdc_samplesheet: data/acdc_testing_samplesheet.csv
+  sorat_results:
+    mms2: results/MMS_2
+    acdc: results/ACDC
+
+segmentation_model_tag: nnformer__fold0
+
+cohort:
+  diseases: [NOR, HCM]
+  positive_class: HCM
+  vendor_map:
+    SIEMENS: Siemens
+    "Philips Medical Systems": Philips
+    "GE MEDICAL SYSTEMS": GE
+  train_vendors: [Siemens, Philips]
+  expected_counts:            # asserted when the cohort table is built (T20)
+    mms2:
+      Siemens: {HCM: 30, NOR: 22}
+      Philips: {HCM: 27, NOR: 35}
+      GE: {HCM: 3, NOR: 18}
+    acdc:
+      Siemens: {HCM: 10, NOR: 10}
+
+feature_configs:              # radiomics settings per named config (finalized in T11)
+  raw: {}                     # PyRadiomics defaults, as in the original SORAT runs
+  norm: {}                    # normalized + fixed bin count; filled in once D5 is decided
+
+seed: 20261001
+cv:
+  outer_splits: 5
+  outer_repeats: 5
+  inner_splits: 5
+bootstrap_resamples: 2000
+permutations: 1000

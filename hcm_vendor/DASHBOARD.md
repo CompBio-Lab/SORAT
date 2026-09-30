@@ -4,7 +4,28 @@
 
 **Branch:** `eece568-hcm-vendor` · **Code:** `hcm_vendor/` · **Outputs:** `results_hcm_vendor/` (gitignored, never committed)
 **Deadlines:** midterm update **Sun Nov 1 2026** · project complete **Fri Nov 27 2026**
-**Last updated:** 2026-09-29 (planning; only T00 is done)
+**Last updated:** 2026-09-29
+
+## ▶ Resume here (checkpoint)
+
+> A new session saying "continue from where we left off" should read this block first, then the ticket it points to. Update this block at the end of **every** ticket or work session. It is the single source of truth for "where are we".
+
+- **Last completed:** T10 (wall thickness, on `main` + merged), T01 (environment), T02 (package skeleton). Decision D5 is recorded.
+- **In progress:** T11 (configurable radiomics settings in `bin/extract_features.py` → `modules/features.nf` → `nextflow.config`). This is a SORAT fix, so commit it on `main` and merge.
+- **Next up:** T11 → T13 (samplesheets) and T20 (cohort table), which are independent → T12 (ground-truth features + validation) → T14 (SLURM re-extraction).
+- **Open questions for the user:** none.
+- **Not pushed:** `main` and `eece568-hcm-vendor` are local only. Ask before pushing.
+- **How to run things:** `source hcm_vendor/scripts/env.sh`, then `hcmv_python -m pytest hcm_vendor/tests -q -p no:cacheprovider` or `hcmv_python -m hcmv <cmd>`. For SORAT tests, use `module load gcc apptainer && apptainer exec containers/sorat-cinema.sif python -m unittest discover -s tests`. For SLURM, `sbatch --account=st-zlaksman-1 --output=results_hcm_vendor/logs/%x-%j.out <script>`.
+- **Gotchas to remember:**
+  - Never create venvs. xgboost and shap are in the container home's `.local`. Keep xgboost below 3.1, and never let pip upgrade numpy, sklearn or pandas there.
+  - Your uncommitted work on `main` (VSA-3L edits, README, `nextflow.config`, etc.) stays unstaged on both branches. Never `git add -A`.
+  - `nextflow.config` has **uncommitted user edits**. When T11 changes it, stage only the T11 hunk (`git add -p` is not available non-interactively, so build a patch).
+
+### Git workflow for fixes (agreed 2026-09-29)
+
+- **SORAT-level fixes** are anything in `bin/`, `modules/`, `main.nf`, `nextflow.config`, repo `tests/` or `CLAUDE.md`. Commit them on **`main`** first: `git checkout main`, then `git add <specific files>` and commit. Then `git checkout eece568-hcm-vendor` and `git merge main`. That way `main` gets the fix and the project branch stays a superset.
+- **Project-only work** is `hcm_vendor/` and `.gitignore` entries for `results_hcm_vendor/`. Commit it on `eece568-hcm-vendor` only.
+- Always stage explicit paths. Uncommitted user changes ride along across checkouts and must not be committed.
 
 ## How to use this file
 
@@ -30,9 +51,9 @@
 | # | Ticket | Phase | Pri | Target | Depends on | Status |
 |---|---|---|---|---|---|---|
 | T00 | Branch + planning dashboard | 0 Setup | P0 | Sep 29 | — | DONE (2026-09-29) |
-| T01 | Analysis Python environment on Sockeye | 0 Setup | P0 | Oct 1 | — | TODO |
-| T02 | `hcm_vendor/` package skeleton, config, run manifest | 0 Setup | P0 | Oct 2 | T01 | TODO |
-| T10 | Fix wall thickness in `bin/extract_features.py` | 1 Features | P0 | Oct 5 | T01 | TODO |
+| T01 | Analysis environment (existing datascience container) | 0 Setup | P0 | Oct 1 | — | DONE (2026-09-29) |
+| T02 | `hcm_vendor/` package skeleton, config, run manifest | 0 Setup | P0 | Oct 2 | T01 | DONE (2026-09-29) |
+| T10 | Fix wall thickness in `bin/extract_features.py` | 1 Features | P0 | Oct 5 | T01 | DONE (2026-09-29, `3e3972d` on main) |
 | T11 | Configurable, normalized radiomics settings | 1 Features | P0 | Oct 6 | T01 | TODO |
 | T12 | Ground-truth-mask features + validate T10/T11 | 1 Features | P0 | Oct 8 | T10, T11, T02 | TODO |
 | T13 | Study-cohort samplesheets (M&Ms-2 NOR/HCM, ACDC NOR/HCM) | 1 Features | P0 | Oct 7 | T02 | TODO |
@@ -91,7 +112,7 @@ Nov 16 ─ Nov 27  Phase 6  Figures, report, reproducibility   T61 T62 T63
 | D2 | 2026-09-29 | Texture features: re-extract with intensity normalization and a fixed bin count as the **primary** set. Keep the raw (current-settings) texture as a **sensitivity analysis**. | User |
 | D3 | 2026-09-29 | Branch `eece568-hcm-vendor`. Analysis code in `hcm_vendor/`. Dashboard committed. | User |
 | D4 | 2026-09-29 | Midterm update due Nov 1; project complete Nov 27. | User |
-| D5 | open (T11) | For the normalized config, also resample in-plane to a common spacing and compute texture in 2D (`force2D`)? **Recommended: yes.** Slices are 8–10 mm thick, so 3D GLCM co-occurrence across slices is not meaningful. Pixel spacing also differs by scanner and is itself a vendor signal. | Confirm with user at T11 |
+| D5 | 2026-09-29 | The `norm` config is: normalize (scale 100), binCount 32, `force2D` (dimension 0), and in-plane resample to 1.25×1.25 mm (z unchanged). `raw` = PyRadiomics defaults, as in the original runs. | User |
 | D6 | open (T22) | What counts as a "failed case"? **Recommended:** automated criteria only (missing or NaN features, radiomics error, empty LV/MYO, or implausible volumes). Report Dice against ground truth as QC only, so the pipeline stays "fully automated". | Confirm at T22 |
 | D7 | open (T33) | Threshold for balanced accuracy, sensitivity and specificity. **Recommended:** 0.5 on predicted probability, with class-balanced training. AUC is threshold-free and is the primary metric. | Confirm at T33 |
 | D8 | open (T42) | E3 probe design. **Recommended:** primary is a 3-class (Siemens/Philips/GE) balanced accuracy with chance = 1/3; secondary is binary Siemens-vs-Philips, since those are the two training vendors. | Confirm at T42 |
@@ -140,12 +161,17 @@ Nov 16 ─ Nov 27  Phase 6  Figures, report, reproducibility   T61 T62 T63
   - **Max wall thickness is wrong.** ED median is about 22–24 mm for NOR and HCM alike, on every vendor (expected about 8–11 mm for NOR). The distance is measured in 3D across 10 mm slices, and the septal epicardium borders the RV (label 1), not background (label 0), so it never counts as the outer boundary.
   - **Texture barely varies for Philips and Siemens.** Intensities are unnormalized and PyRadiomics' default bin width of 25 is used. The median first-order Mean is about 276–420 for GE versus about 45–64 for Philips and Siemens, and GLCM Contrast is about 8–20 for GE versus about 0.5–1.4 for Philips and Siemens.
 
-**Environment:**
-- No existing container or venv has scikit-learn, XGBoost or SHAP.
-- `/scratch/st-zlaksman-1/pmoheban/venvs/sorat-features-conda` has PyRadiomics, and SORAT feature extraction uses it via `--feature_extraction.virtualenv_path`.
-- The cluster's module system (`module load CVMFS_CC`) has `python/3.10–3.12` and `scipy-stack`. Its wheelhouse has scikit-learn, XGBoost and SHAP wheels.
+**Environment (decided 2026-09-29: containers only, no venvs):**
+- **Analysis Python** runs in `/arc/project/st-singha53-1/pmoheban/jupyter/jupyter-datascience.sif`, with home `/scratch/st-zlaksman-1/pmoheban/my_jupyter`.
+  - Interactive: `module load gcc apptainer && launch-apptainer`.
+  - Scripts and sbatch: `source hcm_vendor/scripts/env.sh`, then `hcmv_python ...`.
+- It has Python 3.11.6, numpy 1.26.4, pandas 2.2.3, scikit-learn 1.6.1, scipy 1.15.2, torch 2.8.0 (cu128), matplotlib 3.10.1, seaborn 0.13.0, statsmodels 0.14.0, pytest 8.3.5, SimpleITK 2.5.0, nibabel, pyarrow 13 and PyYAML.
+- **xgboost 3.2.0 and shap 0.49.1** were added on 2026-09-29 with `pip install --user` inside the container (user's choice), so they live in `my_jupyter/.local`. They were installed against a constraints file pinning numpy, scikit-learn, pandas, scipy and matplotlib to the container's versions. **Never let pip upgrade those in `.local`**, because that shadows the image.
+- The container has no PyRadiomics. SORAT feature extraction still uses `/scratch/st-zlaksman-1/pmoheban/venvs/sorat-features-conda` via `--feature_extraction.virtualenv_path`, an existing SORAT mechanism that we leave alone.
+- **Imports are slow on first use from `/arc`.** On the login node, torch took about 260 s and sklearn about 45 s. Budget for this in job time limits.
+- **SORAT code tests** (repo `tests/`) run in `containers/sorat-cinema.sif`, which has numpy/scipy/SimpleITK but no radiomics or sklearn.
+- **SLURM account:** `st-zlaksman-1` (and `-gpu`). `st-singha53-1` also exists. `env.sh` defaults to `st-zlaksman-1`.
 - The login node has internet (PyPI reachable). Assume compute nodes do not.
-- `sorat-cinema.sif` has torch 2.1, pandas 2.2 and matplotlib, but not sklearn.
 
 **FEATURES_ONLY behaviour (from `main.nf`):**
 - Features are written to `--feature_extraction.output_dir`, not to `--outdir`. The default is `<results_dir>/features/raw`, which would write into `results/`, so **always set `output_dir`**.
@@ -200,48 +226,87 @@ The SORAT pipeline changes (T10, T11) live in `bin/extract_features.py`, `module
 - [x] Write this dashboard from the proposal and a full codebase and data review.
 - **Log:** 2026-09-29, created. The user answered D1–D4.
 
-### T01: Analysis Python environment on Sockeye
-**Status:** TODO · **Pri:** P0 · **Target:** Oct 1 · **Depends on:** —
+### T01: Analysis environment (existing datascience container)
+**Status:** DONE (2026-09-29) · **Pri:** P0 · **Target:** Oct 1 · **Depends on:** —
 
-**Goal:** a reproducible venv with everything needed for modelling, SHAP and plots, usable from SLURM compute nodes (which have no internet).
+**Goal:** everything needed for modelling, SHAP and plots, usable from SLURM compute nodes. **No venvs.** Use the user's `jupyter-datascience.sif` (see Verified facts → Environment).
 
 **Tasks:**
-- [ ] Choose the Python version. Recommended: `module load CVMFS_CC python/3.11` plus the matching `scipy-stack`.
-- [ ] Create the venv at `/scratch/st-zlaksman-1/pmoheban/venvs/hcm-vendor-py311`, on the login node. The login node has internet; prefer the cluster wheelhouse (`pip install --no-index` where possible), otherwise use PyPI.
-- [ ] Packages: numpy, pandas, pyarrow, scipy, scikit-learn, xgboost, shap, torch (CPU build is enough), matplotlib, seaborn, pyyaml, joblib, pytest. Optional: statsmodels.
-- [ ] Check that the versions are compatible with each other, especially SHAP against numpy, scikit-learn and xgboost. Pin them in `hcm_vendor/requirements.txt` and save `pip freeze` output as `hcm_vendor/requirements.lock.txt`.
-- [ ] Write `hcm_vendor/scripts/env.sh`, which runs `module load` and activates the venv. Every sbatch script will source it.
-- [ ] Smoke test on a **compute node** with a short `sbatch`, using `--account` from `SORAT_SLURM_ACCOUNT`: import everything, fit a tiny XGB and MLP, and run TreeSHAP on it.
+- [x] Inventory the container's packages. xgboost and shap were missing.
+- [x] Install xgboost and shap with `pip install --user` inside the container, under a constraints file so the core packages are not upgraded.
+- [x] `hcm_vendor/scripts/env.sh`: `module load gcc apptainer` plus an `hcmv_python` wrapper. It uses the same image and home as `launch-apptainer`, binds `/scratch` and `/arc`, and puts `hcm_vendor/` on `PYTHONPATH`.
+- [x] `hcm_vendor/scripts/smoke_env.py` + `smoke_env.sbatch`: import everything, fit a tiny XGB and torch MLP, and run TreeSHAP.
+- [x] Smoke test passes on a **compute node** (job 13152950, node se010, 3m40s).
+- [x] Record exact versions in `hcm_vendor/requirements.txt` for documentation. It is not used to install anything.
 
-**Acceptance:** the smoke-test job succeeds on a compute node; requirements and lock files are committed; exact versions are recorded in this ticket's log.
+**Acceptance:** the smoke-test job passes on a compute node; the versions are recorded.
 
 **Notes:** GPUs are not needed (n≈135, d≈130). The proposal mentions two GPUs, but CPU jobs are faster to schedule. MLP code stays device-agnostic anyway.
 
+**Log:**
+- 2026-09-29: The venv approach was rejected by the user; switched to the container. A stray empty venv I had created was deleted.
+- 2026-09-29: The first smoke job (13152911) failed. xgboost 3.2.0's `base_score` format (`'[5E-1]'`) breaks shap 0.49.1 TreeExplainer, so xgboost is pinned to **3.0.5**. Job 13152950 passed.
+- On the compute node, torch import took about 52 s, SimpleITK about 24 s and sklearn about 7 s. **Allow about 2 min of import overhead per job.**
+
 ### T02: `hcm_vendor/` package skeleton, config, run manifest
-**Status:** TODO · **Pri:** P0 · **Target:** Oct 2 · **Depends on:** T01
+**Status:** DONE (2026-09-29) · **Pri:** P0 · **Target:** Oct 2 · **Depends on:** T01
 
 **Tasks:**
-- [ ] Create the layout above, with an importable `hcmv` package and `python -m hcmv --help`.
-- [ ] `configs/study.yaml`:
+- [x] Create the layout above, with an importable `hcmv` package and `python -m hcmv --help`.
+- [x] `configs/study.yaml`:
   - Data roots: M&Ms-2 info CSV, ACDC testing root, SORAT results dirs, new feature dirs.
   - Output root `results_hcm_vendor/`.
   - Global seed and repeats: outer 5×5, inner 5.
   - Bootstrap: 2000 resamples. Permutations: 1000.
   - Model grids, filled in by T31/T32.
   - Feature-config names: `norm` (primary) and `raw` (sensitivity).
-- [ ] `config.py`: load YAML, allow CLI overrides, and compute a config hash.
-- [ ] `manifest.py`: every run writes `manifest.json` with git SHA, dirty flag, config hash, package versions, host, SLURM job ID and timestamps.
-- [ ] Add `results_hcm_vendor/` to `.gitignore`.
-- [ ] Set up pytest (`hcm_vendor/tests/`) and add a trivial test so the harness works: `python -m pytest hcm_vendor/tests -q`.
+- [x] `config.py`: load YAML, allow CLI overrides, and compute a config hash.
+- [x] `manifest.py`: every run writes `manifest.json` with git SHA, dirty flag, config hash, package versions, host, SLURM job ID and timestamps.
+- [x] Add `results_hcm_vendor/` to `.gitignore`.
+- [x] Set up pytest (`hcm_vendor/tests/`) and add a trivial test so the harness works: `python -m pytest hcm_vendor/tests -q`.
 
 **Acceptance:** the CLI runs; the test suite runs; the manifest is written by a dummy command.
+
+---
+
+**Log:**
+- 2026-09-29: Built:
+  - `hcmv/{__init__,__main__,config,manifest}.py`.
+  - CLI commands `show-config` and `manifest`. Add new commands to `COMMANDS` in `__main__.py`.
+  - `configs/study.yaml`, with cohort expected counts, CV, bootstrap and permutation settings.
+  - `results_hcm_vendor/` added to `.gitignore`.
+  - 5 pytest tests pass.
+- Run tests with `source hcm_vendor/scripts/env.sh && hcmv_python -m pytest hcm_vendor/tests -q -p no:cacheprovider`.
+- The manifest reads versions via `importlib.metadata`, because importing torch from /arc on the login node took minutes.
+- `feature_configs` in study.yaml are placeholders until T11.
 
 ---
 
 ## Phase 1: Feature correctness in SORAT (critical path)
 
 ### T10: Fix wall thickness in `bin/extract_features.py`
-**Status:** TODO · **Pri:** P0 · **Target:** Oct 5 · **Depends on:** T01 (container is enough)
+**Status:** DONE (2026-09-29) · **Pri:** P0 · **Target:** Oct 5 · **Depends on:** T01 (container is enough)
+
+**Log:**
+- 2026-09-29: Implemented as specified. Also made the PyRadiomics import lazy, with a fail-fast `import radiomics` in `main()` so CLI behaviour is unchanged.
+- Added `tests/test_extract_features_wall_thickness.py` (6 phantom tests). All pass in `sorat-cinema.sif`. Against the old implementation, 3 fail and 1 errors (no p95 key), so the tests do catch the bug.
+- Spot check on the first 6 ED subjects per vendor × disease (3 for GE HCM), median values:
+
+  | | nnFormer max | GT max | nnFormer p95 | GT p95 |
+  |---|---|---|---|---|
+  | GE HCM (n=3) | 11.9 | 13.4 | 10.4 | 9.4 |
+  | GE NOR | 9.1 | 9.2 | 7.7 | 7.4 |
+  | Philips HCM | 15.6 | 15.2 | 13.5 | 12.0 |
+  | Philips NOR | 11.0 | 10.1 | 9.4 | 8.3 |
+  | Siemens HCM | 16.6 | 15.3 | 13.7 | 13.2 |
+  | Siemens NOR | 10.6 | 10.9 | 8.8 | 9.2 |
+
+  Plausible, and nnFormer tracks ground truth. The full-cohort validation is T12.
+- Commits: `3e3972d` on `main`, merged into `eece568-hcm-vendor`. `CLAUDE.md` was committed to main as `da371a6`.
+- **Checklist (all done):**
+  - [x] Algorithm implemented.
+  - [x] Phantom tests: annulus, RV-bordered septum, thickest slice, through-plane leakage, NaN, slice axis.
+  - [x] Tests run in the container.
 
 **Problem:** `compute_wall_thickness` has two faults.
 - It measures a 3D Euclidean distance transform with 3D neighbourhoods on stacks with 8–10 mm slices, so boundaries leak through the slice direction.
