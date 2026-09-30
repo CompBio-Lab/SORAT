@@ -6,6 +6,7 @@ Discover existing segmentation frames for postprocess/feature extraction.
 import argparse
 import csv
 import json
+import os
 import re
 from pathlib import Path
 
@@ -37,15 +38,42 @@ def parse_samplesheet(path: Path) -> dict:
     return rows
 
 
+# Masks live under <arch>/segmentations. These output trees hold tens of thousands
+# of non-mask files, so they are pruned rather than walked and discarded.
+SKIP_DIRS = {
+    "postprocess", "previews", "metrics", "features", "comparison",
+    "pipeline_info", "debug", "preprocessed",
+}
+
+
+ARCHITECTURE_DIRS = {"cinema", "nnformer", "vsa3l", "atrial_nnunet"}
+
+
+def iter_segmentation_files(results_dir: Path, allowed_models: set = None):
+    """Yield candidate ``*_*.nii.gz`` files, pruning bulky non-mask subtrees.
+
+    Top-level architecture folders outside ``allowed_models`` are skipped too.
+    """
+    allowed = {m.lower() for m in (allowed_models or set())}
+    restrict = bool(allowed) and "all" not in allowed
+    for dirpath, dirnames, filenames in os.walk(results_dir):
+        at_root = Path(dirpath) == Path(results_dir)
+        dirnames[:] = sorted(
+            d for d in dirnames
+            if d.lower() not in SKIP_DIRS
+            and not (restrict and at_root and d.lower() in ARCHITECTURE_DIRS and d.lower() not in allowed)
+        )
+        for name in sorted(filenames):
+            if name.endswith(".nii.gz") and "_" in name:
+                yield Path(dirpath) / name
+
+
 def collect_frames(results_dir: Path, allowed_models: set[str]) -> list[dict]:
     """Collect per-frame segmentation files using a unified regex pattern."""
     frame_pattern = re.compile(r"^(.*)_(ED|ES|frame\d{2,})_(.+)\.nii\.gz$")
 
     rows = []
-    for seg in results_dir.rglob("*_*.nii.gz"):
-        if "postprocess" in {part.lower() for part in seg.parts}:
-            continue
-
+    for seg in iter_segmentation_files(results_dir, allowed_models):
         name = seg.name
         match = frame_pattern.match(name)
         if not match:

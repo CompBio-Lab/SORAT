@@ -1,6 +1,7 @@
 #!/usr/bin/env nextflow
 
 import groovy.io.FileType
+import groovy.io.FileVisitResult
 import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 import groovy.transform.Field
@@ -237,11 +238,27 @@ def discoverFeatureCandidateModels(String resultsDir, List modelsToRun, String c
 
     def models = [] as Set
 
-    root.eachFileRecurse(FileType.FILES) { f ->
-        def relParts = f.toPath().normalize().toString().split('/')*.toLowerCase()
-        if (relParts.contains('postprocess')) {
-            return
+    // Masks live under <arch>/segmentations; skip bulky output trees (tens of
+    // thousands of files on shared filesystems) instead of walking and discarding them.
+    def skipDirs = ['postprocess', 'previews', 'metrics', 'features', 'comparison',
+                    'pipeline_info', 'debug', 'preprocessed'] as Set
+    def architectureDirs = ['cinema', 'nnformer', 'vsa3l', 'atrial_nnunet'] as Set
+    def skipBulkyDirs = { File dir ->
+        if (dir == root) {
+            return FileVisitResult.CONTINUE
         }
+        def name = dir.name.toLowerCase()
+        if (name in skipDirs) {
+            return FileVisitResult.SKIP_SUBTREE
+        }
+        // Top-level architecture output folders not selected by --models.
+        if (!allowAll && dir.parentFile == root && name in architectureDirs && !(name in allowedArchitectures)) {
+            return FileVisitResult.SKIP_SUBTREE
+        }
+        return FileVisitResult.CONTINUE
+    }
+
+    root.traverse(type: FileType.FILES, preDir: skipBulkyDirs) { f ->
 
         def matcher = (f.name =~ discoverFramePattern())
         if (!matcher.matches()) {
