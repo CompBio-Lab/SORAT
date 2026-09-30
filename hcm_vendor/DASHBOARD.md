@@ -17,10 +17,10 @@
 - **Paused at a checkpoint 2026-09-30, waiting for the user's go on Batch 2.**
 - **Planned batches:**
   - **Batch 2:** tests for T30 and T33. The code is drafted in `hcmv/{splits,preprocessing,stats}.py` but **untested**. Write the tests described in those tickets' logs, fix what they catch, and mark both DONE.
-  - **Batch 3:** T22 (QC and exploratory report). Ask the user for the D6 failed-case rule first.
+  - **Batch 3:** T22 (QC and exploratory report, applying D6) together with T31 (model zoo).
   - **After that:** T31, T32, T34, then E1 (T40), aiming at the Nov 1 midterm. T34/T40 submit CPU sbatch jobs (not Nextflow); ask the user whether they want to submit those themselves.
-- **Open questions for the user:** none right now. D6 (failed-case rule) must be asked at T22.
-- **Not pushed:** `main` and `eece568-hcm-vendor` are local only. Ask before pushing.
+- **Open questions for the user:** none right now. D6 (failed-case rule) is already decided; apply it at T22.
+- **Pushed (2026-09-30):** `main` and `eece568-hcm-vendor` are on `origin` (CompBio-Lab/SORAT), and the project branch tracks `origin/eece568-hcm-vendor`. The user is the only developer and allows direct pushes to `main` (no PR needed). Push at each checkpoint.
 - **How to run things:**
   - Analysis tests and CLI: `source hcm_vendor/scripts/env.sh`, then `hcmv_python -m pytest hcm_vendor/tests -q -p no:cacheprovider` (29 tests) or `hcmv_python -m hcmv <cmd>`.
   - SORAT tests (25): `module load gcc apptainer && apptainer exec --env PYTHONPATH=/scratch/st-zlaksman-1/pmoheban/venvs/sorat-features-conda/lib/python3.10/site-packages containers/sorat-cinema.sif python -m unittest discover -s tests`.
