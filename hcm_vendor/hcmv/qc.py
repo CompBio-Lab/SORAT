@@ -156,3 +156,64 @@ def validate_gt(config: dict, pred_root: str = None) -> str:
     report = "\n".join(lines) + "\n"
     (out / "summary.md").write_text(report)
     return report
+
+
+def _expected_settings(options: dict) -> dict:
+    """PyRadiomics settings dict a feature config should record (mirrors extract_features)."""
+    options = options or {}
+    settings = {}
+    if options.get("normalize"):
+        settings["normalize"] = True
+        if options.get("normalize_scale") is not None:
+            settings["normalizeScale"] = float(options["normalize_scale"])
+    if options.get("remove_outliers") is not None:
+        settings["removeOutliers"] = float(options["remove_outliers"])
+    if options.get("bin_count") is not None:
+        settings["binCount"] = int(options["bin_count"])
+    if options.get("bin_width") is not None:
+        settings["binWidth"] = float(options["bin_width"])
+    if options.get("resample_spacing"):
+        settings["resampledPixelSpacing"] = [float(v) for v in str(options["resample_spacing"]).split(",")]
+    if options.get("force2d"):
+        settings["force2D"] = True
+        settings["force2Ddimension"] = int(options.get("force2d_dimension", 0))
+    return settings
+
+
+def check_features(config: dict, root: str, source: str) -> pd.DataFrame:
+    """T14 acceptance checks for every dataset x feature config under ``root``."""
+    import json
+
+    from .features import read_phase_csvs
+
+    cohort = pd.read_parquet(output_dir(config, "tables") / "cohort.parquet")
+    rows = []
+    for dataset in ("mms2", "acdc"):
+        expected_ids = set(cohort.loc[cohort["dataset"] == dataset, "source_id"])
+        for cfg, options in config["feature_configs"].items():
+            directory = repo_path(config, root) / dataset / cfg
+            files = sorted(directory.glob(f"*_{source}_*_features.csv")) if directory.exists() else []
+            row = {"dataset": dataset, "config": cfg, "files": len(files),
+                   "expected_files": 2 * len(expected_ids),
+                   "empty_files": sum(p.stat().st_size == 0 for p in files)}
+            if files and not row["empty_files"]:
+                long = read_phase_csvs(directory, source)
+                settings = {json.dumps(json.loads(s), sort_keys=True) for s in long["radiomics_settings"].dropna()}
+                want = json.dumps(_expected_settings(options), sort_keys=True)
+                model_cols = [c for c in long.columns if c.startswith(("radiomics_original", "lv_", "rv_", "myo_", "wall_"))]
+                ed = long[long["phase"] == "ED"]
+                row.update({
+                    "subjects": long["source_id"].nunique(),
+                    "missing_subjects": len(expected_ids - set(long["source_id"])),
+                    "radiomics_errors": int(long["radiomics_error"].notna().sum()),
+                    "all_nan_columns": int(long[model_cols].isna().all().sum()),
+                    "settings_match": settings == {want},
+                    "ed_wt_max_median": round(float(ed["wall_thickness_max_mm"].median()), 1),
+                })
+            row["ok"] = bool(
+                row["files"] == row["expected_files"] and row["empty_files"] == 0
+                and row.get("missing_subjects") == 0 and row.get("radiomics_errors") == 0
+                and row.get("all_nan_columns") == 0 and row.get("settings_match")
+            )
+            rows.append(row)
+    return pd.DataFrame(rows)

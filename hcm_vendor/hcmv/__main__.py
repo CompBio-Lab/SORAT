@@ -54,6 +54,19 @@ def cmd_validate_gt(config: dict, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_check_features(config: dict, args: argparse.Namespace) -> int:
+    from .qc import check_features
+
+    checks = config.get("checks", {})
+    report = check_features(
+        config,
+        root=checks.get("root", "results_hcm_vendor/features/nnformer"),
+        source=checks.get("source", config["segmentation_model_tag"]),
+    )
+    print(report.to_string(index=False))
+    return 0 if report["ok"].all() else 1
+
+
 def radiomics_cli_flags(options: dict) -> list:
     """Nextflow --feature_extraction.radiomics.* flags for one named feature config."""
     flags = []
@@ -76,6 +89,7 @@ COMMANDS = {
     "manifest": (cmd_manifest, "Write a run manifest (git, config hash, packages)"),
     "cohort": (cmd_cohort, "Build the study cohort table (T20)"),
     "make-samplesheets": (cmd_make_samplesheets, "Write SORAT samplesheets for the study cohort (T13)"),
+    "check-features": (cmd_check_features, "T14 checks; --set checks.root=... checks.source=gt for GT"),
     "radiomics-flags": (cmd_radiomics_flags, "Print Nextflow radiomics flags; --set feature_config=<name>"),
     "validate-gt": (cmd_validate_gt, "T12 report; --set validation.pred_root=<dir> adds nnFormer-vs-GT"),
 }

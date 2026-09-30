@@ -10,23 +10,30 @@
 
 > A new session saying "continue from where we left off" should read this block first, then the ticket it points to. Update this block at the end of **every** ticket or work session. It is the single source of truth for "where are we".
 
-- **Last completed:** T01, T02, T10, T11, T13, T20 (all 2026-09-29).
-- **In progress:** nothing mid-edit.
-- **Next up:**
-  - T12: ground-truth-mask features for `norm` and `raw`, then a validation report. Canonicalize M&Ms-2 ground-truth labels, which are 1=LV/3=RV.
-  - T14: SLURM re-extraction of nnFormer features. First run a one-subject FEATURES_ONLY to exercise `modules/features.nf`; inputs are in `results_hcm_vendor/inputs/`.
-  - T12's nnFormer-vs-ground-truth comparison needs T14 output, so it may be finished after T14.
-- **Open questions for the user:** none.
+- **Last completed:** T01, T02, T10, T11, T13, T20 (2026-09-29). Also SORAT fixes `842bc77` (non-orthonormal mask reading) and `9ccff8b` (fast mask discovery), both on `main` and merged.
+- **In progress:**
+  - **T14:** four FEATURES_ONLY runs launched 2026-09-29 21:04 (see T14 log for how to check or resume).
+  - **T12:** ground-truth part done; nnFormer-vs-ground-truth agreement waits for T14.
+  - **T21:** code and tests done; build the tables after T14.
+- **Next up, when T14 finishes:**
+  1. `python -m hcmv check-features` must print `ok=True` for all four rows.
+  2. `python -m hcmv --set validation.pred_root=results_hcm_vendor/features/nnformer validate-gt` finishes T12.
+  3. Add a `feature-tables` CLI command wrapping `features.write_feature_tables` for nnFormer and ground truth, which finishes T21.
+  4. Then T22 (QC report; ask the user about D6) and T30+ (modelling framework).
+- **Open questions for the user:** none right now. D6 (failed-case rule) must be asked at T22.
 - **Not pushed:** `main` and `eece568-hcm-vendor` are local only. Ask before pushing.
 - **How to run things:**
-  - Analysis tests and CLI: `source hcm_vendor/scripts/env.sh`, then `hcmv_python -m pytest hcm_vendor/tests -q -p no:cacheprovider` or `hcmv_python -m hcmv <cmd>`.
-  - SORAT tests: `module load gcc apptainer && apptainer exec --env PYTHONPATH=/scratch/st-zlaksman-1/pmoheban/venvs/sorat-features-conda/lib/python3.10/site-packages containers/sorat-cinema.sif python -m unittest discover -s tests`.
+  - Analysis tests and CLI: `source hcm_vendor/scripts/env.sh`, then `hcmv_python -m pytest hcm_vendor/tests -q -p no:cacheprovider` (29 tests) or `hcmv_python -m hcmv <cmd>`.
+  - SORAT tests (25): `module load gcc apptainer && apptainer exec --env PYTHONPATH=/scratch/st-zlaksman-1/pmoheban/venvs/sorat-features-conda/lib/python3.10/site-packages containers/sorat-cinema.sif python -m unittest discover -s tests`.
   - SLURM: `sbatch --account=st-zlaksman-1 --output=results_hcm_vendor/logs/%x-%j.out <script>`.
 - **Gotchas to remember:**
-  - Never create venvs. xgboost and shap are in the container home's `.local`. Keep xgboost below 3.1, and never let pip upgrade numpy, sklearn or pandas there.
+  - Never create venvs. xgboost and shap are in the container home's `.local`. Keep xgboost below 3.1, and never let pip upgrade numpy, sklearn or pandas there. The container has no `tabulate`, so use `qc.md_table` instead of `DataFrame.to_markdown`.
   - Your uncommitted work (VSA-3L edits, README, `nextflow.config`, etc.) stays unstaged on both branches. Never `git add -A`.
+  - **Commit branch work before `git checkout main`,** or checkout refuses. **Never switch branches while a job or Nextflow run reads `hcm_vendor/`:** it doesn't exist on `main`.
   - **Staging part of `nextflow.config`:** build the staged blob from `HEAD` plus our block, then `git hash-object -w` and `git update-index --cacheinfo`.
-  - **Switching branches when `nextflow.config` differs:** `git stash push -- nextflow.config`, checkout, merge, `git stash pop`. Afterwards, check the user's diff is unchanged.
+  - **Switching branches when `nextflow.config` differs between them:** `git stash push -- nextflow.config`, checkout, merge, `git stash pop`, then check the user's diff is unchanged.
+  - **Never `pkill -f` with a pattern** that appears in a running monitor or shell command line, because it kills that too. Use exact PIDs.
+  - Imports from `/arc` are slow the first time (torch took minutes on the login node).
 
 ### Git workflow for fixes (agreed 2026-09-29)
 
@@ -64,7 +71,7 @@
 | T11 | Configurable, normalized radiomics settings | 1 Features | P0 | Oct 6 | T01 | DONE (2026-09-29, `fa597fa` on main) |
 | T12 | Ground-truth-mask features + validate T10/T11 | 1 Features | P0 | Oct 8 | T10, T11, T02 | DOING (GT done; pred-vs-GT waits on T14) |
 | T13 | Study-cohort samplesheets (M&Ms-2 NOR/HCM, ACDC NOR/HCM) | 1 Features | P0 | Oct 7 | T02 | DONE (2026-09-29) |
-| T14 | Re-extract nnFormer features (normalized + raw) on SLURM | 1 Features | P0 | Oct 11 | T12, T13 | TODO |
+| T14 | Re-extract nnFormer features (normalized + raw) on SLURM | 1 Features | P0 | Oct 11 | T12, T13 | DOING (runs launched 2026-09-29 21:04) |
 | T20 | Cohort/metadata table with vendor, disease, role | 2 Dataset | P0 | Oct 9 | T02 | DONE (2026-09-29) |
 | T21 | Feature-table builder (ED+ES merge, derived features, families) | 2 Dataset | P0 | Oct 13 | T14, T20 | DOING (code + tests done; run after T14) |
 | T22 | Data QC + exploratory report | 2 Dataset | P1 | Oct 15 | T21 | TODO |
@@ -467,7 +474,7 @@ MRI intensities are in arbitrary units that differ by vendor, so the texture fea
 - The FEATURES_ONLY dry run is deferred to the start of T14 (the one-subject run).
 
 ### T14: Re-extract nnFormer features (normalized + raw) on SLURM
-**Status:** TODO · **Pri:** P0 · **Target:** Oct 11 · **Depends on:** T12, T13
+**Status:** DOING · **Pri:** P0 · **Target:** Oct 11 · **Depends on:** T12, T13
 
 **Runs:** 2 datasets × 2 configs. The existing nnFormer masks are reused; nothing is re-segmented.
 
@@ -502,6 +509,22 @@ nextflow run main.nf -entry FEATURES_ONLY -profile slurm \
 **Acceptance:** all four runs complete; the checks pass; `results/` is untouched (`git status` and mtimes unchanged).
 
 ---
+
+**Log:**
+- 2026-09-29: The one-subject FEATURES_ONLY test (M&Ms-2 001, `norm`) ran with 3 tasks succeeded. Outputs carry the `norm` `radiomics_settings`, and wall thickness is 7.4 mm at ED and 10.7 mm at ES. **The T11 Nextflow plumbing is verified end to end.** Output is in `results_hcm_vendor/pipeline_test/`.
+- The first attempt hung for more than 20 minutes in `discoverFeatureCandidateModels`, a Groovy recursive walk of about 77k files on GPFS.
+  - **SORAT fix** (`9ccff8b` on main, merged): both the Groovy and the Python discovery skip bulky non-mask trees and unselected architecture folders.
+  - Python discovery on ACDC went from 37 s to 1 s with identical masks, minus 100 spurious `*_0000.nii.gz` preprocessed inputs that the old code misread as masks.
+  - A SIGTERM'd Nextflow JVM that is stuck in file I/O may not exit; use `kill -9 <pid>` by exact PID.
+- `hcm_vendor/scripts/run_feature_extraction.sh` runs the four runs in sequence, taking radiomics flags from `study.yaml` via `python -m hcmv --set feature_config=<cfg> radiomics-flags`.
+  - Launched with `nohup ... > results_hcm_vendor/logs/t14_extraction.log`.
+  - Outputs go to `results_hcm_vendor/features/nnformer/{mms2,acdc}/{norm,raw}/`, with per-run pipeline info in `results_hcm_vendor/pipeline_runs/<dataset>_<cfg>/`.
+- **Acceptance check:** `python -m hcmv check-features` (nnFormer root by default; add `--set checks.root=results_hcm_vendor/features/gt --set checks.source=gt` for ground truth). The ground-truth features already pass every check.
+- **If a new session finds T14 incomplete:**
+  1. `grep -E "^===|Succeeded|ERROR" results_hcm_vendor/logs/t14_extraction.log`.
+  2. `squeue -u $USER`.
+  3. Rerun only the missing combinations with `DATASETS=... CONFIGS=... nohup hcm_vendor/scripts/run_feature_extraction.sh > results_hcm_vendor/logs/t14_rerun.log 2>&1 &`.
+  4. Then run `check-features`.
 
 ## Phase 2: Dataset assembly
 
