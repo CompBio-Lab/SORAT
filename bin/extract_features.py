@@ -10,6 +10,7 @@ Supported labels:
 """
 
 import argparse
+import json
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -257,13 +258,63 @@ def compute_wall_thickness(mask_arr: np.ndarray, spacing_xyz: Tuple[float, ...])
     }
 
 
-def extract_radiomics_features(image_img: sitk.Image, mask_img: sitk.Image) -> dict:
+def parse_spacing(text: Optional[str]) -> Optional[list]:
+    """Parse 'x,y,z' spacing (mm) for PyRadiomics resampling; 0 keeps an axis unchanged."""
+    if text is None or str(text).strip() == "":
+        return None
+    values = [float(v) for v in str(text).split(",")]
+    if len(values) != 3 or any(v < 0 for v in values):
+        raise ValueError(f"Resample spacing must be three non-negative values x,y,z; got {text!r}")
+    return values
+
+
+def build_radiomics_settings(
+    normalize: bool = False,
+    normalize_scale: Optional[float] = None,
+    bin_count: Optional[int] = None,
+    bin_width: Optional[float] = None,
+    resample_spacing: Optional[list] = None,
+    force2d: bool = False,
+    force2d_dimension: int = 0,
+    remove_outliers: Optional[float] = None,
+) -> dict:
+    """Translate CLI options into PyRadiomics extractor settings.
+
+    Only non-default options are included, so an empty dict reproduces the
+    PyRadiomics defaults used by earlier SORAT runs (no normalization,
+    binWidth 25, 3-D texture, native spacing).
+    """
+    if bin_count is not None and bin_width is not None:
+        raise ValueError("Use either a radiomics bin count or a bin width, not both")
+
+    settings = {}
+    if normalize:
+        settings["normalize"] = True
+        if normalize_scale is not None:
+            settings["normalizeScale"] = float(normalize_scale)
+    if remove_outliers is not None:
+        settings["removeOutliers"] = float(remove_outliers)
+    if bin_count is not None:
+        settings["binCount"] = int(bin_count)
+    if bin_width is not None:
+        settings["binWidth"] = float(bin_width)
+    if resample_spacing is not None:
+        settings["resampledPixelSpacing"] = [float(v) for v in resample_spacing]
+    if force2d:
+        settings["force2D"] = True
+        settings["force2Ddimension"] = int(force2d_dimension)
+    return settings
+
+
+def extract_radiomics_features(
+    image_img: sitk.Image, mask_img: sitk.Image, settings: Optional[dict] = None
+) -> dict:
     """Extract PyRadiomics features for MYO (label 2) using interpretable classes only."""
     # Imported lazily so the geometric features stay importable (and testable)
     # in runtimes without PyRadiomics.
     from radiomics import featureextractor
 
-    extractor = featureextractor.RadiomicsFeatureExtractor()
+    extractor = featureextractor.RadiomicsFeatureExtractor(**(settings or {}))
     extractor.disableAllFeatures()
     extractor.enableFeatureClassByName("shape")
     extractor.enableFeatureClassByName("firstorder")
@@ -296,6 +347,7 @@ def compute_phase_features(
     frame_tag: Optional[str] = None,
     frame_idx: int = 0,
     mask_source: str = "auto",
+    radiomics_settings: Optional[dict] = None,
 ) -> dict:
     """Compute all features for one phase mask."""
     mask_img, mask_arr = load_mask(mask_path)
@@ -314,6 +366,7 @@ def compute_phase_features(
         "mask_file": str(mask_path),
         "mask_source": mask_source,
         "voxel_volume_ml": voxel_volume_ml,
+        "radiomics_settings": json.dumps(radiomics_settings or {}, sort_keys=True),
     }
 
     features.update(compute_volumes(mask_arr, voxel_volume_ml))
@@ -321,7 +374,7 @@ def compute_phase_features(
 
     # Radiomics extraction can fail for empty or malformed MYO regions; keep pipeline robust.
     try:
-        features.update(extract_radiomics_features(image_phase, mask_img))
+        features.update(extract_radiomics_features(image_phase, mask_img, radiomics_settings))
     except Exception as exc:
         features["radiomics_error"] = str(exc)
 
@@ -386,6 +439,41 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--frame_idx", type=int, default=0, help="4D frame index for intensity extraction")
     parser.add_argument("--mask_source", default="auto", help="Mask source label for tracking")
     parser.add_argument(
+        "--radiomics_normalize",
+        action="store_true",
+        help="Z-score normalize the image before radiomics (PyRadiomics 'normalize')",
+    )
+    parser.add_argument(
+        "--radiomics_normalize_scale", type=float, default=None,
+        help="Scale applied after normalization (PyRadiomics 'normalizeScale', e.g. 100)",
+    )
+    parser.add_argument(
+        "--radiomics_remove_outliers", type=float, default=None,
+        help="Clip normalized intensities beyond N standard deviations ('removeOutliers')",
+    )
+    bin_group = parser.add_mutually_exclusive_group()
+    bin_group.add_argument(
+        "--radiomics_bin_count", type=int, default=None,
+        help="Fixed number of grey-level bins ('binCount')",
+    )
+    bin_group.add_argument(
+        "--radiomics_bin_width", type=float, default=None,
+        help="Fixed grey-level bin width ('binWidth'; PyRadiomics default 25)",
+    )
+    parser.add_argument(
+        "--radiomics_resample_spacing", type=str, default=None,
+        help="Resample to x,y,z spacing in mm before radiomics; 0 keeps an axis (e.g. 1.25,1.25,0)",
+    )
+    parser.add_argument(
+        "--radiomics_force2d",
+        action="store_true",
+        help="Compute texture features per slice in 2-D ('force2D')",
+    )
+    parser.add_argument(
+        "--radiomics_force2d_dimension", type=int, default=0,
+        help="Array axis treated as the slice direction for --radiomics_force2d (0 = z)",
+    )
+    parser.add_argument(
         "--output_csv",
         default=None,
         help="Output CSV path (default: [patient_id]_features.csv)",
@@ -398,6 +486,17 @@ def main() -> None:
 
     # Fail fast when PyRadiomics is missing rather than recording a per-phase radiomics_error.
     import radiomics  # noqa: F401
+
+    radiomics_settings = build_radiomics_settings(
+        normalize=args.radiomics_normalize,
+        normalize_scale=args.radiomics_normalize_scale,
+        bin_count=args.radiomics_bin_count,
+        bin_width=args.radiomics_bin_width,
+        resample_spacing=parse_spacing(args.radiomics_resample_spacing),
+        force2d=args.radiomics_force2d,
+        force2d_dimension=args.radiomics_force2d_dimension,
+        remove_outliers=args.radiomics_remove_outliers,
+    )
 
     image_path = Path(args.image)
     if not image_path.exists():
@@ -421,6 +520,7 @@ def main() -> None:
             frame_tag="ED",
             frame_idx=ed_feature_idx,
             mask_source=args.mask_source,
+            radiomics_settings=radiomics_settings,
         )
 
     if args.mask_es:
@@ -434,6 +534,7 @@ def main() -> None:
             frame_tag="ES",
             frame_idx=es_feature_idx,
             mask_source=args.mask_source,
+            radiomics_settings=radiomics_settings,
         )
 
     if args.mask:
@@ -446,6 +547,7 @@ def main() -> None:
             frame_tag=frame_tag,
             frame_idx=args.frame_idx,
             mask_source=args.mask_source,
+            radiomics_settings=radiomics_settings,
         )
 
     df = flatten_feature_dicts(

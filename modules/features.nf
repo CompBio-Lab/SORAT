@@ -23,6 +23,18 @@ process EXTRACT_FEATURES {
     def virtualenvPath = (params.feature_extraction.virtualenv_path ?: '').toString().trim()
     def requireVirtualenv = (params.feature_extraction.require_virtualenv == null) ? false : (params.feature_extraction.require_virtualenv as boolean)
     def infoCfgArg = info_cfg ? "--info_cfg '${info_cfg}'" : ""
+    def radiomics = params.feature_extraction.radiomics ?: [:]
+    def isSet = { value -> value != null && value.toString().trim() && value.toString() != 'null' }
+    def isTrue = { value -> isSet(value) && value.toString().toBoolean() }
+    def radiomicsArgs = [
+        isTrue(radiomics.normalize) ? "--radiomics_normalize" : "",
+        isSet(radiomics.normalize_scale) ? "--radiomics_normalize_scale ${radiomics.normalize_scale}" : "",
+        isSet(radiomics.remove_outliers) ? "--radiomics_remove_outliers ${radiomics.remove_outliers}" : "",
+        isSet(radiomics.bin_count) ? "--radiomics_bin_count ${radiomics.bin_count}" : "",
+        isSet(radiomics.bin_width) ? "--radiomics_bin_width ${radiomics.bin_width}" : "",
+        isSet(radiomics.resample_spacing) ? "--radiomics_resample_spacing '${radiomics.resample_spacing}'" : "",
+        isTrue(radiomics.force2d) ? "--radiomics_force2d --radiomics_force2d_dimension ${radiomics.force2d_dimension ?: 0}" : "",
+    ].findAll { it }.join(' ')
     """
     # Optional: use packages from a pre-built virtualenv while keeping container python.
     # Do NOT source venv/bin/activate here; that would switch to host python and can
@@ -83,6 +95,7 @@ PY
         --frame_tag ${frame_tag} \
         --frame_idx ${frame_idx} \
         ${infoCfgArg} \
+        ${radiomicsArgs} \
         --output_csv ${patient_id}_features.csv
 
     cat <<-END_VERSIONS > versions.yml
