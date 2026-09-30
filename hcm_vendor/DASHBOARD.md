@@ -10,16 +10,20 @@
 
 > A new session saying "continue from where we left off" should read this block first, then the ticket it points to. Update this block at the end of **every** ticket or work session. It is the single source of truth for "where are we".
 
-- **Last completed:** T10 (wall thickness, on `main` + merged), T01 (environment), T02 (package skeleton). Decision D5 is recorded.
-- **In progress:** T11 (configurable radiomics settings in `bin/extract_features.py` → `modules/features.nf` → `nextflow.config`). This is a SORAT fix, so commit it on `main` and merge.
-- **Next up:** T11 → T13 (samplesheets) and T20 (cohort table), which are independent → T12 (ground-truth features + validation) → T14 (SLURM re-extraction).
+- **Last completed:** T10 and T11 (SORAT fixes, on `main` and merged), T01 (environment), T02 (package skeleton). D5 decided.
+- **In progress:** nothing mid-edit.
+- **Next up:** T13 (study samplesheets) and T20 (cohort table), which are independent → T12 (ground-truth features + validation) → T14 (SLURM re-extraction; start with a one-subject FEATURES_ONLY run to exercise `modules/features.nf`).
 - **Open questions for the user:** none.
 - **Not pushed:** `main` and `eece568-hcm-vendor` are local only. Ask before pushing.
-- **How to run things:** `source hcm_vendor/scripts/env.sh`, then `hcmv_python -m pytest hcm_vendor/tests -q -p no:cacheprovider` or `hcmv_python -m hcmv <cmd>`. For SORAT tests, use `module load gcc apptainer && apptainer exec containers/sorat-cinema.sif python -m unittest discover -s tests`. For SLURM, `sbatch --account=st-zlaksman-1 --output=results_hcm_vendor/logs/%x-%j.out <script>`.
+- **How to run things:**
+  - Analysis tests and CLI: `source hcm_vendor/scripts/env.sh`, then `hcmv_python -m pytest hcm_vendor/tests -q -p no:cacheprovider` or `hcmv_python -m hcmv <cmd>`.
+  - SORAT tests: `module load gcc apptainer && apptainer exec --env PYTHONPATH=/scratch/st-zlaksman-1/pmoheban/venvs/sorat-features-conda/lib/python3.10/site-packages containers/sorat-cinema.sif python -m unittest discover -s tests`.
+  - SLURM: `sbatch --account=st-zlaksman-1 --output=results_hcm_vendor/logs/%x-%j.out <script>`.
 - **Gotchas to remember:**
   - Never create venvs. xgboost and shap are in the container home's `.local`. Keep xgboost below 3.1, and never let pip upgrade numpy, sklearn or pandas there.
-  - Your uncommitted work on `main` (VSA-3L edits, README, `nextflow.config`, etc.) stays unstaged on both branches. Never `git add -A`.
-  - `nextflow.config` has **uncommitted user edits**. When T11 changes it, stage only the T11 hunk (`git add -p` is not available non-interactively, so build a patch).
+  - Your uncommitted work (VSA-3L edits, README, `nextflow.config`, etc.) stays unstaged on both branches. Never `git add -A`.
+  - **Staging part of `nextflow.config`:** build the staged blob from `HEAD` plus our block, then `git hash-object -w` and `git update-index --cacheinfo`.
+  - **Switching branches when `nextflow.config` differs:** `git stash push -- nextflow.config`, checkout, merge, `git stash pop`. Afterwards, check the user's diff is unchanged.
 
 ### Git workflow for fixes (agreed 2026-09-29)
 
@@ -54,7 +58,7 @@
 | T01 | Analysis environment (existing datascience container) | 0 Setup | P0 | Oct 1 | — | DONE (2026-09-29) |
 | T02 | `hcm_vendor/` package skeleton, config, run manifest | 0 Setup | P0 | Oct 2 | T01 | DONE (2026-09-29) |
 | T10 | Fix wall thickness in `bin/extract_features.py` | 1 Features | P0 | Oct 5 | T01 | DONE (2026-09-29, `3e3972d` on main) |
-| T11 | Configurable, normalized radiomics settings | 1 Features | P0 | Oct 6 | T01 | TODO |
+| T11 | Configurable, normalized radiomics settings | 1 Features | P0 | Oct 6 | T01 | DONE (2026-09-29, `fa597fa` on main) |
 | T12 | Ground-truth-mask features + validate T10/T11 | 1 Features | P0 | Oct 8 | T10, T11, T02 | TODO |
 | T13 | Study-cohort samplesheets (M&Ms-2 NOR/HCM, ACDC NOR/HCM) | 1 Features | P0 | Oct 7 | T02 | TODO |
 | T14 | Re-extract nnFormer features (normalized + raw) on SLURM | 1 Features | P0 | Oct 11 | T12, T13 | TODO |
@@ -340,7 +344,7 @@ As a result, max wall thickness is about 23 mm for normal hearts. This breaks th
 **Acceptance:** all phantom tests pass. A quick spot check on about five M&Ms-2 NOR and five HCM nnFormer masks gives plausible values (NOR max mostly 8–13 mm, HCM mostly ≥15 mm). The full check is in T12.
 
 ### T11: Configurable, normalized radiomics settings
-**Status:** TODO · **Pri:** P0 · **Target:** Oct 6 · **Depends on:** T01
+**Status:** DONE (2026-09-29) · **Pri:** P0 · **Target:** Oct 6 · **Depends on:** T01
 
 **Problem:** the extractor settings are hardcoded to PyRadiomics defaults:
 - no intensity normalization;
@@ -351,26 +355,44 @@ As a result, max wall thickness is about 23 mm for normal hearts. This breaks th
 MRI intensities are in arbitrary units that differ by vendor, so the texture features mostly measure the vendor's intensity scale (D2).
 
 **Tasks:**
-- [ ] Add CLI flags to `bin/extract_features.py`. All defaults must reproduce today's behaviour exactly.
+- [x] Add CLI flags to `bin/extract_features.py`. All defaults must reproduce today's behaviour exactly.
   - `--radiomics_normalize` (bool) and `--radiomics_normalize_scale` (default 100).
   - `--radiomics_bin_count` (int; mutually exclusive with `--radiomics_bin_width`, default width 25).
   - `--radiomics_resample_spacing sx,sy,sz` (0 keeps the axis unchanged).
   - `--radiomics_force2d` and `--radiomics_force2d_dimension` (default 0).
   - `--radiomics_remove_outliers` (sigma; optional).
-- [ ] Pass these into `RadiomicsFeatureExtractor(**settings)`.
-- [ ] Plumb them through `nextflow.config` as `params.feature_extraction.radiomics { ... }` (null means default) and through `modules/features.nf` script args. Include the settings in `versions.yml` or a sidecar so every CSV can be traced to its settings.
-- [ ] **Decide D5 with the user.** Proposed `norm` config:
+- [x] Pass these into `RadiomicsFeatureExtractor(**settings)`.
+- [x] Plumb them through `nextflow.config` as `params.feature_extraction.radiomics { ... }` (null means default) and through `modules/features.nf` script args. Include the settings in `versions.yml` or a sidecar so every CSV can be traced to its settings.
+- [x] **Decide D5 with the user.** Proposed `norm` config:
   - `normalize=True`, `normalizeScale=100`;
   - `binCount=32`;
   - in-plane resample to `[1.25, 1.25, 0]`;
   - `force2D=True`, `force2Ddimension=0`.
 
   Shape features are unaffected by intensity settings. Check whether resampling changes shape values, and document the answer.
-- [ ] Tests (skipped if PyRadiomics is missing):
+- [x] Tests (skipped if PyRadiomics is missing):
   - (a) With the `norm` config, first-order shape-of-distribution features (Skewness, Kurtosis, Entropy) and GLCM features are invariant, within tolerance, to scaling the image by a linear factor k∈{0.2, 5}. Without `norm` they are not.
   - (b) Default flags give byte-identical output to the pre-change code on a fixture.
 
 **Acceptance:** tests pass; default behaviour is unchanged; the two named configs are defined in `configs/study.yaml` and can be passed from the command line to FEATURES_ONLY.
+
+**Log:**
+- 2026-09-29: Implemented:
+  - `build_radiomics_settings` and `parse_spacing`.
+  - `--radiomics_*` CLI flags, with bin count and width mutually exclusive.
+  - `params.feature_extraction.radiomics { ... }` in `nextflow.config`, passed to the script by `modules/features.nf`.
+  - Every output row carries a `radiomics_settings` JSON column. The T21 builder must drop it as a meta column.
+- Tests: `tests/test_extract_features_radiomics.py` (7 tests) plus the wall-thickness tests, 13/13 passing. Run them with the feature venv on PYTHONPATH:
+  `apptainer exec --env PYTHONPATH=/scratch/st-zlaksman-1/pmoheban/venvs/sorat-features-conda/lib/python3.10/site-packages containers/sorat-cinema.sif python -m unittest discover -s tests`
+- Real-data regression on M&Ms-2 subject 071 ED:
+  - Default flags reproduce all 56 original radiomics values exactly (max relative difference 0.0).
+  - `norm` runs cleanly.
+  - `norm` changes shape features slightly because of the in-plane resampling (MeshVolume +1.2%). **Use every family from the same config** (`norm` primary, `raw` sensitivity).
+- `nextflow config -flat` parses the new params. The Groovy in `modules/features.nf` has **not been executed yet**, so T14 must start with a one-subject FEATURES_ONLY run.
+- Named configs are in `configs/study.yaml → feature_configs`.
+- Commit `fa597fa` on `main`, merged into the branch as `4bf2581`.
+
+---
 
 ### T12: Ground-truth-mask features + validation of T10/T11
 **Status:** TODO · **Pri:** P0 · **Target:** Oct 8 · **Depends on:** T10, T11, T02

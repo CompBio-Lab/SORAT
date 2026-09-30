@@ -31,9 +31,15 @@ cohort:
     acdc:
       Siemens: {HCM: 10, NOR: 10}
 
-feature_configs:              # radiomics settings per named config (finalized in T11)
+feature_configs:              # keys mirror params.feature_extraction.radiomics (T11, D2, D5)
   raw: {}                     # PyRadiomics defaults, as in the original SORAT runs
-  norm: {}                    # normalized + fixed bin count; filled in once D5 is decided
+  norm:                       # primary: harmonized for cross-scanner comparison
+    normalize: true
+    normalize_scale: 100
+    bin_count: 32
+    resample_spacing: "1.25,1.25,0"
+    force2d: true
+    force2d_dimension: 0
 
 seed: 20261001
 cv:
