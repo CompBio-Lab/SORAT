@@ -25,9 +25,31 @@ def cmd_manifest(config: dict, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_cohort(config: dict, args: argparse.Namespace) -> int:
+    from .cohort import write_cohort
+
+    cohort = write_cohort(config)
+    write_manifest(output_dir(config, "tables"), config, "cohort")
+    print(cohort.groupby(["dataset", "role", "vendor", "disease"]).size().to_string())
+    print(f"{len(cohort)} subjects -> {output_dir(config, 'tables') / 'cohort.parquet'}")
+    return 0
+
+
+def cmd_make_samplesheets(config: dict, args: argparse.Namespace) -> int:
+    from .cohort import write_cohort, write_samplesheets
+
+    written = write_samplesheets(config, write_cohort(config))
+    write_manifest(output_dir(config, "inputs"), config, "make-samplesheets")
+    for dataset, path in written.items():
+        print(f"{dataset}: {path}")
+    return 0
+
+
 COMMANDS = {
     "show-config": (cmd_show_config, "Print the resolved study config and its hash"),
     "manifest": (cmd_manifest, "Write a run manifest (git, config hash, packages)"),
+    "cohort": (cmd_cohort, "Build the study cohort table (T20)"),
+    "make-samplesheets": (cmd_make_samplesheets, "Write SORAT samplesheets for the study cohort (T13)"),
 }
 
 

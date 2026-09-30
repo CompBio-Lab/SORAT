@@ -10,9 +10,12 @@
 
 > A new session saying "continue from where we left off" should read this block first, then the ticket it points to. Update this block at the end of **every** ticket or work session. It is the single source of truth for "where are we".
 
-- **Last completed:** T10 and T11 (SORAT fixes, on `main` and merged), T01 (environment), T02 (package skeleton). D5 decided.
+- **Last completed:** T01, T02, T10, T11, T13, T20 (all 2026-09-29).
 - **In progress:** nothing mid-edit.
-- **Next up:** T13 (study samplesheets) and T20 (cohort table), which are independent → T12 (ground-truth features + validation) → T14 (SLURM re-extraction; start with a one-subject FEATURES_ONLY run to exercise `modules/features.nf`).
+- **Next up:**
+  - T12: ground-truth-mask features for `norm` and `raw`, then a validation report. Canonicalize M&Ms-2 ground-truth labels, which are 1=LV/3=RV.
+  - T14: SLURM re-extraction of nnFormer features. First run a one-subject FEATURES_ONLY to exercise `modules/features.nf`; inputs are in `results_hcm_vendor/inputs/`.
+  - T12's nnFormer-vs-ground-truth comparison needs T14 output, so it may be finished after T14.
 - **Open questions for the user:** none.
 - **Not pushed:** `main` and `eece568-hcm-vendor` are local only. Ask before pushing.
 - **How to run things:**
@@ -60,9 +63,9 @@
 | T10 | Fix wall thickness in `bin/extract_features.py` | 1 Features | P0 | Oct 5 | T01 | DONE (2026-09-29, `3e3972d` on main) |
 | T11 | Configurable, normalized radiomics settings | 1 Features | P0 | Oct 6 | T01 | DONE (2026-09-29, `fa597fa` on main) |
 | T12 | Ground-truth-mask features + validate T10/T11 | 1 Features | P0 | Oct 8 | T10, T11, T02 | TODO |
-| T13 | Study-cohort samplesheets (M&Ms-2 NOR/HCM, ACDC NOR/HCM) | 1 Features | P0 | Oct 7 | T02 | TODO |
+| T13 | Study-cohort samplesheets (M&Ms-2 NOR/HCM, ACDC NOR/HCM) | 1 Features | P0 | Oct 7 | T02 | DONE (2026-09-29) |
 | T14 | Re-extract nnFormer features (normalized + raw) on SLURM | 1 Features | P0 | Oct 11 | T12, T13 | TODO |
-| T20 | Cohort/metadata table with vendor, disease, role | 2 Dataset | P0 | Oct 9 | T02 | TODO |
+| T20 | Cohort/metadata table with vendor, disease, role | 2 Dataset | P0 | Oct 9 | T02 | DONE (2026-09-29) |
 | T21 | Feature-table builder (ED+ES merge, derived features, families) | 2 Dataset | P0 | Oct 13 | T14, T20 | TODO |
 | T22 | Data QC + exploratory report | 2 Dataset | P1 | Oct 15 | T21 | TODO |
 | T30 | CV splitting + leakage-safe preprocessing pipeline | 3 Framework | P0 | Oct 15 | T21 | TODO |
@@ -421,16 +424,23 @@ MRI intensities are in arbitrary units that differ by vendor, so the texture fea
 - A validation summary with a table and two figures is saved and summarized in this ticket's log.
 
 ### T13: Study-cohort samplesheets
-**Status:** TODO · **Pri:** P0 · **Target:** Oct 7 · **Depends on:** T02
+**Status:** DONE (2026-09-29) · **Pri:** P0 · **Target:** Oct 7 · **Depends on:** T02
 
 **Tasks:**
-- [ ] `python -m hcmv make-samplesheets` writes `results_hcm_vendor/inputs/`:
+- [x] `python -m hcmv make-samplesheets` writes `results_hcm_vendor/inputs/`:
   - `mms2_nor_hcm.csv`: 135 rows, all vendors. Same columns as `data/mms2_sa_samplesheet.csv` (`patient_id,image,ground_truth,info_cfg`) and the same zero-padded IDs.
   - `acdc_nor_hcm.csv`: 20 rows, taken from `data/acdc_testing_samplesheet.csv` filtered by Info.cfg `Group`.
   - `cohort_ids.csv`: `patient_id, dataset, disease, vendor`, used as a cross-check in T20.
-- [ ] Assert the counts: M&Ms-2 NOR 75 and HCM 60 (S 22/30, P 35/27, G 18/3); ACDC NOR 10 and HCM 10.
+- [x] Assert the counts: M&Ms-2 NOR 75 and HCM 60 (S 22/30, P 35/27, G 18/3); ACDC NOR 10 and HCM 10.
 
 **Acceptance:** the files exist and the counts assert; a FEATURES_ONLY dry run with `-stub` or `-preview`, if it works, sees exactly these subjects.
+
+**Log:**
+- 2026-09-29: `python -m hcmv make-samplesheets` (code in `hcmv/cohort.py`) builds rows directly from the dataset folder layouts, so it does not depend on the untracked `data/*.csv`. It then:
+  - checks every image, ground-truth folder and Info.cfg exists;
+  - cross-checks each row against `data/mms2_sa_samplesheet_full.csv` / `data/acdc_testing_samplesheet.csv` (all identical).
+- Outputs: `results_hcm_vendor/inputs/{mms2_nor_hcm.csv (135), acdc_nor_hcm.csv (20), cohort_ids.csv (155)}` plus a manifest.
+- The FEATURES_ONLY dry run is deferred to the start of T14 (the one-subject run).
 
 ### T14: Re-extract nnFormer features (normalized + raw) on SLURM
 **Status:** TODO · **Pri:** P0 · **Target:** Oct 11 · **Depends on:** T12, T13
@@ -472,10 +482,10 @@ nextflow run main.nf -entry FEATURES_ONLY -profile slurm \
 ## Phase 2: Dataset assembly
 
 ### T20: Cohort/metadata table
-**Status:** TODO · **Pri:** P0 · **Target:** Oct 9 · **Depends on:** T02
+**Status:** DONE (2026-09-29) · **Pri:** P0 · **Target:** Oct 9 · **Depends on:** T02
 
 **Tasks:**
-- [ ] `hcmv/cohort.py` builds `results_hcm_vendor/tables/cohort.parquet` with these columns:
+- [x] `hcmv/cohort.py` builds `results_hcm_vendor/tables/cohort.parquet` with these columns:
   - `subject_id`: globally unique, e.g. `mms2_071` or `acdc_patient101`.
   - `dataset`, `source_id`.
   - `disease` (NOR/HCM) and `y` (1 = HCM).
@@ -483,12 +493,19 @@ nextflow run main.nf -entry FEATURES_ONLY -profile slurm \
   - `scanner`, `field_T`.
   - `role`: `train_pool` for Siemens and Philips M&Ms-2, `ge_check` for GE M&Ms-2, `external` for ACDC.
   - `mms2_challenge_split`: informational only.
-- [ ] M&Ms-2 source: `dataset_information.csv`. Drop empty rows and zero-pad IDs.
-- [ ] ACDC source: Info.cfg `Group`. `vendor=Siemens`; `field_T` is NaN (unknown per subject).
-- [ ] Hard assertions on every count in "Verified facts".
-- [ ] Unit test on a small fixture CSV with padding rows.
+- [x] M&Ms-2 source: `dataset_information.csv`. Drop empty rows and zero-pad IDs.
+- [x] ACDC source: Info.cfg `Group`. `vendor=Siemens`; `field_T` is NaN (unknown per subject).
+- [x] Hard assertions on every count in "Verified facts".
+- [x] Unit test on a small fixture CSV with padding rows.
 
 **Acceptance:** the table builds and the assertions pass.
+
+**Log:**
+- 2026-09-29: `python -m hcmv cohort` writes `results_hcm_vendor/tables/cohort.{parquet,csv}` (155 rows) with the columns listed above.
+  - `subject_id` is `mms2_NNN` / `acdc_patientNNN`; `source_id` matches SORAT file IDs.
+  - Counts are asserted from `configs/study.yaml → cohort.expected_counts` and all match.
+  - ACDC `field_T` is NaN and `scanner` is None.
+- Tests: `hcm_vendor/tests/test_cohort.py` (8 tests), including padding rows, ID padding, roles, challenge split, unmapped vendor, count mismatch, samplesheet layout and reference cross-check.
 
 ### T21: Feature-table builder
 **Status:** TODO · **Pri:** P0 · **Target:** Oct 13 · **Depends on:** T14, T20
