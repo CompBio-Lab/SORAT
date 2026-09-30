@@ -804,6 +804,7 @@ Nested CV runs on each cohort: outer 5×5, inner 5.
   - (b) Pooled-trained OOF predictions, split by vendor.
 - [ ] Table: AUC, balanced accuracy, sensitivity, specificity and Brier, each with a 95% bootstrap CI. Also ROC curves.
 - [ ] Paired bootstrap comparisons between models on the pooled cohort.
+- [ ] Draft the model-family comparison figure (T61 item 9) from the E1 results, so it can go in the midterm.
 
 **Acceptance:** the tables and figures are in `results_hcm_vendor/runs/E1/` and the headline numbers are copied into this log.
 
@@ -963,6 +964,7 @@ Nested CV runs on each cohort: outer 5×5, inner 5.
   6. E5 ROC curve.
   7. SHAP rank-rank plot and family shares.
   8. Calibration shift.
+  9. **Model-family comparison** (added 2026-09-30 at the user's request): AUC with 95% bootstrap CI for each model (LR-EN, SVM, RF, XGB, MLP), grouped by family (linear, kernel, tree ensemble, neural), side by side for E1 pooled, E1 within-vendor and E2 cross-vendor. Mark pairs that differ in the paired bootstrap test after Holm correction. The E1 and E2 tables already hold the numbers; this figure makes "which family is better" visible.
 - [ ] Tables: cohort, E1, E2 Δ, E3, E4 contrasts, E5, GE check, SHAP stability.
 - [ ] Use a consistent vendor colour map and export both PDF and PNG.
 
