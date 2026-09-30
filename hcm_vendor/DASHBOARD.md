@@ -805,6 +805,7 @@ Nested CV runs on each cohort: outer 5×5, inner 5.
 - [ ] Table: AUC, balanced accuracy, sensitivity, specificity and Brier, each with a 95% bootstrap CI. Also ROC curves.
 - [ ] Paired bootstrap comparisons between models on the pooled cohort.
 - [ ] Draft the model-family comparison figure (T61 item 9) from the E1 results, so it can go in the midterm.
+- [ ] **Grid edge check** (promised to the user 2026-09-30): from the per-fold chosen hyperparameters, report how often each model picks the smallest or largest value of each grid axis. If an axis sits at an edge in most folds, widen that grid and rerun. The grids in `study.yaml → models` are conventional ranges chosen at T31, not tuned to this data; nested CV keeps the performance estimates unbiased either way. Note in the write-up that many grid points tie on inner AUC at this ceiling, so the chosen values carry little meaning individually.
 
 **Acceptance:** the tables and figures are in `results_hcm_vendor/runs/E1/` and the headline numbers are copied into this log.
 
