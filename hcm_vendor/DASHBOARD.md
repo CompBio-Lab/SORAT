@@ -13,14 +13,11 @@
 - **Last completed:** T01, T02, T10, T11, T13, T20 (2026-09-29). Also SORAT fixes `842bc77` (non-orthonormal mask reading) and `9ccff8b` (fast mask discovery), both on `main` and merged. D6 and D7 are decided.
 - **Session paused 2026-09-29, about 21:30, at the user's request.**
 - **In progress:**
-  - **T14:** four FEATURES_ONLY runs launched 21:04 via `nohup`, still running when the session paused. At the pause, `mms2/norm` had 79 of 270 CSVs and the other three combinations had not started.
-    - Check with `grep -E "^===|Succeeded|ERROR" results_hcm_vendor/logs/t14_extraction.log` and `squeue -u $USER`.
-    - If the Nextflow head was killed (login node session ended), rerun the missing combinations with `DATASETS=... CONFIGS=... nohup hcm_vendor/scripts/run_feature_extraction.sh > results_hcm_vendor/logs/t14_rerun.log 2>&1 &`.
-    - Then run `hcmv_python -m hcmv check-features`, which must print `ok=True` for all four rows.
+  - **T14:** all four FEATURES_ONLY runs **finished without failures** on 2026-09-29 at 21:31: mms2/norm and mms2/raw had 271 tasks each, acdc/norm and acdc/raw 41 each (see `results_hcm_vendor/logs/t14_extraction.log`). **Not yet verified:** first run `hcmv_python -m hcmv check-features`, which must print `ok=True` for all four rows, then mark T14 DONE.
   - **T12:** the ground-truth part is done. After T14, run `hcmv_python -m hcmv --set validation.pred_root=results_hcm_vendor/features/nnformer validate-gt`.
   - **T21:** code and tests are done. After T14, add a `feature-tables` CLI command wrapping `features.write_feature_tables` for nnFormer and ground truth.
   - **T30 and T33:** code is drafted in `hcmv/{splits,preprocessing,stats}.py` but **untested**. Write the tests described in those tickets' logs first.
-- **Next up:** T14 → T12/T21 wrap-up → T30/T33 tests → T22 (QC, applying D6) → T31, T32, T34 → E1 (T40), aiming at the Nov 1 midterm.
+- **Next up:** T14 check-features → T12/T21 wrap-up → T30/T33 tests → T22 (QC, applying D6) → T31, T32, T34 → E1 (T40), aiming at the Nov 1 midterm.
 - **Open questions for the user:** none right now. D6 (failed-case rule) must be asked at T22.
 - **Not pushed:** `main` and `eece568-hcm-vendor` are local only. Ask before pushing.
 - **How to run things:**
@@ -72,7 +69,7 @@
 | T11 | Configurable, normalized radiomics settings | 1 Features | P0 | Oct 6 | T01 | DONE (2026-09-29, `fa597fa` on main) |
 | T12 | Ground-truth-mask features + validate T10/T11 | 1 Features | P0 | Oct 8 | T10, T11, T02 | DOING (GT done; pred-vs-GT waits on T14) |
 | T13 | Study-cohort samplesheets (M&Ms-2 NOR/HCM, ACDC NOR/HCM) | 1 Features | P0 | Oct 7 | T02 | DONE (2026-09-29) |
-| T14 | Re-extract nnFormer features (normalized + raw) on SLURM | 1 Features | P0 | Oct 11 | T12, T13 | DOING (runs launched 2026-09-29 21:04) |
+| T14 | Re-extract nnFormer features (normalized + raw) on SLURM | 1 Features | P0 | Oct 11 | T12, T13 | DOING (runs finished 21:31; run check-features) |
 | T20 | Cohort/metadata table with vendor, disease, role | 2 Dataset | P0 | Oct 9 | T02 | DONE (2026-09-29) |
 | T21 | Feature-table builder (ED+ES merge, derived features, families) | 2 Dataset | P0 | Oct 13 | T14, T20 | DOING (code + tests done; run after T14) |
 | T22 | Data QC + exploratory report | 2 Dataset | P1 | Oct 15 | T21 | TODO |
