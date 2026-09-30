@@ -147,6 +147,7 @@ scripts/verify_mms2.log
 # EECE 568 project outputs
 results_hcm_vendor/
 !hcm_vendor/scripts/
+
 # AI assistant files (kept local, not versioned)
 CLAUDE.md
 CLAUDE.local.md

@@ -20,7 +20,7 @@ This file tracks every figure and results table: what it shows, how to regenerat
   - η²: Kruskal–Wallis effect size, (H − k + 1)/(n − k).
   - ICC(3,1): two-way mixed, consistency, single-rater intraclass correlation.
 
-Key numbers below are as of commit `3be4198` and later (2026-09-30).
+Key numbers below are as of commit `58bc695` and later (2026-09-30).
 
 ---
 

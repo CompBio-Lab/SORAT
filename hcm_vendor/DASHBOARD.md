@@ -38,7 +38,7 @@
 
 ### Git workflow for fixes (agreed 2026-09-29)
 
-- **SORAT-level fixes** are anything in `bin/`, `modules/`, `main.nf`, `nextflow.config`, repo `tests/` or `CLAUDE.md`. Commit them on **`main`** first: `git checkout main`, then `git add <specific files>` and commit. Then `git checkout eece568-hcm-vendor` and `git merge main`. That way `main` gets the fix and the project branch stays a superset.
+- **SORAT-level fixes** are anything in `bin/`, `modules/`, `main.nf`, `nextflow.config`, or repo `tests/`. Commit them on **`main`** first: `git checkout main`, then `git add <specific files>` and commit. Then `git checkout eece568-hcm-vendor` and `git merge main`. That way `main` gets the fix and the project branch stays a superset.
 - **Project-only work** is `hcm_vendor/` and `.gitignore` entries for `results_hcm_vendor/`. Commit it on `eece568-hcm-vendor` only.
 - Always stage explicit paths. Uncommitted user changes ride along across checkouts and must not be committed.
 
@@ -68,8 +68,8 @@
 | T00 | Branch + planning dashboard | 0 Setup | P0 | Sep 29 | — | DONE (2026-09-29) |
 | T01 | Analysis environment (existing datascience container) | 0 Setup | P0 | Oct 1 | — | DONE (2026-09-29) |
 | T02 | `hcm_vendor/` package skeleton, config, run manifest | 0 Setup | P0 | Oct 2 | T01 | DONE (2026-09-29) |
-| T10 | Fix wall thickness in `bin/extract_features.py` | 1 Features | P0 | Oct 5 | T01 | DONE (2026-09-29, `3e3972d` on main) |
-| T11 | Configurable, normalized radiomics settings | 1 Features | P0 | Oct 6 | T01 | DONE (2026-09-29, `fa597fa` on main) |
+| T10 | Fix wall thickness in `bin/extract_features.py` | 1 Features | P0 | Oct 5 | T01 | DONE (2026-09-29, `acbb1a3` on main) |
+| T11 | Configurable, normalized radiomics settings | 1 Features | P0 | Oct 6 | T01 | DONE (2026-09-29, `412b122` on main) |
 | T12 | Ground-truth-mask features + validate T10/T11 | 1 Features | P0 | Oct 8 | T10, T11, T02 | DONE (2026-09-30) |
 | T13 | Study-cohort samplesheets (M&Ms-2 NOR/HCM, ACDC NOR/HCM) | 1 Features | P0 | Oct 7 | T02 | DONE (2026-09-29) |
 | T14 | Re-extract nnFormer features (normalized + raw) on SLURM | 1 Features | P0 | Oct 11 | T12, T13 | DONE (2026-09-30) |
@@ -318,7 +318,7 @@ The SORAT pipeline changes (T10, T11) live in `bin/extract_features.py`, `module
   | Siemens NOR | 10.6 | 10.9 | 8.8 | 9.2 |
 
   Plausible, and nnFormer tracks ground truth. The full-cohort validation is T12.
-- Commits: `3e3972d` on `main`, merged into `eece568-hcm-vendor`. `CLAUDE.md` was committed to main as `da371a6`.
+- Commits: `acbb1a3` on `main`, merged into `eece568-hcm-vendor`.
 - **Checklist (all done):**
   - [x] Algorithm implemented.
   - [x] Phantom tests: annulus, RV-bordered septum, thickest slice, through-plane leakage, NaN, slice axis.
@@ -402,7 +402,7 @@ MRI intensities are in arbitrary units that differ by vendor, so the texture fea
   - `norm` changes shape features slightly because of the in-plane resampling (MeshVolume +1.2%). **Use every family from the same config** (`norm` primary, `raw` sensitivity).
 - `nextflow config -flat` parses the new params. The Groovy in `modules/features.nf` has **not been executed yet**, so T14 must start with a one-subject FEATURES_ONLY run.
 - Named configs are in `configs/study.yaml → feature_configs`.
-- Commit `fa597fa` on `main`, merged into the branch as `4bf2581`.
+- Commit `412b122` on `main`, merged into the branch as `aab2414`.
 
 ---
 
@@ -438,7 +438,7 @@ MRI intensities are in arbitrary units that differ by vendor, so the texture fea
   - Both configs (`norm`, `raw`) are read from `study.yaml`.
   - Existing outputs are skipped unless `--overwrite` is passed.
 - First run (job 13153051): 4/310 failed. M&Ms-2 **263 and 268** have non-orthonormal sforms that `sitk.ReadImage` rejects.
-  - Fixed in SORAT `load_mask` (commit `842bc77` on main) and in the script, both via `read_nifti_with_sitk_fallback`.
+  - Fixed in SORAT `load_mask` (commit `77a5dcc` on main) and in the script, both via `read_nifti_with_sitk_fallback`.
   - The rerun (job 13153063) finished 310/310 with 0 failures.
   - Also, the sbatch log filter had dropped the failure lines, because ITK error text contains `itkNiftiImageIO`. It is narrowed to `^WARNING: In .*itkNiftiImageIO`.
 - `python -m hcmv validate-gt` → `results_hcm_vendor/qc/t12_validation/` (summary.md, CSVs, 2 PNGs). Ground-truth findings:
@@ -517,7 +517,7 @@ nextflow run main.nf -entry FEATURES_ONLY -profile slurm \
 **Log:**
 - 2026-09-29: The one-subject FEATURES_ONLY test (M&Ms-2 001, `norm`) ran with 3 tasks succeeded. Outputs carry the `norm` `radiomics_settings`, and wall thickness is 7.4 mm at ED and 10.7 mm at ES. **The T11 Nextflow plumbing is verified end to end.** Output is in `results_hcm_vendor/pipeline_test/`.
 - The first attempt hung for more than 20 minutes in `discoverFeatureCandidateModels`, a Groovy recursive walk of about 77k files on GPFS.
-  - **SORAT fix** (`9ccff8b` on main, merged): both the Groovy and the Python discovery skip bulky non-mask trees and unselected architecture folders.
+  - **SORAT fix** (`3a5a997` on main, merged): both the Groovy and the Python discovery skip bulky non-mask trees and unselected architecture folders.
   - Python discovery on ACDC went from 37 s to 1 s with identical masks, minus 100 spurious `*_0000.nii.gz` preprocessed inputs that the old code misread as masks.
   - A SIGTERM'd Nextflow JVM that is stuck in file I/O may not exit; use `kill -9 <pid>` by exact PID.
 - `hcm_vendor/scripts/run_feature_extraction.sh` runs the four runs in sequence, taking radiomics flags from `study.yaml` via `python -m hcmv --set feature_config=<cfg> radiomics-flags`.
@@ -991,7 +991,7 @@ Nested CV runs on each cohort: outer 5×5, inner 5.
 - [ ] Clean rerun of at least E1 and E2 from scratch, checking that the metrics match the stored ones within seed determinism.
 - [ ] All tests green, both repo `tests/` and `hcm_vendor/tests/`.
 - [ ] No stray files committed: nothing from `results_hcm_vendor/`, `work/` or the NIfTI files.
-- [ ] Update `CLAUDE.md` with a short `hcm_vendor/` section.
+- [ ] Update the local (gitignored) `CLAUDE.md` with a short `hcm_vendor/` section.
 
 **Acceptance:** a fresh rerun reproduces the headline numbers; the README is followed end-to-end once.
 
