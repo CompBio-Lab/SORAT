@@ -138,3 +138,39 @@ No figures. These outputs check the machinery and are not study results.
   - Command: the same sbatch with `--cpus-per-task=5 --time=03:00:00`, args `--experiment E1 --units pooled --family-sets all --set cv.outer_repeats=1 --set experiments.runs_dir=runs-timing`. Job 13163712.
 - Inputs: `results_hcm_vendor/tables/features_mms2_nnformer-fold0_norm.parquet`. Each run folder's `manifest.json` records the commit (the Batch 4 code, run before it was committed, so `git_dirty` is true).
 
+---
+
+## E1–E3 preliminary results (T40–T42), commit `a01a2ab`
+
+Run jobs (submitted by the user from the repo root on `a01a2ab`):
+- E1: `sbatch --account=st-zlaksman-1 --output=results_hcm_vendor/logs/%x-%j.out --job-name=hcmv-e1 hcm_vendor/scripts/run_experiment.sbatch --experiment E1 --force` (job 13164013).
+- E2: same with `--cpus-per-task=16 --mem=32G --time=02:00:00 ... --experiment E2 --force` (job 13164014).
+- E3: `sbatch ... --job-name=hcmv-e3 --time=08:00:00 hcm_vendor/scripts/hcmv_job.sbatch e3-probe` (job 13164015).
+- Reports: `hcmv_python -m hcmv e1-report` and `e2-report` (E3's report is written by `e3-probe`). Input: `results_hcm_vendor/tables/features_mms2_nnformer-fold0_{norm,raw}.parquet` (M&Ms-2 train pool, n = 114; NOR for E3, n = 75).
+- Protocol: nested CV 5×5 outer (stratified on disease × vendor), 5-fold inner grid search on AUC; 2000-resample class-stratified subject bootstrap CIs of the repeat-averaged metric; threshold 0.5; transfers average 5 seeds for RF/XGB/MLP.
+
+### F9. `runs/E1/analysis/e1_roc_{all,all-no-wt}.png`
+Repeat-averaged ROC curves (vertical averaging over the 5 outer repeats) for the five models, one panel per cohort (pooled, Siemens only, Philips only). Legend gives AUC [95% CI]. Key numbers: pooled AUC 0.94 (SVM) to 0.997 (RF) on all features.
+
+### F10. `runs/E2/analysis/model_comparison_{all,all-no-wt}.png` (draft of T61 item 9)
+AUC with 95% CI per model, grouped by model family, for E1 pooled, E1 within each vendor and both E2 transfer directions. Read across a model's row: trees stay near 1.0 everywhere; LR-EN drops only Siemens→Philips; SVM and MLP drop in both directions. Not yet marked with the paired-test results (planned for T61). E1-only version: `runs/E1/analysis/e1_model_comparison_*.png`.
+
+### F11. `runs/E2/analysis/e2_gap_auc.png`
+Generalization gap ΔAUC = AUC(nested CV within the test vendor) − AUC(trained on the other vendor), both on the same test subjects, with paired-bootstrap 95% CIs; colours are family sets. Positive = loss from crossing vendors. Key numbers (all features): RF/XGB ≈ 0; LR-EN +0.09 Siemens→Philips; MLP +0.20/+0.24; SVM +0.16/+0.19.
+
+### F12. `runs/E2/analysis/e2_roc_{all,all-no-wt}.png`
+Per model and direction: ROC within the test vendor (solid, vendor colour) vs trained on the other vendor (dashed).
+
+### F13. `runs/E2/analysis/e2_calibration_{all,all-no-wt}.png`
+Reliability curves (quintile bins of predicted P(HCM)) within vs across vendors, Brier score in the legend. Cross-vendor LR-EN, SVM and MLP curves bunch at high predicted probability: the models still rank subjects but over-call HCM on the new vendor, which is why specificity at 0.5 collapses (e.g. LR-EN Siemens→Philips 0.95 → 0.26).
+
+### F14. `runs/E3/analysis/e3_null_<target>_<classifier>.png`
+For each feature probe: the label-shuffled null distribution of balanced accuracy (1000 permutations, grey), chance (dotted) and the observed value (red), with permutation p and Holm p. Key numbers (3-class, LR): texture normalized 0.94, raw 0.97, all 0.92 (p = 0.001, the floor); clinical 0.39 and shape 0.44 (n.s.).
+
+### Tables
+- `runs/E1/analysis/e1_metrics.csv` (+ `summary.md`): AUC, balanced accuracy, sensitivity, specificity, Brier with CIs; readings (a) within-vendor training and (b) pooled-trained scored per vendor.
+- `runs/E1/analysis/e1_model_comparisons.csv`: paired ΔAUC between model pairs on the pooled cohort, Holm within family set.
+- `runs/E1/analysis/e1_grid_edges.csv`: share of folds choosing the lowest/highest grid value, raw and strict (ties excluded).
+- `runs/E2/analysis/e2_transfer_metrics.csv`, `e2_gap.csv` (Δ for all five metrics with CI, p, Holm across models).
+- `runs/E3/analysis/e3_probe.csv`: balanced accuracy with CI, null mean, permutation p and Holm p per target × classifier × probe.
+

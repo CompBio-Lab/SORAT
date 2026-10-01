@@ -15,11 +15,10 @@
   - **The user runs every Nextflow pipeline run** on their GPU allocation, which has no internet. Prepare the command; the user runs it and says when the results are ready.
   - **The user also submits every SLURM batch job** (set 2026-10-01): the node Claude works on is not a compute node. Give the exact `sbatch` command, run from the repo root; the user submits it and says when it finished.
   - **Work in agreed batches.** Do the batch the user approved, stop at a clean checkpoint (tests green, committed, this block updated), then wait for the user to say continue. Do not roll on into the next batch.
-- **Last completed:** Batch 4 on 2026-10-01: T32 (PyTorch MLP, passes sklearn's `check_estimator`) and T34 (runner, result store, `run-experiment` CLI, sbatch script; smoke E1/E2 on compute nodes; full E1 ≈ 20 min on 32 cores). Batch 3 on 2026-09-30: T22 (`qc-report`, no D6 exclusions, texture direction reverses between vendors) and T31 (model zoo, grids, one-fold timing). Also the correlation filter now keeps myocardial mass over myo volume. Batch 2: T30, T33 tested. Batch 1: T14, T12, T21. Earlier: T00–T02, T10, T11, T13, T20.
-- **Batch 5 in progress (2026-10-01).** First E1/E2 run (jobs 13163751, 13163752, commit `1ca226b`) exposed an SVM bug: `SVC(probability=True)` Platt scaling gave flat or inverted probabilities on small folds (Siemens-only AUC 0.61 while inner AUC was 0.99; one transfer AUC 0.26). Fixed by `CalibratedClassifierCV(SVC, sigmoid, 5-fold)`; runs now also store every grid point's inner score so the grid edge check can ignore ties. **Waiting for the user to rerun E1 and E2 with `--force`, and to run E3 (`hcmv_job.sbatch e3-probe`).** Analysis code: `hcmv/experiments/{e1,e2,e3}.py`, CLI `e1-report`, `e2-report`, `e3-probe`. D8 default: 3-class primary, Siemens-vs-Philips secondary (asked the user to confirm).
+- **Last completed:** Batch 5 on 2026-10-01: T40 (E1), preliminary T41 (E2) and T42 (E3), plus an SVM probability fix. Batch 4 on 2026-10-01: T32 (PyTorch MLP, passes sklearn's `check_estimator`) and T34 (runner, result store, `run-experiment` CLI, sbatch script; smoke E1/E2 on compute nodes; full E1 ≈ 20 min on 32 cores). Batch 3 on 2026-09-30: T22 (`qc-report`, no D6 exclusions, texture direction reverses between vendors) and T31 (model zoo, grids, one-fold timing). Also the correlation filter now keeps myocardial mass over myo volume. Batch 2: T30, T33 tested. Batch 1: T14, T12, T21. Earlier: T00–T02, T10, T11, T13, T20.
+- **Batch 5 done 2026-10-01; paused at a checkpoint. Wait for the user's go.** T40 done, T41 and T42 preliminary (numbers in their logs). Open for the user: (1) widen the SVM `gamma` grid to 1e-4 and rerun the SVM only (T40 edge check); (2) confirm D8 (E3 design used: 3-class primary). Next planned: T60 midterm (D10 format question first), then finalize T41/T42.
 - **Batch 3 follow-up (2026-09-30):** all figures were redrawn to stand alone (plain titles, units, n per group, legends), and a Siemens-vs-Philips AUC scatter (`auc_agreement_siemens_philips.png`) was added. The `all-no-wt` family set was added (D11), along with `FIGURES.md`.
 - **Planned batches:**
-  - **Batch 5:** E1 (T40), then E2/E3 preliminaries for the Nov 1 midterm (T60). The user submits the E1/E2 sbatch jobs; Claude writes the analysis code meanwhile, in new files only, so running jobs never import edited code.
 - **Open questions for the user:** none. The ceiling question was answered by D11.
 - **Figures and tables:** every figure, the command that makes it, its inputs, how to read it and its key numbers are catalogued in `hcm_vendor/FIGURES.md`. All plotting code is in `hcmv/figures.py`. Keep both in sync.
 - **Pushed (2026-09-30):** `main` and `eece568-hcm-vendor` are on `origin` (CompBio-Lab/SORAT), and the project branch tracks `origin/eece568-hcm-vendor`. The user is the only developer and allows direct pushes to `main` (no PR needed). Push at each checkpoint.
@@ -82,9 +81,9 @@
 | T32 | PyTorch MLP as a scikit-learn estimator | 3 Framework | P0 | Oct 18 | T30 | DONE (2026-10-01) |
 | T33 | Metrics, bootstrap CIs, paired bootstrap tests | 3 Framework | P0 | Oct 18 | T02 | DONE (2026-09-30) |
 | T34 | Experiment runner, result store, SLURM scripts | 3 Framework | P0 | Oct 21 | T31, T32, T33 | DONE (2026-10-01) |
-| T40 | **E1** pooled + within-vendor nested CV | 4 Experiments | P1 | Oct 25 | T34 | TODO |
-| T41 | **E2** cross-vendor transfer + generalization gap Δ | 4 Experiments | P1 | Oct 28 | T40 | TODO |
-| T42 | **E3** vendor probe on NOR + permutation test | 4 Experiments | P1 | Oct 29 | T34 | TODO |
+| T40 | **E1** pooled + within-vendor nested CV | 4 Experiments | P1 | Oct 25 | T34 | DONE (2026-10-01; grid widening pending user) |
+| T41 | **E2** cross-vendor transfer + generalization gap Δ | 4 Experiments | P1 | Oct 28 | T40 | PRELIMINARY (2026-10-01) |
+| T42 | **E3** vendor probe on NOR + permutation test | 4 Experiments | P1 | Oct 29 | T34 | PRELIMINARY (2026-10-01) |
 | T60 | **Midterm update** (due Nov 1) | M Milestone | P0 | Nov 1 | T22, T40, (T41, T42 preliminary) | TODO |
 | T43 | **E4** feature-family ablation (+ raw vs normalized texture) | 4 Experiments | P1 | Nov 6 | T40, T41, T42 | TODO |
 | T44 | **E5** external test on ACDC | 4 Experiments | P1 | Nov 8 | T34 | TODO |
@@ -834,6 +833,13 @@ Nested CV runs on each cohort: outer 5×5, inner 5.
 
 **Acceptance:** the tables and figures are in `results_hcm_vendor/runs/E1/` and the headline numbers are copied into this log.
 
+**Log:**
+- 2026-10-01: `hcmv/experiments/e1.py`, `python -m hcmv e1-report` → `results_hcm_vendor/runs/E1/analysis/` (`summary.md`, `e1_metrics.csv`, `e1_model_comparisons.csv`, `e1_grid_edges.csv`, ROC and model-comparison figures; see FIGURES.md).
+- **SVM fix:** the first run (jobs 13163751/2, `1ca226b`) showed `SVC(probability=True)` giving flat or inverted Platt probabilities on small folds (Siemens-only AUC 0.61 vs inner 0.99; a transfer AUC of 0.26). The SVM is now `CalibratedClassifierCV(SVC, sigmoid, 5-fold)` (`a01a2ab`). Final runs: jobs 13164013 (E1) and 13164014 (E2), both `--force` on `a01a2ab`.
+- **Headline (all features, AUC [95% CI]):** pooled LR-EN 0.993 [0.984, 0.999], SVM 0.940 [0.911, 0.965], RF 0.997 [0.992, 1.000], XGB 0.995 [0.985, 1.000], MLP 0.983 [0.967, 0.995]. Within Siemens 0.92–1.00 and within Philips 0.84–1.00 (SVM lowest in both). Without wall thickness (`all-no-wt`): pooled 0.948–0.974.
+- **Model comparisons (pooled, paired bootstrap, Holm):** SVM is below every other model on `all` (ΔAUC −0.04 to −0.06, p_Holm < 0.0005); RF beats MLP by 0.014 (p_Holm < 0.0005). LR-EN, RF and XGB do not differ. On `all-no-wt`, only LR-EN > SVM and MLP > SVM survive Holm.
+- **Grid edge check** (now counting only folds where the edge value strictly beat the others, since GridSearchCV breaks ties by grid order): 13 of 78 axis × cohort × set cells sit at an edge in > 50% of folds. Consistent pattern: **SVM `gamma` at its lowest value 0.001** in all 6 cells (56–80% strict). Also LR-EN `l1_ratio` at 0.1 in 2 cells, and MLP `hidden`/`dropout` and XGB `min_child_weight` at edges in opposite directions across cells (no consistent widening). **Proposed to the user:** add `gamma = 1e-4` to the SVM grid and rerun the SVM only.
+
 **Note:** the within-vendor training folds have only about 42 subjects each, so expect wide CIs and say so.
 
 ### T41: E2, cross-vendor transfer + generalization gap Δ
@@ -849,6 +855,12 @@ Nested CV runs on each cohort: outer 5×5, inner 5.
 - [ ] Save the fitted Siemens-trained and Philips-trained pipelines for T50.
 
 **Acceptance:** a Δ table (model × direction) with CIs, plus ROC overlays of within vs cross vendor.
+
+**Log:**
+- 2026-10-01 (preliminary): `hcmv/experiments/e2.py`, `python -m hcmv e2-report` → `results_hcm_vendor/runs/E2/analysis/` (transfer metrics, `e2_gap.csv` with Δ for all five metrics, ROC/calibration overlays, Δ forest plot, E1+E2 model comparison). Job 13164014.
+- **ΔAUC (within − cross), all features:** trees transfer with no AUC loss (RF/XGB Δ −0.014 to −0.002, CIs cover 0). LR-EN loses 0.093 [0.020, 0.187] Siemens→Philips but nothing Philips→Siemens. MLP loses 0.195–0.244 and SVM 0.163–0.188.
+- **Threshold/calibration shift is the bigger effect:** at the fixed 0.5 threshold, specificity on the new vendor collapses for LR-EN (Siemens→Philips 0.95 → 0.26), MLP (0.92 → 0.09) and SVM, i.e. nearly everyone is called HCM. Trees keep specificity on `all` except RF Siemens→Philips (0.94 → 0.69). Without wall thickness, RF's Siemens→Philips specificity also collapses (0.92 → 0.09) while its AUC holds (0.93).
+- Interpretation to check (inferred, not tested): the RBF kernel and the MLP are distance/scale sensitive, and E3 shows texture alone identifies the vendor, so shifted texture features move every test subject off the training distribution; trees can split on wall thickness and ignore the shift.
 
 ### T42: E3, vendor probe on NOR only + permutation test
 **Status:** TODO · **Pri:** P1 · **Target:** Oct 29 (preliminary for midterm; final by Nov 8) · **Depends on:** T34
@@ -870,6 +882,12 @@ Nested CV runs on each cohort: outer 5×5, inner 5.
 - [ ] Implement it, run it, and plot each family's observed balanced accuracy against its null distribution.
 
 **Acceptance:** a table of family, balanced accuracy with CI, permutation p and Holm-adjusted p; the plot is saved.
+
+**Log:**
+- 2026-10-01 (preliminary): `hcmv/experiments/e3.py`, `python -m hcmv e3-probe` (job 13164015) → `results_hcm_vendor/runs/E3/` and `runs/E3/analysis/`. D8 default used (3-class primary, Siemens-vs-Philips secondary; awaiting the user's confirmation). The permutation null reruns the first outer repeat with 1000 shuffles, so the smallest possible p is 1/1001 ≈ 0.001.
+- **3-class balanced accuracy (chance 0.333), multinomial LR:** clinical 0.394 [0.304, 0.488] (p_Holm 0.24), shape 0.435 [0.338, 0.531] (0.24), **texture normalized 0.940 [0.891, 0.978]**, texture raw 0.972 [0.947, 0.992], all 0.919 (each p = 0.001, p_Holm 0.005). RF gives the same picture (texture 0.89/0.97, clinical and shape at chance).
+- Siemens vs Philips (chance 0.5): texture 0.98–1.00; clinical 0.54–0.62 and shape 0.55–0.62, none significant after Holm.
+- So H2 is supported: texture identifies the vendor almost perfectly, and intensity normalization (D2) barely reduces it. Clinical and shape features carry no detectable vendor signal in normal hearts.
 
 **Note:** all NOR subjects are at 1.5 T, so field strength cannot confound the vendor signal. Scanner models are nested within vendor; see S4.
 

@@ -465,10 +465,10 @@ def plot_gap_forest(table: pd.DataFrame, path, metric_name: str = "AUC") -> None
         ax.set_title(UNIT_NAMES[direction], fontsize=10)
         ax.grid(axis="x", linewidth=0.4, alpha=0.5)
     axes[0][0].invert_yaxis()
-    axes[0][0].legend(fontsize=8, loc="upper center", bbox_to_anchor=(0.5 * len(directions) + 0.1, -0.22),
-                      ncol=len(family_sets), frameon=False)
     fig.suptitle(f"Cross-vendor generalization gap in {metric_name}", fontsize=11)
-    fig.tight_layout()
+    fig.tight_layout(rect=(0, 0.08, 1, 1))
+    handles, labels = axes[0][0].get_legend_handles_labels()
+    fig.legend(handles, labels, fontsize=8, loc="lower center", ncol=len(family_sets), frameon=False)
     _save(fig, path)
 
 
