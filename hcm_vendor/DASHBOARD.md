@@ -14,17 +14,17 @@
   - **No AI attribution in the repository.** Commits are authored by Parsa only. Add no `Co-Authored-By` or other assistant trailers to commit messages, and no assistant attribution lines in repo files. The user will write any acknowledgement in the README themselves.
   - **The user runs every Nextflow pipeline run** on their GPU allocation, which has no internet. Prepare the command; the user runs it and says when the results are ready.
   - **Work in agreed batches.** Do the batch the user approved, stop at a clean checkpoint (tests green, committed, this block updated), then wait for the user to say continue. Do not roll on into the next batch.
-- **Last completed:** Batch 3 on 2026-09-30: T22 (`qc-report`, no D6 exclusions, texture direction reverses between vendors) and T31 (model zoo, grids, one-fold timing). Also the correlation filter now keeps myocardial mass over myo volume. Batch 2: T30, T33 tested. Batch 1: T14, T12, T21. Earlier: T00–T02, T10, T11, T13, T20.
-- **Paused at a checkpoint 2026-09-30 at the user's request (pause for the day). Wait for the user's go before starting Batch 4.**
+- **Last completed:** Batch 4 on 2026-10-01: T32 (PyTorch MLP, passes sklearn's `check_estimator`) and T34 (runner, result store, `run-experiment` CLI, sbatch script; smoke E1/E2 on compute nodes; full E1 ≈ 20 min on 32 cores). Batch 3 on 2026-09-30: T22 (`qc-report`, no D6 exclusions, texture direction reverses between vendors) and T31 (model zoo, grids, one-fold timing). Also the correlation filter now keeps myocardial mass over myo volume. Batch 2: T30, T33 tested. Batch 1: T14, T12, T21. Earlier: T00–T02, T10, T11, T13, T20.
+- **Paused at a checkpoint 2026-10-01 after Batch 4. Wait for the user's go before starting Batch 5.**
 - **Batch 3 follow-up (2026-09-30):** all figures were redrawn to stand alone (plain titles, units, n per group, legends), and a Siemens-vs-Philips AUC scatter (`auc_agreement_siemens_philips.png`) was added. The `all-no-wt` family set was added (D11), along with `FIGURES.md`.
 - **Planned batches:**
-  - **Batch 4:** T32 (PyTorch MLP, the 4th model family: linear LR-EN, kernel SVM, tree ensembles RF+XGB, neural MLP) and T34 (experiment runner, result store, sbatch script, smoke run). Include `all-no-wt` in the E1/E2 family sets.
   - **Batch 5:** E1 (T40), then E2/E3 preliminaries for the Nov 1 midterm (T60). T34/T40 submit CPU sbatch jobs (not Nextflow); ask the user whether they want to submit those themselves.
 - **Open questions for the user:** none. The ceiling question was answered by D11.
 - **Figures and tables:** every figure, the command that makes it, its inputs, how to read it and its key numbers are catalogued in `hcm_vendor/FIGURES.md`. All plotting code is in `hcmv/figures.py`. Keep both in sync.
 - **Pushed (2026-09-30):** `main` and `eece568-hcm-vendor` are on `origin` (CompBio-Lab/SORAT), and the project branch tracks `origin/eece568-hcm-vendor`. The user is the only developer and allows direct pushes to `main` (no PR needed). Push at each checkpoint.
 - **How to run things:**
-  - Analysis tests and CLI: `source hcm_vendor/scripts/env.sh`, then `hcmv_python -m pytest hcm_vendor/tests -q -p no:cacheprovider` (29 tests) or `hcmv_python -m hcmv <cmd>`.
+  - Analysis tests and CLI: `source hcm_vendor/scripts/env.sh`, then `hcmv_python -m pytest hcm_vendor/tests -q -p no:cacheprovider` (85 tests, about 2.5 min) or `hcmv_python -m hcmv <cmd>`.
+  - Experiments: `sbatch --account=st-zlaksman-1 --output=results_hcm_vendor/logs/%x-%j.out hcm_vendor/scripts/run_experiment.sbatch --experiment E1` (add `--smoke`, `--models`, `--units`, `--family-sets`, `--set key=value`). Finished runs are skipped, so resubmit after a timeout.
   - SORAT tests (25): `module load gcc apptainer && apptainer exec --env PYTHONPATH=/scratch/st-zlaksman-1/pmoheban/venvs/sorat-features-conda/lib/python3.10/site-packages containers/sorat-cinema.sif python -m unittest discover -s tests`.
   - SLURM: `sbatch --account=st-zlaksman-1 --output=results_hcm_vendor/logs/%x-%j.out <script>`.
 - **Gotchas to remember:**
@@ -78,9 +78,9 @@
 | T22 | Data QC + exploratory report | 2 Dataset | P1 | Oct 15 | T21 | DONE (2026-09-30) |
 | T30 | CV splitting + leakage-safe preprocessing pipeline | 3 Framework | P0 | Oct 15 | T21 | DONE (2026-09-30) |
 | T31 | Model zoo + hyperparameter grids (LR-EN, SVM, RF, XGB) | 3 Framework | P0 | Oct 17 | T30 | DONE (2026-09-30) |
-| T32 | PyTorch MLP as a scikit-learn estimator | 3 Framework | P0 | Oct 18 | T30 | TODO |
+| T32 | PyTorch MLP as a scikit-learn estimator | 3 Framework | P0 | Oct 18 | T30 | DONE (2026-10-01) |
 | T33 | Metrics, bootstrap CIs, paired bootstrap tests | 3 Framework | P0 | Oct 18 | T02 | DONE (2026-09-30) |
-| T34 | Experiment runner, result store, SLURM scripts | 3 Framework | P0 | Oct 21 | T31, T32, T33 | TODO |
+| T34 | Experiment runner, result store, SLURM scripts | 3 Framework | P0 | Oct 21 | T31, T32, T33 | DONE (2026-10-01) |
 | T40 | **E1** pooled + within-vendor nested CV | 4 Experiments | P1 | Oct 25 | T34 | TODO |
 | T41 | **E2** cross-vendor transfer + generalization gap Δ | 4 Experiments | P1 | Oct 28 | T40 | TODO |
 | T42 | **E3** vendor probe on NOR + permutation test | 4 Experiments | P1 | Oct 29 | T34 | TODO |
@@ -704,7 +704,7 @@ nextflow run main.nf -entry FEATURES_ONLY -profile slurm \
 - **Ceiling warning:** fold-0 test AUC is 0.99–1.00 for every model (inner AUC 0.995–1.0), because ED max wall thickness alone nearly separates the classes. See the open question in "Resume here".
 
 ### T32: PyTorch MLP as a scikit-learn estimator
-**Status:** TODO · **Pri:** P0 · **Target:** Oct 18 · **Depends on:** T30
+**Status:** DONE (2026-10-01) · **Pri:** P0 · **Target:** Oct 18 · **Depends on:** T30
 
 **Spec:**
 - `TorchMLPClassifier(BaseEstimator, ClassifierMixin)`.
@@ -724,6 +724,17 @@ nextflow run main.nf -entry FEATURES_ONLY -profile slurm \
   - It is usable in `GridSearchCV`.
 
 **Acceptance:** the tests pass; one outer fold of E1 with the MLP runs in reasonable time (log the time).
+
+**Log:**
+- 2026-10-01: `hcmv/mlp.py`: `TorchMLPClassifier`, registered as `mlp` in `hcmv/models.py` with its grid in `study.yaml → models.mlp` (12 combinations). `STOCHASTIC_MODELS = (rf, xgb, mlp)`.
+  - Network: `Linear → ReLU → Dropout` per hidden layer, then `Linear(1)` (one logit). Sigmoid only in `predict_proba`.
+  - Training: `BCEWithLogitsLoss(pos_weight = n_neg/n_pos)` of the rows it trains on (class balancing, D7), Adam `lr=1e-3` with `weight_decay`, shuffled mini-batches of 32.
+  - Early stopping: stratified 20% validation split of the rows passed to `fit` (so inside the inner or outer fold), patience 50, cap 1000 epochs, best weights restored. If a class has fewer than 2 rows, it trains all rows for `max_epochs` without early stopping.
+  - Determinism: everything runs inside `torch.random.fork_rng` seeded by `random_state`, with deterministic algorithms and 1 torch thread (`n_threads`), so the same seed gives identical predictions and the global RNG is untouched.
+  - The fitted network is stored as `network_` (picklable; also `n_epochs_`, `best_epoch_`, loss curves).
+- Tests (`tests/test_mlp.py`, 10): clone/get_params, separable toy AUC > 0.95, same seed identical and different seed different, early stopping restores the best epoch, string labels, multiclass rejected, tiny-class fallback, pickle round trip, `GridSearchCV(build_pipeline(...))` with the study grid, and **the full sklearn `check_estimator` suite passes**.
+- **One-fold timing on real data** (M&Ms-2 pool, `all`, full grid, 5-fold inner CV, one fold per core; `results_hcm_vendor/runs-timing/E1/pooled/all/*/norm/hyperparams.json`): MLP 46–66 s per outer fold. The other models: LR-EN 14–16 s, SVM 2 s, RF 77 s, XGB 9 s.
+- The MLP picked `hidden=(64, 32)` in 4 of 5 folds of that timing run. Watch this axis in the T40 grid edge check.
 
 ### T33: Metrics, bootstrap CIs, paired bootstrap tests
 **Status:** DONE (2026-09-30) · **Pri:** P0 · **Target:** Oct 18 · **Depends on:** T02
@@ -762,7 +773,7 @@ nextflow run main.nf -entry FEATURES_ONLY -profile slurm \
 - 2026-09-30: `hcm_vendor/tests/test_stats.py` (11 tests) passes against the drafted code unchanged. The coverage simulation (200 datasets of n=100, 300 resamples each) lands inside the accepted 88–99% band around the nominal 95%, and takes about 15 s. The full suite is now 52 tests.
 
 ### T34: Experiment runner, result store, SLURM scripts
-**Status:** TODO · **Pri:** P0 · **Target:** Oct 21 · **Depends on:** T31, T32, T33
+**Status:** DONE (2026-10-01) · **Pri:** P0 · **Target:** Oct 21 · **Depends on:** T31, T32, T33
 
 **Tasks:**
 - [ ] `runner.py` with two primitives:
@@ -778,6 +789,18 @@ nextflow run main.nf -entry FEATURES_ONLY -profile slurm \
 - [ ] Estimate the runtime from a smoke run and log it here.
 
 **Acceptance:** a smoke run of E1 for all five models completes end-to-end on a compute node; the outputs are loadable; a rerun is a no-op.
+
+**Log:**
+- 2026-10-01: `hcmv/runner.py`, CLI `python -m hcmv run-experiment`, and `scripts/run_experiment.sbatch` (32 cores, 64 GB, 8 h; one BLAS thread per worker).
+  - `run_nested_cv`: outer `RepeatedStratifiedKFold` stratified on y × vendor; per outer fold, `GridSearchCV(build_pipeline(model), grid, inner StratifiedKFold seeded by seed + 100·repeat + fold)`; joblib over outer folds.
+  - `run_transfer`: tune by inner CV on the training cohort, refit, predict the test cohort. RF, XGB and MLP use 5 seeds (seed … seed+4) and average probabilities; LR-EN and SVM use one. Every fitted pipeline is saved to `models/seed_<s>.joblib` for SHAP. Refuses overlapping train/test subjects.
+  - **Store layout:** `results_hcm_vendor/runs/<experiment>/<unit>/<family_set>/<model>/<feature_config>/`. The ticket's layout gained a `<unit>` level for the cohort (E1: `pooled`, `siemens`, `philips`) or direction (E2: `siemens_to_philips`, `philips_to_siemens`). Files: `predictions.parquet`, `hyperparams.json` (chosen grid point, inner AUC, fit time, features kept, per fold or seed), `metrics.json` (all five metrics with 2000-resample subject-bootstrap CIs; E1 also per vendor = reading (b), and per repeat), `manifest.json` (written last). Transfers add `predictions_by_seed.parquet`. Each experiment folder gets a `summary.csv`.
+  - **Resumable:** the run hash covers cohort filters, family set, model, grid, fixed model params, CV, seeds, feature table and bootstrap count. A matching `manifest.json` means skip; `--force` reruns.
+  - Experiments, cohorts, directions, family sets (`all`, `all-no-wt`) and `transfer_seeds` live in `study.yaml → experiments`. `--smoke` uses `study.yaml → smoke`: 1×2 outer, 2 inner, the middle 1–2 values of each grid axis, 100 resamples, 2 seeds, RF 50 trees, MLP 100 epochs; it writes to `runs-smoke/`. `--set experiments.runs_dir=<name>` redirects the store (used for timing).
+  - Tests (`tests/test_runner.py`, 8): smoke config, filters, nested-CV store contents and OOF coverage, skip and re-run on a changed config, determinism, transfer seed averaging and saved pipelines, overlap guard, `run_experiment` + `summary.csv`. The suite is now 85 tests.
+- **Smoke runs on compute nodes** (jobs 13163710, 13163711; 8 cores): E1 (3 cohorts × 2 family sets × 5 models) finished in 1 min 26 s, E2 (2 directions × 2 sets × 5 models) in 52 s. Rerunning E2 smoke skipped all 20 runs. Outputs load with pandas/joblib. Smoke numbers mean nothing (tiny grids).
+  - Smoke-only artifact: XGB on Siemens-only gave a constant prediction (AUC 0.500), because with 13-subject inner folds `min_child_weight=3` allows no split. The full grid also has `min_child_weight=1`, so this should not recur, but check the E1 within-vendor XGB folds.
+- **Runtime estimate** (job 13163712, full grids, one 5-fold repeat of E1 pooled on `all`, 5 cores, 3 min 39 s; `results_hcm_vendor/runs-timing/E1/summary.csv`): per outer fold, LR-EN 16 s, SVM 2 s, RF 77 s, XGB 9 s, MLP 46–66 s, so about 160 core-s per fold for all five models. Full E1 (3 cohorts × 2 family sets × 25 folds) ≈ 6 × 25 × 160 s ≈ 7 core-hours; on 32 cores (25 folds in parallel) about 20 min wall. E2 is a few minutes. E4's larger grid of family sets and configs fits comfortably in an 8 h job.
 
 ---
 

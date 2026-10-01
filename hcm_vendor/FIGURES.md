@@ -126,3 +126,15 @@ Command: `hcmv_python -m hcmv qc-report` (code: `hcmv/explore.py::qc_report`). A
   - Mean LR-EN AUC: `all` 0.998, `all-no-wt` 0.978, `clinical` 0.995, `shape` 0.969, `texture` 0.935.
   - Removing wall thickness barely lowers the ceiling, because mass and shape still separate the classes.
   - This is a quick check, not the E1 result.
+
+---
+
+## T34: runner smoke and timing runs
+
+No figures. These outputs check the machinery and are not study results.
+- `results_hcm_vendor/runs-smoke/{E1,E2}/summary.csv`: smoke runs (1×2 outer CV, tiny grids, 100 bootstrap resamples) of all five models on `all` and `all-no-wt`. The AUCs are meaningless; they show every model and unit runs end-to-end.
+  - Command: `sbatch --account=st-zlaksman-1 --output=results_hcm_vendor/logs/%x-%j.out --cpus-per-task=8 --mem=16G --time=01:00:00 hcm_vendor/scripts/run_experiment.sbatch --experiment E1 --smoke` (and `--experiment E2 --smoke`). Jobs 13163710 and 13163711.
+- `results_hcm_vendor/runs-timing/E1/summary.csv` and `.../E1/pooled/all/<model>/norm/hyperparams.json`: one 5-fold repeat of E1 on the pooled cohort with full grids, used for the runtime estimate. Fit time per outer fold: LR-EN 16 s, SVM 2 s, RF 77 s, XGB 9 s, MLP 46–66 s. AUC 0.98–1.00 (one repeat; not the E1 result).
+  - Command: the same sbatch with `--cpus-per-task=5 --time=03:00:00`, args `--experiment E1 --units pooled --family-sets all --set cv.outer_repeats=1 --set experiments.runs_dir=runs-timing`. Job 13163712.
+- Inputs: `results_hcm_vendor/tables/features_mms2_nnformer-fold0_norm.parquet`. Each run folder's `manifest.json` records the commit (the Batch 4 code, run before it was committed, so `git_dirty` is true).
+

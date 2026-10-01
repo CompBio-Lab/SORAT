@@ -110,6 +110,33 @@ def cmd_radiomics_flags(config: dict, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_run_experiment(config: dict, args: argparse.Namespace) -> int:
+    from .models import MODEL_NAMES
+    from .runner import run_experiment, smoke_config
+
+    if args.smoke:
+        config = smoke_config(config)
+    models = args.models.split(",") if args.models else list(MODEL_NAMES)
+    family_sets = args.family_sets.split(",") if args.family_sets else None
+    units = args.units.split(",") if args.units else None
+    summary = run_experiment(config, args.experiment, models, family_sets, units, n_jobs=args.n_jobs,
+                             force=args.force)
+    if len(summary):
+        columns = ["unit", "family_set", "model", "n", "auc", "auc_ci_low", "auc_ci_high", "wall_s"]
+        print(summary[columns].to_string(index=False, float_format=lambda v: f"{v:.3f}"))
+    return 0
+
+
+def add_run_experiment_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--experiment", required=True, help="Experiment key in study.yaml, e.g. E1 or E2")
+    parser.add_argument("--models", default=None, help="Comma-separated models (default: all five)")
+    parser.add_argument("--family-sets", default=None, help="Comma-separated family sets (default: config)")
+    parser.add_argument("--units", default=None, help="Comma-separated cohorts or directions (default: all)")
+    parser.add_argument("--n-jobs", type=int, default=None, help="Parallel workers (default: SLURM_CPUS_PER_TASK or 1)")
+    parser.add_argument("--smoke", action="store_true", help="Tiny CV and grids, written to runs-smoke/")
+    parser.add_argument("--force", action="store_true", help="Rerun even if a matching result exists")
+
+
 COMMANDS = {
     "show-config": (cmd_show_config, "Print the resolved study config and its hash"),
     "manifest": (cmd_manifest, "Write a run manifest (git, config hash, packages)"),
@@ -120,7 +147,9 @@ COMMANDS = {
     "feature-tables": (cmd_feature_tables, "Build nnFormer and GT feature tables (T21)"),
     "qc-report": (cmd_qc_report, "T22 data QC + exploratory report -> results_hcm_vendor/qc/t22"),
     "validate-gt": (cmd_validate_gt, "T12 report; --set validation.pred_root=<dir> adds nnFormer-vs-GT"),
+    "run-experiment": (cmd_run_experiment, "Nested CV or transfer runs into the result store (T34)"),
 }
+COMMAND_ARGS = {"run-experiment": add_run_experiment_args}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -133,13 +162,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     for name, (_, help_text) in COMMANDS.items():
-        subparsers.add_parser(name, help=help_text)
+        subparser = subparsers.add_parser(name, help=help_text)
+        subparser.add_argument("--set", dest="sub_overrides", action="append", default=[], metavar="KEY=VALUE",
+                               help="Same as the top-level --set (allowed after the command)")
+        if name in COMMAND_ARGS:
+            COMMAND_ARGS[name](subparser)
     return parser
 
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
-    config = load_config(args.config, args.overrides)
+    config = load_config(args.config, args.overrides + args.sub_overrides)
     handler, _ = COMMANDS[args.command]
     return handler(config, args)
 

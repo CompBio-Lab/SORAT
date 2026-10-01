@@ -30,7 +30,7 @@ def _toy(n=80, seed=0):
 
 def test_grid_sizes_match_ticket(config):
     sizes = {name: grid_size(get_model(name, config)[1]) for name in MODEL_NAMES}
-    assert sizes == {"lr_en": 24, "svm": 16, "rf": 18, "xgb": 16}
+    assert sizes == {"lr_en": 24, "svm": 16, "rf": 18, "xgb": 16, "mlp": 12}
 
 
 def test_grid_values_parse_from_yaml(config):
@@ -47,7 +47,7 @@ def test_models_are_class_balanced_and_seeded(config):
         est, _ = get_model(name, config, seed=5)
         params = est.get_params()
         assert params["random_state"] == 5
-        if name != "xgb":
+        if name in ("lr_en", "svm", "rf"):  # xgb and mlp balance via a positive-class weight
             assert params["class_weight"] == "balanced"
 
 
@@ -58,6 +58,8 @@ def test_each_model_runs_in_grid_search_pipeline(config, name):
     small = {k: v[:2] for k, v in grid.items()}  # keep the test fast
     if name == "rf":
         est.set_params(n_estimators=50)
+    if name == "mlp":
+        est.set_params(max_epochs=200, patience=20)
     search = GridSearchCV(build_pipeline(clone(est)), small, cv=inner_cv(3, seed=0), scoring="roc_auc")
     search.fit(X, y)
     proba = search.predict_proba(X)

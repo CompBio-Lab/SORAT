@@ -68,3 +68,40 @@ models:
     learning_rate: [0.03, 0.1]
     max_depth: [2, 3]
     min_child_weight: [1, 3]
+  mlp:          # 2 hidden layers (ReLU + dropout), Adam, early stopping on a 20% inner split
+    hidden: [[32, 16], [64, 32]]
+    dropout: [0.2, 0.5]
+    weight_decay: [0.0001, 0.001, 0.01]
+
+# T34: experiment runner. Results go to <output_root>/runs/<experiment>/<unit>/<family_set>/<model>/<feature_config>/.
+experiments:
+  runs_dir: runs               # result store under output_root; smoke runs add a -smoke suffix
+  feature_config: norm
+  source: null                # feature source; null = segmentation_model_tag (use `gt` for S1)
+  family_sets: [all, all-no-wt]
+  transfer_seeds: 5           # seeds averaged for stochastic models (rf, xgb, mlp) in transfers
+  model_params: {}            # fixed estimator params per model, e.g. {mlp: {max_epochs: 500}}
+  E1:
+    kind: nested_cv
+    cohorts:
+      pooled: {role: train_pool}
+      siemens: {role: train_pool, vendor: Siemens}
+      philips: {role: train_pool, vendor: Philips}
+  E2:
+    kind: transfer
+    directions:
+      siemens_to_philips:
+        train: {role: train_pool, vendor: Siemens}
+        test: {role: train_pool, vendor: Philips}
+      philips_to_siemens:
+        train: {role: train_pool, vendor: Philips}
+        test: {role: train_pool, vendor: Siemens}
+
+# `--smoke`: tiny CV, 2-point grids, few resamples; written to runs-smoke/ instead of runs/.
+smoke:
+  cv: {outer_splits: 2, outer_repeats: 1, inner_splits: 2}
+  bootstrap_resamples: 100
+  transfer_seeds: 2
+  model_params:
+    rf: {n_estimators: 50}
+    mlp: {max_epochs: 100, patience: 10}
