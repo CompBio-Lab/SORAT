@@ -145,11 +145,18 @@ def _fit_and_predict(X_train, y_train, X_test, model, config, seed, inner_seed):
     fit_s = time.perf_counter() - start
     prob = search.predict_proba(X_test)[:, 1]
     info = {
-        "best_params": {k.removeprefix("model__"): v for k, v in search.best_params_.items()},
+        "best_params": {k.removeprefix("model__").removeprefix("estimator__"): v
+                        for k, v in search.best_params_.items()},
         "inner_score": float(search.best_score_),
         "fit_s": round(fit_s, 2),
         "n_features_in": int(X_train.shape[1]),
         "n_features_kept": int(len(search.best_estimator_[:-1].get_feature_names_out())),
+        # Every grid point's mean inner score, so ties (common at the AUC ceiling) can be detected:
+        # GridSearchCV breaks ties by taking the first grid point.
+        "grid_scores": [{"params": {k.removeprefix("model__").removeprefix("estimator__"): v
+                                    for k, v in params.items()}, "score": float(score)}
+                        for params, score in zip(search.cv_results_["params"],
+                                                 search.cv_results_["mean_test_score"])],
     }
     return prob, info, search.best_estimator_
 

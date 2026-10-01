@@ -37,7 +37,7 @@ def test_grid_values_parse_from_yaml(config):
     _, rf = get_model("rf", config)
     assert rf["model__max_depth"][0] is None
     _, svm = get_model("svm", config)
-    assert svm["model__gamma"][0] == "scale"
+    assert svm["model__estimator__gamma"][0] == "scale"
     _, lr = get_model("lr_en", config)
     np.testing.assert_allclose(lr["model__C"], np.logspace(-3, 2, 8), rtol=1e-3)
 
@@ -46,8 +46,11 @@ def test_models_are_class_balanced_and_seeded(config):
     for name in MODEL_NAMES:
         est, _ = get_model(name, config, seed=5)
         params = est.get_params()
+        if name == "svm":  # calibrated wrapper: the seed sets the Platt CV folds
+            assert params["cv"].random_state == 5 and params["estimator__class_weight"] == "balanced"
+            continue
         assert params["random_state"] == 5
-        if name in ("lr_en", "svm", "rf"):  # xgb and mlp balance via a positive-class weight
+        if name in ("lr_en", "rf"):  # xgb and mlp balance via a positive-class weight
             assert params["class_weight"] == "balanced"
 
 
@@ -76,3 +79,15 @@ def test_balanced_xgb_sets_scale_pos_weight_from_fit_data():
     model.fit(X.iloc[:40], np.r_[np.zeros(20), np.ones(20)].astype(int))
     assert model.get_params()["scale_pos_weight"] == pytest.approx(1.0)
     assert clone(model).get_params()["max_depth"] == 2
+
+
+def test_svm_probabilities_follow_decision_ranking():
+    """Small-C SVMs on ~40 subjects must not give inverted probabilities (the libsvm Platt bug)."""
+    X, y = _toy(n=40, seed=3)
+    est, _ = get_model("svm", load_config())
+    pipe = build_pipeline(est.set_params(estimator__C=0.1, estimator__gamma=0.001)).fit(X, y)
+    proba = pipe.predict_proba(X)[:, 1]
+    decision = pipe[:-1].transform(X)
+    inner = pipe[-1].calibrated_classifiers_[0].estimator.decision_function(decision)
+    assert np.corrcoef(np.argsort(np.argsort(proba)), np.argsort(np.argsort(inner)))[0, 1] > 0.99
+    assert fast_auc(y, proba) > 0.85

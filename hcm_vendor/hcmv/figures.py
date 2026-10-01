@@ -255,3 +255,237 @@ def plot_pca(panels: list, path, suptitle: str) -> None:
     fig.suptitle(suptitle, fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.97))
     _save(fig, path)
+
+
+# ------------------------------------------------------------------ T40-T42 (experiments)
+
+MODEL_ORDER = ["lr_en", "svm", "rf", "xgb", "mlp"]
+MODEL_NAMES = {"lr_en": "Elastic-net LR", "svm": "RBF SVM", "rf": "Random forest", "xgb": "XGBoost",
+               "mlp": "MLP"}
+MODEL_FAMILIES = {"lr_en": "Linear", "svm": "Kernel", "rf": "Tree ensemble", "xgb": "Tree ensemble",
+                  "mlp": "Neural"}
+MODEL_COLOURS = {"lr_en": "#1b9e77", "svm": "#d95f02", "rf": "#7570b3", "xgb": "#e7298a", "mlp": "#66a61e"}
+FAMILY_SET_NAMES = {
+    "all": "all features",
+    "all-no-wt": "all features except wall thickness",
+    "clinical": "clinical features",
+    "clinical+shape": "clinical + shape features",
+    "clinical+texture": "clinical + texture features",
+    "shape": "shape features",
+    "texture": "texture features",
+}
+UNIT_NAMES = {
+    "pooled": "Pooled (Siemens + Philips)",
+    "siemens": "Siemens only",
+    "philips": "Philips only",
+    "siemens_to_philips": "Siemens → Philips",
+    "philips_to_siemens": "Philips → Siemens",
+}
+FPR_GRID = np.linspace(0, 1, 101)
+
+
+def mean_roc(y, P) -> np.ndarray:
+    """TPR on ``FPR_GRID`` averaged over the repeat columns of ``P`` (vertical averaging)."""
+    from sklearn.metrics import roc_curve
+
+    P = np.asarray(P, dtype=float)
+    P = P[:, None] if P.ndim == 1 else P
+    curves = []
+    for r in range(P.shape[1]):
+        fpr, tpr, _ = roc_curve(y, P[:, r])
+        curve = np.interp(FPR_GRID, fpr, tpr)
+        curve[0] = 0.0
+        curves.append(curve)
+    return np.mean(curves, axis=0)
+
+
+def _ci_text(row) -> str:
+    return f"{row['estimate']:.2f} [{row['ci_low']:.2f}–{row['ci_high']:.2f}]"
+
+
+def _roc_axes(ax, title: str) -> None:
+    ax.plot([0, 1], [0, 1], color="grey", linestyle=":", linewidth=0.8)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1.01)
+    ax.set_aspect("equal")
+    ax.set_xlabel("1 − specificity")
+    ax.set_title(title, fontsize=10)
+
+
+def plot_e1_roc(curves: dict, path, family_set: str, cv_text: str = "5×5") -> None:
+    """``curves[unit][model] = (tpr, auc_row, n_hcm, n_nor)``; one panel per cohort."""
+    units = [u for u in ("pooled", "siemens", "philips") if u in curves]
+    fig, axes = plt.subplots(1, len(units), figsize=(4.6 * len(units), 4.9), squeeze=False)
+    for ax, unit in zip(axes[0], units):
+        n_hcm = n_nor = 0
+        for model in MODEL_ORDER:
+            if model not in curves[unit]:
+                continue
+            tpr, auc, n_hcm, n_nor = curves[unit][model]
+            ax.plot(FPR_GRID, tpr, color=MODEL_COLOURS[model], linewidth=1.6,
+                    label=f"{MODEL_NAMES[model]}: {_ci_text(auc)}")
+        _roc_axes(ax, f"{UNIT_NAMES[unit]} ({n_hcm} HCM / {n_nor} NOR)")
+        ax.legend(title="AUC [95% CI]", fontsize=7.5, title_fontsize=8, loc="lower right")
+    axes[0][0].set_ylabel("Sensitivity")
+    fig.suptitle(f"HCM vs normal, nested {cv_text} cross-validation, {FAMILY_SET_NAMES[family_set]}", fontsize=11)
+    fig.tight_layout()
+    _save(fig, path)
+
+
+def plot_model_comparison(table: pd.DataFrame, path, family_set: str, metric_name: str = "AUC") -> None:
+    """Dot-and-whisker plot of a metric per model, grouped by model family, one marker per setting.
+
+    ``table`` columns: setting, model, estimate, ci_low, ci_high (settings keep their row order).
+    """
+    settings = list(dict.fromkeys(table["setting"]))
+    markers = ["o", "s", "D", "^", "v", "P"]
+    palette = plt.get_cmap("tab10")
+    models = [m for m in MODEL_ORDER if m in set(table["model"])]
+    fig, ax = plt.subplots(figsize=(7.5, 0.75 * len(models) * max(1, len(settings) / 2.5) + 1.5))
+    step = 0.8 / max(len(settings), 1)
+    for i, setting in enumerate(settings):
+        rows = table[table["setting"] == setting].set_index("model")
+        for j, model in enumerate(models):
+            if model not in rows.index:
+                continue
+            r = rows.loc[model]
+            yy = j + (i - (len(settings) - 1) / 2) * step
+            ax.errorbar(r["estimate"], yy, xerr=[[r["estimate"] - r["ci_low"]], [r["ci_high"] - r["estimate"]]],
+                        fmt=markers[i % len(markers)], color=palette(i), markersize=5, capsize=2, linewidth=1.2,
+                        label=setting if j == 0 else None)
+    ax.set_yticks(range(len(models)))
+    ax.set_yticklabels([f"{MODEL_NAMES[m]}\n({MODEL_FAMILIES[m].lower()})" for m in models], fontsize=8.5)
+    ax.invert_yaxis()
+    ax.axvline(0.5, color="grey", linestyle=":", linewidth=0.8)
+    ax.set_xlabel(f"{metric_name} (95% bootstrap CI)")
+    ax.set_title(f"Model comparison, {FAMILY_SET_NAMES[family_set]}", fontsize=11)
+    ax.legend(fontsize=8, loc="upper center", bbox_to_anchor=(0.5, -0.12), ncol=min(len(settings), 3), frameon=False)
+    ax.grid(axis="x", linewidth=0.4, alpha=0.5)
+    _save(fig, path)
+
+
+def plot_transfer_roc(curves: dict, path, family_set: str) -> None:
+    """``curves[direction][model] = {'within': (tpr, auc), 'cross': (tpr, auc), 'n': (hcm, nor)}``.
+
+    Rows are directions (scored on the target vendor), columns are models.
+    """
+    directions = [d for d in ("siemens_to_philips", "philips_to_siemens") if d in curves]
+    models = [m for m in MODEL_ORDER if any(m in curves[d] for d in directions)]
+    fig, axes = plt.subplots(len(directions), len(models), figsize=(3.1 * len(models), 3.4 * len(directions)),
+                             squeeze=False)
+    for i, direction in enumerate(directions):
+        source, target = direction.split("_to_")
+        for j, model in enumerate(models):
+            ax = axes[i][j]
+            entry = curves[direction].get(model)
+            if entry is None:
+                ax.axis("off")
+                continue
+            tpr_w, auc_w = entry["within"]
+            tpr_c, auc_c = entry["cross"]
+            ax.plot(FPR_GRID, tpr_w, color=VENDOR_COLOURS[target.title()], linewidth=1.6,
+                    label=f"trained on {target.title()}: {auc_w['estimate']:.2f}")
+            ax.plot(FPR_GRID, tpr_c, color=VENDOR_COLOURS[source.title()], linewidth=1.6, linestyle="--",
+                    label=f"trained on {source.title()}: {auc_c['estimate']:.2f}")
+            n_hcm, n_nor = entry["n"]
+            _roc_axes(ax, f"{MODEL_NAMES[model]}, tested on {target.title()}")
+            ax.title.set_fontsize(8.5)
+            ax.legend(title="AUC", fontsize=7, title_fontsize=7, loc="lower right")
+            if j == 0:
+                ax.set_ylabel(f"Sensitivity\n({target.title()}: {n_hcm} HCM / {n_nor} NOR)", fontsize=8.5)
+            ax.xaxis.label.set_fontsize(8)
+    fig.suptitle(f"Within-vendor vs cross-vendor ROC curves, {FAMILY_SET_NAMES[family_set]}\n"
+                 "solid: nested CV within the test vendor; dashed: trained on the other vendor", fontsize=10.5)
+    fig.tight_layout()
+    _save(fig, path)
+
+
+def plot_transfer_calibration(curves: dict, path, family_set: str) -> None:
+    """``curves[direction][model] = {'within': (mean_pred, frac_pos), 'cross': (...), 'brier': (w, c)}``."""
+    directions = [d for d in ("siemens_to_philips", "philips_to_siemens") if d in curves]
+    models = [m for m in MODEL_ORDER if any(m in curves[d] for d in directions)]
+    fig, axes = plt.subplots(len(directions), len(models), figsize=(3.1 * len(models), 3.4 * len(directions)),
+                             squeeze=False)
+    for i, direction in enumerate(directions):
+        source, target = direction.split("_to_")
+        for j, model in enumerate(models):
+            ax = axes[i][j]
+            entry = curves[direction].get(model)
+            if entry is None:
+                ax.axis("off")
+                continue
+            brier_w, brier_c = entry["brier"]
+            ax.plot([0, 1], [0, 1], color="grey", linestyle=":", linewidth=0.8)
+            ax.plot(*entry["within"], marker="o", markersize=4, color=VENDOR_COLOURS[target.title()],
+                    label=f"trained on {target.title()}: {brier_w:.3f}")
+            ax.plot(*entry["cross"], marker="s", markersize=4, linestyle="--", color=VENDOR_COLOURS[source.title()],
+                    label=f"trained on {source.title()}: {brier_c:.3f}")
+            ax.set_xlim(0, 1)
+            ax.set_ylim(-0.02, 1.02)
+            ax.set_aspect("equal")
+            ax.set_title(f"{MODEL_NAMES[model]}, tested on {target.title()}", fontsize=8.5)
+            ax.set_xlabel("Mean predicted P(HCM)", fontsize=8)
+            if j == 0:
+                ax.set_ylabel("Observed fraction HCM", fontsize=8.5)
+            ax.legend(title="Brier score", fontsize=7, title_fontsize=7, loc="upper left")
+    fig.suptitle(f"Calibration within vs across vendors, {FAMILY_SET_NAMES[family_set]} (quintile bins)",
+                 fontsize=10.5)
+    fig.tight_layout()
+    _save(fig, path)
+
+
+def plot_gap_forest(table: pd.DataFrame, path, metric_name: str = "AUC") -> None:
+    """Generalization gap Δ (within − cross) with CI per model, one panel per direction.
+
+    ``table`` columns: direction, family_set, model, difference, ci_low, ci_high.
+    """
+    directions = [d for d in ("siemens_to_philips", "philips_to_siemens") if d in set(table["direction"])]
+    family_sets = list(dict.fromkeys(table["family_set"]))
+    models = [m for m in MODEL_ORDER if m in set(table["model"])]
+    fig, axes = plt.subplots(1, len(directions), figsize=(5.2 * len(directions), 0.55 * len(models) + 2.2),
+                             squeeze=False, sharey=True, sharex=True)
+    palette = plt.get_cmap("tab10")
+    step = 0.6 / max(len(family_sets), 1)
+    for ax, direction in zip(axes[0], directions):
+        for i, family_set in enumerate(family_sets):
+            rows = table[(table.direction == direction) & (table.family_set == family_set)].set_index("model")
+            for j, model in enumerate(models):
+                if model not in rows.index:
+                    continue
+                r = rows.loc[model]
+                yy = j + (i - (len(family_sets) - 1) / 2) * step
+                ax.errorbar(r["difference"], yy,
+                            xerr=[[r["difference"] - r["ci_low"]], [r["ci_high"] - r["difference"]]],
+                            fmt="o", color=palette(i), markersize=5, capsize=2,
+                            label=FAMILY_SET_NAMES[family_set] if j == 0 else None)
+        ax.axvline(0, color="black", linewidth=0.8)
+        ax.set_yticks(range(len(models)))
+        ax.set_yticklabels([MODEL_NAMES[m] for m in models])
+        ax.set_xlabel(f"Δ{metric_name} = within-vendor − cross-vendor (95% CI)")
+        ax.set_title(UNIT_NAMES[direction], fontsize=10)
+        ax.grid(axis="x", linewidth=0.4, alpha=0.5)
+    axes[0][0].invert_yaxis()
+    axes[0][0].legend(fontsize=8, loc="upper center", bbox_to_anchor=(0.5 * len(directions) + 0.1, -0.22),
+                      ncol=len(family_sets), frameon=False)
+    fig.suptitle(f"Cross-vendor generalization gap in {metric_name}", fontsize=11)
+    fig.tight_layout()
+    _save(fig, path)
+
+
+def plot_probe_null(results: list, path, title: str) -> None:
+    """Observed balanced accuracy vs permutation null, one panel per feature family.
+
+    ``results``: dicts with family, label, observed, null (array), chance, p, p_holm.
+    """
+    fig, axes = plt.subplots(1, len(results), figsize=(3.2 * len(results), 3.4), squeeze=False, sharey=True)
+    for ax, r in zip(axes[0], results):
+        ax.hist(r["null"], bins=30, color="#bbbbbb", edgecolor="white", label="label-shuffled null")
+        ax.axvline(r["chance"], color="grey", linestyle=":", linewidth=1, label=f"chance = {r['chance']:.2f}")
+        ax.axvline(r["observed"], color="crimson", linewidth=2, label=f"observed = {r['observed']:.2f}")
+        ax.set_title(f"{r['label']}\np = {r['p']:.3f} (Holm {r['p_holm']:.3f})", fontsize=9)
+        ax.set_xlabel("Balanced accuracy")
+        ax.legend(fontsize=6.5, loc="upper left")
+    axes[0][0].set_ylabel("Permutations")
+    fig.suptitle(title, fontsize=11)
+    fig.tight_layout()
+    _save(fig, path)

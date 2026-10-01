@@ -137,6 +137,55 @@ def add_run_experiment_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--force", action="store_true", help="Rerun even if a matching result exists")
 
 
+def _smoke(config: dict, args: argparse.Namespace) -> dict:
+    from .runner import smoke_config
+
+    return smoke_config(config) if getattr(args, "smoke", False) else config
+
+
+def cmd_e1_report(config: dict, args: argparse.Namespace) -> int:
+    from .experiments.e1 import e1_report
+    from .runner import runs_root
+
+    config = _smoke(config, args)
+    print(e1_report(config))
+    write_manifest(runs_root(config) / "E1" / "analysis", config, "e1-report")
+    return 0
+
+
+def cmd_e2_report(config: dict, args: argparse.Namespace) -> int:
+    from .experiments.e2 import e2_report
+    from .runner import runs_root
+
+    config = _smoke(config, args)
+    print(e2_report(config))
+    write_manifest(runs_root(config) / "E2" / "analysis", config, "e2-report")
+    return 0
+
+
+def cmd_e3_probe(config: dict, args: argparse.Namespace) -> int:
+    from .experiments.e3 import e3_report, run_e3, smoke_e3
+    from .runner import default_n_jobs, runs_root
+
+    config = _smoke(config, args)
+    if args.smoke:
+        config = smoke_e3(config)
+    table = run_e3(config, n_jobs=args.n_jobs or default_n_jobs(), force=args.force)
+    print(e3_report(config, table))
+    write_manifest(runs_root(config) / "E3" / "analysis", config, "e3-probe")
+    return 0
+
+
+def add_report_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--smoke", action="store_true", help="Read the smoke result store (runs-smoke/)")
+
+
+def add_e3_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--smoke", action="store_true", help="Tiny CV and 20 permutations, into runs-smoke/")
+    parser.add_argument("--n-jobs", type=int, default=None, help="Parallel workers (default: SLURM_CPUS_PER_TASK or 1)")
+    parser.add_argument("--force", action="store_true", help="Recompute even if a matching result exists")
+
+
 COMMANDS = {
     "show-config": (cmd_show_config, "Print the resolved study config and its hash"),
     "manifest": (cmd_manifest, "Write a run manifest (git, config hash, packages)"),
@@ -148,8 +197,12 @@ COMMANDS = {
     "qc-report": (cmd_qc_report, "T22 data QC + exploratory report -> results_hcm_vendor/qc/t22"),
     "validate-gt": (cmd_validate_gt, "T12 report; --set validation.pred_root=<dir> adds nnFormer-vs-GT"),
     "run-experiment": (cmd_run_experiment, "Nested CV or transfer runs into the result store (T34)"),
+    "e1-report": (cmd_e1_report, "E1 tables, ROC curves, model comparisons, grid edge check (T40)"),
+    "e2-report": (cmd_e2_report, "E2 transfer metrics, generalization gap, ROC/calibration overlays (T41)"),
+    "e3-probe": (cmd_e3_probe, "E3 vendor probe on NOR with permutation test, plus its report (T42)"),
 }
-COMMAND_ARGS = {"run-experiment": add_run_experiment_args}
+COMMAND_ARGS = {"run-experiment": add_run_experiment_args, "e1-report": add_report_args,
+                "e2-report": add_report_args, "e3-probe": add_e3_args}
 
 
 def build_parser() -> argparse.ArgumentParser:

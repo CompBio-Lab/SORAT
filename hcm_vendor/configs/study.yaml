@@ -105,3 +105,24 @@ smoke:
   model_params:
     rf: {n_estimators: 50}
     mlp: {max_epochs: 100, patience: 10}
+
+# T42 (E3): vendor probe on normal (NOR) subjects only, with a label-permutation test.
+e3:
+  disease: NOR
+  targets:
+    three_vendor: [Siemens, Philips, GE]     # primary (D8): chance = 1/3
+    siemens_vs_philips: [Siemens, Philips]   # secondary: the two training vendors
+  probes:                                    # name: [feature config, family set]
+    clinical: [norm, clinical]
+    shape: [norm, shape]
+    texture_norm: [norm, texture]
+    texture_raw: [raw, texture]
+    all: [norm, all]
+  classifiers: [logreg, rf]                  # primary: multinomial L2 LR with C tuned inside; secondary: fixed RF
+  logreg_C: [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
+  rf: {n_estimators: 500, max_features: sqrt, min_samples_leaf: 1}
+  outer_splits: 5
+  outer_repeats: 5        # for the point estimate and bootstrap CI
+  inner_splits: 5
+  # The permutation null reruns the first outer repeat's splits with shuffled vendor labels,
+  # and the observed statistic for the p-value is that same repeat's balanced accuracy.
