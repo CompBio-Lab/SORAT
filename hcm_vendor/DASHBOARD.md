@@ -15,8 +15,8 @@
   - **The user runs every Nextflow pipeline run** on their GPU allocation, which has no internet. Prepare the command; the user runs it and says when the results are ready.
   - **The user also submits every SLURM batch job** (set 2026-10-01): the node Claude works on is not a compute node. Give the exact `sbatch` command, run from the repo root; the user submits it and says when it finished.
   - **Work in agreed batches.** Do the batch the user approved, stop at a clean checkpoint (tests green, committed, this block updated), then wait for the user to say continue. Do not roll on into the next batch.
-- **Last completed:** Batch 5 on 2026-10-01: T40 (E1), preliminary T41 (E2) and T42 (E3), plus an SVM probability fix. Batch 4 on 2026-10-01: T32 (PyTorch MLP, passes sklearn's `check_estimator`) and T34 (runner, result store, `run-experiment` CLI, sbatch script; smoke E1/E2 on compute nodes; full E1 ≈ 20 min on 32 cores). Batch 3 on 2026-09-30: T22 (`qc-report`, no D6 exclusions, texture direction reverses between vendors) and T31 (model zoo, grids, one-fold timing). Also the correlation filter now keeps myocardial mass over myo volume. Batch 2: T30, T33 tested. Batch 1: T14, T12, T21. Earlier: T00–T02, T10, T11, T13, T20.
-- **Batch 6 in progress (started 2026-10-03, user's go): T43 (E4), T44 (E5), T45 (GE) plus the SVM grid widening.** The T60 midterm is paused at the user's request. Code is ready (`hcmv/experiments/{e4,e5}.py`, CLI `e4-report`, `e5-report`; the runner can now stack datasets for E5). **Waiting for the user's sbatch jobs** (E1/E2 with five family sets, norm and raw; E5; GE). Then run `e1-report`, `e2-report`, `e4-report`, `e5-report` and log the numbers.
+- **Last completed:** Batch 6 on 2026-10-03: T43 (E4), T44 (E5), T45 (GE), SVM grid widening. Batch 5 on 2026-10-01: T40 (E1), preliminary T41 (E2) and T42 (E3), plus an SVM probability fix. Batch 4 on 2026-10-01: T32 (PyTorch MLP, passes sklearn's `check_estimator`) and T34 (runner, result store, `run-experiment` CLI, sbatch script; smoke E1/E2 on compute nodes; full E1 ≈ 20 min on 32 cores). Batch 3 on 2026-09-30: T22 (`qc-report`, no D6 exclusions, texture direction reverses between vendors) and T31 (model zoo, grids, one-fold timing). Also the correlation filter now keeps myocardial mass over myo volume. Batch 2: T30, T33 tested. Batch 1: T14, T12, T21. Earlier: T00–T02, T10, T11, T13, T20.
+- **Batch 6 done 2026-10-03; paused at a checkpoint. Wait for the user's go.** T43 (E4), T44 (E5), T45 (GE) done; SVM gamma widened (D12) and the SVM edge flag is gone (19 of 195 cells still flagged, none for SVM gamma). The user now allows Claude to submit agreed CPU sbatch jobs itself (2026-10-03). Open: the raw-texture-transfers-better finding (see T43 log). Next candidates: T50 SHAP (needs E2 pipelines, saved), finalize T41/T42, or the paused T60 midterm.
 - **Batch 3 follow-up (2026-09-30):** all figures were redrawn to stand alone (plain titles, units, n per group, legends), and a Siemens-vs-Philips AUC scatter (`auc_agreement_siemens_philips.png`) was added. The `all-no-wt` family set was added (D11), along with `FIGURES.md`.
 - **Planned batches:**
 - **Open questions for the user:** none. The ceiling question was answered by D11.
@@ -85,9 +85,9 @@
 | T41 | **E2** cross-vendor transfer + generalization gap Δ | 4 Experiments | P1 | Oct 28 | T40 | PRELIMINARY (2026-10-01) |
 | T42 | **E3** vendor probe on NOR + permutation test | 4 Experiments | P1 | Oct 29 | T34 | PRELIMINARY (2026-10-01) |
 | T60 | **Midterm update** (due Nov 1) | M Milestone | P0 | Nov 1 | T22, T40, (T41, T42 preliminary) | TODO |
-| T43 | **E4** feature-family ablation (+ raw vs normalized texture) | 4 Experiments | P1 | Nov 6 | T40, T41, T42 | TODO |
-| T44 | **E5** external test on ACDC | 4 Experiments | P1 | Nov 8 | T34 | TODO |
-| T45 | GE specificity check | 4 Experiments | P1 | Nov 8 | T34 | TODO |
+| T43 | **E4** feature-family ablation (+ raw vs normalized texture) | 4 Experiments | P1 | Nov 6 | T40, T41, T42 | DONE (2026-10-03) |
+| T44 | **E5** external test on ACDC | 4 Experiments | P1 | Nov 8 | T34 | DONE (2026-10-03) |
+| T45 | GE specificity check | 4 Experiments | P1 | Nov 8 | T34 | DONE (2026-10-03) |
 | T50 | SHAP attributions + Siemens-vs-Philips stability | 5 Interpret | P1 | Nov 14 | T41 | TODO |
 | T51 | Statistical comparison summary, hypothesis verdicts | 5 Interpret | P1 | Nov 16 | T43, T44, T45, T50 | TODO |
 | T61 | Final figures + tables | 6 Deliver | P1 | Nov 20 | T51 | TODO |
@@ -917,6 +917,14 @@ Nested CV runs on each cohort: outer 5×5, inner 5.
 
 **Acceptance:** the ablation tables and figure are done, with the hypothesis-relevant contrasts spelled out in the log.
 
+**Log:**
+- 2026-10-03: `hcmv/experiments/e4.py`, `python -m hcmv e4-report` → `results_hcm_vendor/runs/E4/analysis/`. Runs: jobs 13207585–13207588 on `b7ebc58` (E1/E2 for clinical, clinical+shape, clinical+texture, all, all-no-wt on `norm`; clinical+texture and all on `raw`). Took 14–27 min each on 16–32 cores, so the compute concern below did not materialize.
+- **ΔAUC with clinical features only is ≈ 0 for every model and both directions** (−0.10 to −0.005; negative values come from a weaker within-vendor SVM/MLP on n ≈ 52). Adding shape changes little.
+- **Adding normalized texture creates the gap, but only for distance/scale-sensitive models:** MLP ΔΔ (clinical+texture − clinical) +0.33 [0.16, 0.50] Siemens→Philips and +0.32 [0.16, 0.49] Philips→Siemens (p_Holm < 0.0005); SVM +0.24 Siemens→Philips (p_Holm 0.028), and all-vs-clinical +0.27 Philips→Siemens (p_Holm < 0.0005). LR-EN: only all-vs-clinical Siemens→Philips +0.10 (p_Holm 0.048). **RF and XGB: no contrast differs from 0** (|ΔΔ| ≤ 0.008).
+- So H1 (clinical features transfer with a small Δ) is supported, and H3 (texture has the largest Δ) is supported for SVM, MLP and partly LR-EN, but not for tree ensembles.
+- **Unexpected: raw texture transfers better than normalized texture** for the MLP (ΔΔ raw − norm −0.25 Siemens→Philips, −0.22 Philips→Siemens, p_Holm ≤ 0.02) and the SVM on `all` Philips→Siemens (−0.23, p_Holm < 0.0005), although E3 shows raw texture identifies the vendor at least as well (0.97 vs 0.94). Vendor identifiability therefore does not predict the transfer loss. Not yet explained; candidates are the 2D/resampling steps of the `norm` config changing which features survive the correlation filter, or the scale of the shift relative to the HCM effect. Worth a look before the final report.
+- E1 pooled AUC barely depends on the family set (0.97–1.00 for every model and set), so the ablation matters for transfer, not for within-vendor accuracy.
+
 **Compute note:** this is the most expensive stage: 4 sets × 5 models × (3 E1 cohorts + 2 E2 directions) × 2 configs for texture. Check the T34 runtime estimate first. If it is too slow, restrict the `raw` sensitivity to the best two models.
 
 ### T44: E5, external test on ACDC
@@ -932,6 +940,12 @@ Nested CV runs on each cohort: outer 5×5, inner 5.
 
 **Acceptance:** an E5 table and figure; the caveats written into the results notes.
 
+**Log:**
+- 2026-10-03: `hcmv/experiments/e5.py`, `python -m hcmv e5-report` → `results_hcm_vendor/runs/E5/analysis/` (job 13207589). The runner now stacks the M&Ms-2 and ACDC tables for this experiment (`experiments.E5.datasets`).
+- **AUC on ACDC (10 HCM / 10 NOR):** 0.84–1.00 across models and family sets; LR-EN 1.00 on clinical, clinical+texture and all. Every CI is wide.
+- **Sensitivity is 1.00 (10/10) for almost every model, but specificity is 0.40–0.80** (Wilson CIs roughly 0.2–0.94): the same over-calling of HCM on a new site seen in E2. Clinical-only models are the most specific (0.80 for LR-EN, SVM, RF, XGB).
+- Caveats are written into `summary.md`: in-domain ACDC segmentations (nnFormer trained on ACDC training data) and 3 T scans without per-subject field strength.
+
 ### T45: GE specificity check
 **Status:** TODO · **Pri:** P1 · **Target:** Nov 8 · **Depends on:** T34
 
@@ -942,6 +956,11 @@ Nested CV runs on each cohort: outer 5×5, inner 5.
 - [ ] Do this for all models on `All` and `F_c`.
 
 **Acceptance:** a small table and one sentence per model in the log.
+
+**Log:**
+- 2026-10-03: `python -m hcmv e5-report` also writes `results_hcm_vendor/runs/GE/analysis/` (job 13207590), trained on the Siemens + Philips pool (n = 114).
+- **Specificity on the 18 GE NOR at 0.5 (Wilson 95% CI), all features:** LR-EN 18/18 = 1.00 [0.82, 1.00]; SVM 18/18 = 1.00 [0.82, 1.00]; RF 18/18 = 1.00 [0.82, 1.00]; XGB 17/18 = 0.94 [0.74, 0.99]; MLP 18/18 = 1.00 [0.82, 1.00]. Other family sets are the same within one subject. Unlike the Siemens↔Philips transfers, a model trained on two vendors does not over-call HCM on GE normals.
+- **3 GE HCM (descriptive only):** mms2_270 is called HCM by LR-EN, SVM and MLP on most sets; mms2_171 and mms2_256 are mostly called normal (P < 0.4). XGB calls none of them HCM. Possibly mild phenotypes; no sensitivity claim.
 
 ---
 
