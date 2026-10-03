@@ -185,6 +185,14 @@ def cmd_e5_report(config: dict, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_texture_check(config: dict, args: argparse.Namespace) -> int:
+    from .texture_check import texture_check
+
+    print(texture_check(config))
+    write_manifest(output_dir(config, "qc", "texture_check"), config, "texture-check")
+    return 0
+
+
 def cmd_e3_probe(config: dict, args: argparse.Namespace) -> int:
     from .experiments.e3 import e3_report, run_e3, smoke_e3
     from .runner import default_n_jobs, runs_root
@@ -223,6 +231,7 @@ COMMANDS = {
     "e2-report": (cmd_e2_report, "E2 transfer metrics, generalization gap, ROC/calibration overlays (T41)"),
     "e4-report": (cmd_e4_report, "E4 family-set ablation of the cross-vendor gap, raw vs normalized texture (T43)"),
     "e5-report": (cmd_e5_report, "E5 external ACDC test and GE specificity check (T44, T45)"),
+    "texture-check": (cmd_texture_check, "Raw vs normalized texture: vendor shift, HCM effect agreement, reliance"),
     "e3-probe": (cmd_e3_probe, "E3 vendor probe on NOR with permutation test, plus its report (T42)"),
 }
 COMMAND_ARGS = {"run-experiment": add_run_experiment_args, "e1-report": add_report_args,

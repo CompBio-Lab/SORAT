@@ -512,3 +512,28 @@ def plot_external_roc(curves: dict, path, title: str) -> None:
     fig.tight_layout()
     _save(fig, path)
 
+
+
+def plot_texture_effect_agreement(features: pd.DataFrame, path) -> None:
+    """Per texture feature: HCM effect (Cohen's d) on Siemens vs Philips, one panel per radiomics config."""
+    configs = [c for c in ("norm", "raw") if c in set(features["feature_config"])]
+    fig, axes = plt.subplots(1, len(configs), figsize=(5.2 * len(configs), 5.2), squeeze=False, sharex=True,
+                             sharey=True)
+    for ax, cfg in zip(axes[0], configs):
+        f = features[features.feature_config == cfg]
+        same = f["same_sign"].to_numpy()
+        ax.axhline(0, color="grey", linewidth=0.8)
+        ax.axvline(0, color="grey", linewidth=0.8)
+        ax.scatter(f.loc[same, "d_hcm_siemens"], f.loc[same, "d_hcm_philips"], s=20, c="#1b9e77", alpha=0.8,
+                   label=f"same direction ({same.sum()} of {len(f)})")
+        ax.scatter(f.loc[~same, "d_hcm_siemens"], f.loc[~same, "d_hcm_philips"], s=20, c="#d95f02", alpha=0.8,
+                   label=f"opposite direction ({(~same).sum()} of {len(f)})")
+        shift = f["shift_siemens_to_philips"].abs().median()
+        ax.set_title(f"{'Normalized' if cfg == 'norm' else 'Raw'} texture\n"
+                     f"median vendor shift {shift:.1f} SD", fontsize=10)
+        ax.set_xlabel("HCM effect on Siemens (Cohen's d)")
+        ax.legend(fontsize=8, loc="upper left")
+    axes[0][0].set_ylabel("HCM effect on Philips (Cohen's d)")
+    fig.suptitle("Texture HCM effects on Siemens vs Philips (M&Ms-2, n = 114)", fontsize=11)
+    fig.tight_layout()
+    _save(fig, path)

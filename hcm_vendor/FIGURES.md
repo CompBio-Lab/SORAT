@@ -198,3 +198,17 @@ ROC curves on the 20 ACDC subjects (10 HCM / 10 NOR) for models trained on all M
 - `runs/E5/analysis/e5_metrics.csv` (all metrics with bootstrap CIs plus Wilson CIs for sensitivity/specificity), `e5_predictions.csv` (per-subject P(HCM) for every set × model), `summary.md` with caveats.
 - `runs/GE/analysis/ge_specificity.csv` (specificity on 18 GE NOR with Wilson CI and median P(HCM)), `ge_hcm_predictions.csv` (the 3 GE HCM), `summary.md`.
 
+---
+
+## Texture check: why normalized texture transfers worse (follow-up to T43)
+
+Command: `hcmv_python -m hcmv texture-check` (login node, ~3 min). Inputs: `results_hcm_vendor/tables/features_mms2_nnformer-fold0_{norm,raw}.parquet` (train pool, n = 114) and the E2 `clinical+texture` LR-EN/MLP pipelines in `runs/E2/*/clinical+texture/{lr_en,mlp}/{norm,raw}/models/`. Outputs: `results_hcm_vendor/qc/texture_check/`.
+
+### F18. `qc/texture_check/texture_effect_agreement.png`
+Each point is one texture feature: its HCM effect (Cohen's d, HCM vs NOR) on Siemens (x) against Philips (y). Green = same direction on both vendors, orange = opposite. Normalized texture: 28 of 84 agree (33%) and the median vendor shift is 2.0 Siemens-NOR SDs; raw texture: 64 of 84 agree (76%; 93% among features with |d| ≥ 0.5 on both) with a median shift of 1.0 SD. Clinical features agree 71% and shape 82% in the normalized table.
+
+### Tables
+- `summary.csv` / `summary.md`: per config, median vendor shift, median |d| per vendor, same-sign share, texture features kept by the preprocessing per vendor (norm 48 Siemens / 38 Philips; raw 39 / 38).
+- `per_feature.csv`: shift and d for every texture feature.
+- `reliance.csv`: AUC drop when the texture block is permuted, for the E2 clinical+texture LR-EN and MLP (first two seeds × 10 permutations), on the training and the test vendor. MLP with normalized texture: +0.19 to +0.20 on the training vendor but −0.08 to −0.09 on the test vendor (texture hurts there); with raw texture +0.02 to +0.06 on the test vendor.
+
