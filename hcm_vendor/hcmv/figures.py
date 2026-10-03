@@ -7,6 +7,7 @@ changing a figure here.
 """
 
 import matplotlib
+import matplotlib.ticker
 
 matplotlib.use("Agg")
 
@@ -595,7 +596,8 @@ def plot_shap_beeswarm(by_vendor: dict, path, model: str, top: int = 10) -> None
     ``by_vendor[vendor] = (shap values DataFrame, transformed data DataFrame)``; colour = feature value
     (standardized), x = SHAP value."""
     vendors = [v for v in ("Siemens", "Philips") if v in by_vendor]
-    fig, axes = plt.subplots(1, len(vendors), figsize=(6.2 * len(vendors), 0.42 * top + 1.6), squeeze=False)
+    fig, axes = plt.subplots(1, len(vendors), figsize=(7.4 * len(vendors), 0.42 * top + 1.6), squeeze=False,
+                             gridspec_kw={"wspace": 0.85})
     rng = np.random.default_rng(0)
     scatter = None
     for ax, vendor in zip(axes[0], vendors):
@@ -612,6 +614,7 @@ def plot_shap_beeswarm(by_vendor: dict, path, model: str, top: int = 10) -> None
         ax.axvline(0, color="grey", linewidth=0.8)
         ax.set_xlabel("SHAP value (contribution to P(HCM)" + (", log-odds)" if model == "xgb" else ")"))
         ax.set_title(f"Trained on {vendor}", fontsize=10)
+        ax.xaxis.set_major_locator(matplotlib.ticker.MaxNLocator(5))
     cbar = fig.colorbar(scatter, ax=axes[0].tolist(), shrink=0.8, pad=0.01)
     cbar.set_label("Feature value (standardized)", fontsize=8)
     fig.suptitle(f"{MODEL_NAMES[model]}: top {top} features by mean |SHAP| (n = 114 subjects)", fontsize=11)

@@ -212,3 +212,22 @@ Each point is one texture feature: its HCM effect (Cohen's d, HCM vs NOR) on Sie
 - `per_feature.csv`: shift and d for every texture feature.
 - `reliance.csv`: AUC drop when the texture block is permuted, for the E2 clinical+texture LR-EN and MLP (first two seeds × 10 permutations), on the training and the test vendor. MLP with normalized texture: +0.19 to +0.20 on the training vendor but −0.08 to −0.09 on the test vendor (texture hurts there); with raw texture +0.02 to +0.06 on the test vendor.
 
+---
+
+## SHAP stability (T50), commit after `3b637b1`
+
+Command: `sbatch --account=st-zlaksman-1 --output=results_hcm_vendor/logs/%x-%j.out --job-name=hcmv-shap --time=06:00:00 --mem=64G hcm_vendor/scripts/hcmv_job.sbatch shap` (job 13208257, 2 min on 32 cores). Inputs: the E2 pipelines `runs/E2/{siemens_to_philips,philips_to_siemens}/all/<model>/norm/models/seed_*.joblib` and the M&Ms-2 train pool (n = 114, explained for both models). Method: TreeSHAP (RF, probability; XGB, log-odds), KernelSHAP for LR-EN/SVM/MLP (background `shap.kmeans` of the training vendor, 20 centres; nsamples 2d + 2048; `l1_reg=False`); seeds averaged; mean |φ| summed within |r| > 0.95 correlation clusters. Outputs: `results_hcm_vendor/runs/SHAP/analysis/`.
+
+### F19. `shap_rank_scatter.png`
+One panel per model: each point is a feature cluster, its importance rank when trained on Siemens (x) vs Philips (y), coloured by family; 1 = most important (top right). Title gives Spearman ρ [95% CI]. Points on the diagonal = same importance on both vendors. Ties at the bottom/left are clusters a model barely uses. ρ = 0.17 (LR-EN) to 0.43 (RF).
+
+### F20. `shap_family_share.png`
+Stacked bars: share of total mean |SHAP| from clinical, shape and texture features, per model and training vendor. Trees are mostly clinical (0.42–0.97); Siemens-trained LR-EN, SVM and MLP are mostly texture (0.53–0.60); Philips-trained LR-EN is mostly clinical (0.69).
+
+### F21. `shap_beeswarm_<model>.png`
+For each model, the top 10 features by mean |SHAP| for the Siemens-trained (left) and Philips-trained (right) model: one dot per subject, x = SHAP value, colour = standardized feature value (red high, blue low). E.g. for LR-EN, Philips-trained relies on ED max wall thickness (high → HCM), Siemens-trained on ED first-order Minimum and texture.
+
+### Tables
+- `shap_stability.csv`: ρ with CI, top-10 Jaccard and shared count per model.
+- `shap_family_share.csv`, `shap_cluster_importance.csv` (importance and rank per cluster × model × vendor), `correlation_clusters.csv` (feature → cluster).
+

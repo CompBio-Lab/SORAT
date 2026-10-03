@@ -81,7 +81,10 @@ def explain_seed(pipeline_path: str, model: str, X_explain: pd.DataFrame, X_back
         f = lambda data: est.predict_proba(pd.DataFrame(data, columns=names))[:, 1]  # noqa: E731
         explainer = shap.KernelExplainer(f, background)
         np.random.seed(seed)
-        values = explainer.shap_values(Z.to_numpy(), nsamples=nsamples or 2 * len(names) + 2048, silent=True)
+        # l1_reg=False: no per-subject feature selection, so small attributions are estimated
+        # rather than forced to exactly 0 (shap's "auto" default selects features by AIC here).
+        values = explainer.shap_values(Z.to_numpy(), nsamples=nsamples or 2 * len(names) + 2048, silent=True,
+                                       l1_reg=False)
         values = np.asarray(values)
     return {"values": values, "names": names, "Z": Z.to_numpy()}
 
