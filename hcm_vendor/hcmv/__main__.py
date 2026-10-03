@@ -193,6 +193,19 @@ def cmd_texture_check(config: dict, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_shap(config: dict, args: argparse.Namespace) -> int:
+    from .runner import default_n_jobs, smoke_config
+    from .shap_analysis import compute, shap_report
+
+    if args.smoke:
+        config = smoke_config(config)
+    compute(config, n_jobs=args.n_jobs or default_n_jobs(), force=args.force,
+            nsamples=200 if args.smoke else None, max_seeds=1 if args.smoke else None)
+    print(shap_report(config, n_boot=100 if args.smoke else None))
+    write_manifest(output_dir(config, "runs-smoke" if args.smoke else "runs", "SHAP", "analysis"), config, "shap")
+    return 0
+
+
 def cmd_e3_probe(config: dict, args: argparse.Namespace) -> int:
     from .experiments.e3 import e3_report, run_e3, smoke_e3
     from .runner import default_n_jobs, runs_root
@@ -232,11 +245,12 @@ COMMANDS = {
     "e4-report": (cmd_e4_report, "E4 family-set ablation of the cross-vendor gap, raw vs normalized texture (T43)"),
     "e5-report": (cmd_e5_report, "E5 external ACDC test and GE specificity check (T44, T45)"),
     "texture-check": (cmd_texture_check, "Raw vs normalized texture: vendor shift, HCM effect agreement, reliance"),
+    "shap": (cmd_shap, "SHAP of the E2 models and Siemens-vs-Philips stability (T50)"),
     "e3-probe": (cmd_e3_probe, "E3 vendor probe on NOR with permutation test, plus its report (T42)"),
 }
 COMMAND_ARGS = {"run-experiment": add_run_experiment_args, "e1-report": add_report_args,
                 "e2-report": add_report_args, "e3-probe": add_e3_args,
-                "e4-report": add_report_args, "e5-report": add_report_args}
+                "e4-report": add_report_args, "shap": add_e3_args, "e5-report": add_report_args}
 
 
 def build_parser() -> argparse.ArgumentParser:

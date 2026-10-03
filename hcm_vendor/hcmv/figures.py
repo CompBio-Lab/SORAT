@@ -537,3 +537,82 @@ def plot_texture_effect_agreement(features: pd.DataFrame, path) -> None:
     fig.suptitle("Texture HCM effects on Siemens vs Philips (M&Ms-2, n = 114)", fontsize=11)
     fig.tight_layout()
     _save(fig, path)
+
+
+def plot_shap_rank_scatter(importances: pd.DataFrame, stability: pd.DataFrame, path) -> None:
+    """Cluster importance rank, Siemens-trained vs Philips-trained model, one panel per model."""
+    models = [m for m in MODEL_ORDER if m in set(importances["model"])]
+    fig, axes = plt.subplots(1, len(models), figsize=(3.3 * len(models), 3.7), squeeze=False)
+    stab = stability.set_index("model")
+    for ax, model in zip(axes[0], models):
+        wide = importances[importances.model == model].pivot(index="cluster", columns="trained_on", values="rank")
+        family = wide.index.map(feature_family)
+        for fam in ("clinical", "shape", "texture"):
+            rows = family == fam
+            ax.scatter(wide.loc[rows, "Siemens"], wide.loc[rows, "Philips"], s=14, alpha=0.75,
+                       c=FAMILY_COLOURS[fam], label=fam)
+        n = len(wide)
+        ax.plot([1, n], [1, n], color="grey", linestyle=":", linewidth=0.8)
+        ax.set_xlim(0, n + 1)
+        ax.set_ylim(0, n + 1)
+        ax.invert_xaxis()
+        ax.invert_yaxis()
+        s = stab.loc[model]
+        ax.set_title(f"{MODEL_NAMES[model]}\nρ = {s['spearman_rho']:.2f} [{s['rho_ci_low']:.2f}, "
+                     f"{s['rho_ci_high']:.2f}]", fontsize=9)
+        ax.set_xlabel("Rank, trained on Siemens", fontsize=8.5)
+        if model == models[0]:
+            ax.set_ylabel("Rank, trained on Philips", fontsize=8.5)
+            ax.legend(fontsize=7, loc="lower left", title="family", title_fontsize=7)
+    fig.suptitle("SHAP importance ranks of feature clusters by training vendor (1 = most important)", fontsize=10.5)
+    fig.tight_layout()
+    _save(fig, path)
+
+
+def plot_shap_family_share(shares: pd.DataFrame, path) -> None:
+    """Stacked bars: share of total mean |SHAP| per feature family, per model and training vendor."""
+    rows = shares.assign(_m=shares.model.map({m: i for i, m in enumerate(MODEL_ORDER)})).sort_values(
+        ["_m", "trained_on"], ascending=[True, False])
+    labels = [f"{MODEL_NAMES[m]}\n{v}" for m, v in zip(rows.model, rows.trained_on)]
+    fig, ax = plt.subplots(figsize=(1.0 * len(rows) + 1.5, 4.2))
+    bottom = np.zeros(len(rows))
+    for fam in ("clinical", "shape", "texture"):
+        ax.bar(range(len(rows)), rows[fam], bottom=bottom, color=FAMILY_COLOURS[fam], label=fam, width=0.75)
+        bottom += rows[fam].to_numpy()
+    ax.set_xticks(range(len(rows)))
+    ax.set_xticklabels(labels, fontsize=7.5)
+    ax.set_ylabel("Share of total mean |SHAP|")
+    ax.set_ylim(0, 1)
+    ax.set_xlabel("Model and training vendor")
+    ax.legend(fontsize=8, loc="upper center", bbox_to_anchor=(0.5, -0.22), ncol=3, frameon=False)
+    ax.set_title("Feature-family share of SHAP importance", fontsize=11)
+    _save(fig, path)
+
+
+def plot_shap_beeswarm(by_vendor: dict, path, model: str, top: int = 10) -> None:
+    """Beeswarm-style strip plot of the top features, one panel per training vendor.
+
+    ``by_vendor[vendor] = (shap values DataFrame, transformed data DataFrame)``; colour = feature value
+    (standardized), x = SHAP value."""
+    vendors = [v for v in ("Siemens", "Philips") if v in by_vendor]
+    fig, axes = plt.subplots(1, len(vendors), figsize=(6.2 * len(vendors), 0.42 * top + 1.6), squeeze=False)
+    rng = np.random.default_rng(0)
+    scatter = None
+    for ax, vendor in zip(axes[0], vendors):
+        values, data = by_vendor[vendor]
+        order = values.abs().mean().sort_values(ascending=False).index[:top]
+        for i, feature in enumerate(order):
+            colour = np.clip(data[feature].to_numpy(), -2.5, 2.5)
+            yy = i + rng.uniform(-0.28, 0.28, len(values))
+            scatter = ax.scatter(values[feature], yy, c=colour, cmap="coolwarm", vmin=-2.5, vmax=2.5, s=7,
+                                 alpha=0.8, linewidths=0)
+        ax.set_yticks(range(len(order)))
+        ax.set_yticklabels([feature_label(f) for f in order], fontsize=7.5)
+        ax.invert_yaxis()
+        ax.axvline(0, color="grey", linewidth=0.8)
+        ax.set_xlabel("SHAP value (contribution to P(HCM)" + (", log-odds)" if model == "xgb" else ")"))
+        ax.set_title(f"Trained on {vendor}", fontsize=10)
+    cbar = fig.colorbar(scatter, ax=axes[0].tolist(), shrink=0.8, pad=0.01)
+    cbar.set_label("Feature value (standardized)", fontsize=8)
+    fig.suptitle(f"{MODEL_NAMES[model]}: top {top} features by mean |SHAP| (n = 114 subjects)", fontsize=11)
+    _save(fig, path)
