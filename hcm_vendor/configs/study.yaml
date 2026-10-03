@@ -58,7 +58,7 @@ models:
     l1_ratio: [0.1, 0.5, 0.9]
   svm:          # RBF; gamma = 1 / sigma^2 in the proposal's notation
     C: [0.1, 1.0, 10.0, 100.0]
-    gamma: [scale, 0.001, 0.01, 0.1]
+    gamma: [scale, 0.0001, 0.001, 0.01, 0.1]   # 1e-4 added after the E1 grid edge check (2026-10-03)
   rf:
     max_depth: [null, 3, 5]
     max_features: [sqrt, 0.3]
@@ -96,6 +96,19 @@ experiments:
       philips_to_siemens:
         train: {role: train_pool, vendor: Philips}
         test: {role: train_pool, vendor: Siemens}
+  E5:                         # external test (T44): all M&Ms-2 NOR/HCM (incl. GE) -> ACDC NOR/HCM
+    kind: transfer
+    datasets: [mms2, acdc]
+    directions:
+      mms2_to_acdc:
+        train: {dataset: mms2}
+        test: {dataset: acdc}
+  GE:                         # GE specificity check (T45): Siemens + Philips pool -> GE subjects
+    kind: transfer
+    directions:
+      pool_to_ge:
+        train: {role: train_pool}
+        test: {role: ge_check}
 
 # `--smoke`: tiny CV, 2-point grids, few resamples; written to runs-smoke/ instead of runs/.
 smoke:

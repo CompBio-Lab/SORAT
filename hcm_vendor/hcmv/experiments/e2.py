@@ -38,7 +38,7 @@ def _aligned(e1_run: dict, e2_run: dict):
     return y, P_within, cross["prob"].to_numpy()
 
 
-def gap_table(e1: dict, e2: dict, config: dict) -> pd.DataFrame:
+def gap_table(e1: dict, e2: dict, config: dict, metrics=METRICS) -> pd.DataFrame:
     rows = []
     for (direction, family_set, model), run in e2.items():
         target = direction.split("_to_")[1]
@@ -46,7 +46,7 @@ def gap_table(e1: dict, e2: dict, config: dict) -> pd.DataFrame:
         if within is None:
             continue
         y, P_within, p_cross = _aligned(within, run)
-        for metric in METRICS:
+        for metric in metrics:
             result = paired_bootstrap(y, P_within, p_cross, metric, n_boot=config["bootstrap_resamples"],
                                       seed=config["seed"])
             rows.append({"direction": direction, "family_set": family_set, "model": model, "n": len(y),

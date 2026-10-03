@@ -16,7 +16,7 @@
 set -euo pipefail
 source "${SLURM_SUBMIT_DIR}/hcm_vendor/scripts/env.sh"
 # One BLAS/OpenMP thread per worker; parallelism comes from joblib over outer folds.
-export APPTAINERENV_OMP_NUM_THREADS=1 APPTAINERENV_MKL_NUM_THREADS=1 APPTAINERENV_OPENBLAS_NUM_THREADS=1
+export APPTAINERENV_PYTHONUNBUFFERED=1 APPTAINERENV_OMP_NUM_THREADS=1 APPTAINERENV_MKL_NUM_THREADS=1 APPTAINERENV_OPENBLAS_NUM_THREADS=1
 export APPTAINERENV_SLURM_CPUS_PER_TASK="${SLURM_CPUS_PER_TASK}"
 echo "job ${SLURM_JOB_ID} on $(hostname), ${SLURM_CPUS_PER_TASK} cpus, args: $*"
 hcmv_python -m hcmv run-experiment "$@"

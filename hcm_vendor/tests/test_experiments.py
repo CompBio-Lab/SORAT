@@ -123,3 +123,42 @@ def test_grid_edges_ignore_ties():
     assert row["share_lowest"] == pytest.approx(2 / 3)
     assert row["share_strict_lowest"] == pytest.approx(1 / 3)
     assert not row["at_edge"]
+
+
+def test_gap_difference_is_zero_for_identical_inputs_and_detects_a_wider_gap():
+    from hcmv.experiments.e4 import gap_difference
+
+    rng = np.random.default_rng(0)
+    y = np.r_[np.zeros(30), np.ones(30)].astype(int)
+    within = (y + rng.normal(0, 0.4, 60))[:, None].repeat(3, axis=1)
+    good_cross = y + rng.normal(0, 0.4, 60)
+    bad_cross = y + rng.normal(0, 3.0, 60)
+    cfg = {"bootstrap_resamples": 300, "seed": 1}
+    same = gap_difference((y, within, good_cross), (y, within, good_cross), cfg)
+    assert same["difference"] == 0 and same["p_value"] == 1.0
+    wider = gap_difference((y, within, bad_cross), (y, within, good_cross), cfg)
+    assert wider["difference"] > 0.1 and wider["ci_low"] > 0
+
+
+def test_transfer_across_datasets(tmp_path):
+    from hcmv.runner import load_tables
+
+    cfg = smoke_config(load_config())
+    cfg["paths"]["output_root"] = str(tmp_path)
+    tables = tmp_path / "tables"
+    tables.mkdir()
+    a, b = _table(seed=1), _table(seed=2)
+    a["dataset"], b["dataset"] = "mms2", "acdc"
+    b.index = pd.Index([f"acdc_{i}" for i in b.index], name="subject_id")
+    a.to_parquet(tables / "features_mms2_nnformer-fold0_norm.parquet")
+    b.to_parquet(tables / "features_acdc_nnformer-fold0_norm.parquet")
+    table = load_tables(cfg, ("mms2", "acdc"))
+    assert len(table) == len(a) + len(b)
+    result = run_transfer(table, {"dataset": "mms2"}, {"dataset": "acdc"}, "all", "lr_en", cfg,
+                          experiment="E5", unit="mms2_to_acdc", datasets=("mms2", "acdc"))
+    manifest = json.loads(open(f"{result['dir']}/manifest.json").read())
+    assert manifest["spec"]["extra_feature_tables"][0].endswith("features_acdc_nnformer-fold0_norm.parquet")
+    assert len(pd.read_parquet(f"{result['dir']}/predictions.parquet")) == len(b)
+    single = run_transfer(table, {"vendor": "Siemens", "dataset": "mms2"}, {"vendor": "Philips", "dataset": "mms2"},
+                          "all", "lr_en", cfg, experiment="E2", unit="siemens_to_philips")
+    assert "extra_feature_tables" not in json.loads(open(f"{single['dir']}/manifest.json").read())["spec"]

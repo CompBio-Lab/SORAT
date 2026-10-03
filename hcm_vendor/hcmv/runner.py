@@ -101,9 +101,9 @@ def _hash(payload: dict, length: int = 16) -> str:
 
 
 def run_spec(config: dict, kind: str, experiment: str, unit: str, filters: dict, family_set: str,
-             model: str, seeds=None) -> dict:
+             model: str, seeds=None, datasets=("mms2",)) -> dict:
     """Everything that determines a run's result; its hash keys the result store."""
-    return {
+    spec = {
         "kind": kind, "experiment": experiment, "unit": unit, "filters": filters,
         "family_set": family_set, "model": model,
         "feature_table": str(feature_table_path(config)),
@@ -113,6 +113,19 @@ def run_spec(config: dict, kind: str, experiment: str, unit: str, filters: dict,
         "model_params": config["experiments"].get("model_params", {}).get(model, {}),
         "bootstrap_resamples": config["bootstrap_resamples"], "smoke": bool(config.get("_smoke")),
     }
+    extra = [d for d in datasets if d != "mms2"]
+    if extra:  # only added when used, so single-dataset run hashes stay unchanged
+        spec["extra_feature_tables"] = [str(feature_table_path(config, d)) for d in extra]
+    return spec
+
+
+def load_tables(config: dict, datasets=("mms2",)) -> pd.DataFrame:
+    """Feature tables of several datasets stacked into one (identical columns; subject IDs are prefixed)."""
+    tables = [pd.read_parquet(feature_table_path(config, d)) for d in datasets]
+    table = pd.concat(tables)
+    if table.index.duplicated().any():
+        raise ValueError("Subject IDs collide across datasets")
+    return table
 
 
 def run_dir(config: dict, spec: dict) -> Path:
@@ -209,9 +222,10 @@ def _write_json(path: Path, payload) -> None:
 
 
 def run_nested_cv(table: pd.DataFrame, cohort_filter: dict, family_set: str, model: str, config: dict,
-                  experiment: str = "E1", unit: str = "pooled", n_jobs: int = 1, force: bool = False) -> dict:
+                  experiment: str = "E1", unit: str = "pooled", n_jobs: int = 1, force: bool = False,
+                  datasets=("mms2",)) -> dict:
     """Nested CV on ``apply_filter(table, cohort_filter)``; returns a status dict."""
-    spec = run_spec(config, "nested_cv", experiment, unit, cohort_filter, family_set, model)
+    spec = run_spec(config, "nested_cv", experiment, unit, cohort_filter, family_set, model, datasets=datasets)
     spec_hash = _hash(spec)
     directory = run_dir(config, spec)
     if not force and is_complete(directory, spec_hash):
@@ -249,14 +263,14 @@ def run_nested_cv(table: pd.DataFrame, cohort_filter: dict, family_set: str, mod
 
 def run_transfer(table: pd.DataFrame, train_filter: dict, test_filter: dict, family_set: str, model: str,
                  config: dict, seeds=None, experiment: str = "E2", unit: str = "transfer", n_jobs: int = 1,
-                 force: bool = False) -> dict:
+                 force: bool = False, datasets=("mms2",)) -> dict:
     """Tune and refit on the training cohort, predict the test cohort; returns a status dict."""
     if seeds is None:
         n_seeds = config["experiments"]["transfer_seeds"] if model in STOCHASTIC_MODELS else 1
         seeds = [config["seed"] + i for i in range(n_seeds)]
     seeds = [int(s) for s in seeds]
     spec = run_spec(config, "transfer", experiment, unit, {"train": train_filter, "test": test_filter},
-                    family_set, model, seeds=seeds)
+                    family_set, model, seeds=seeds, datasets=datasets)
     spec_hash = _hash(spec)
     directory = run_dir(config, spec)
     if not force and is_complete(directory, spec_hash):
@@ -311,7 +325,8 @@ def run_experiment(config: dict, experiment: str, models, family_sets=None, unit
     spec = config["experiments"][experiment]
     family_sets = family_sets or config["experiments"]["family_sets"]
     n_jobs = n_jobs or default_n_jobs()
-    table = pd.read_parquet(feature_table_path(config))
+    datasets = tuple(spec.get("datasets", ("mms2",)))
+    table = load_tables(config, datasets)
     unit_specs = spec["cohorts"] if spec["kind"] == "nested_cv" else spec["directions"]
     rows = []
     for unit, unit_spec in unit_specs.items():
@@ -321,10 +336,11 @@ def run_experiment(config: dict, experiment: str, models, family_sets=None, unit
             for model in models:
                 if spec["kind"] == "nested_cv":
                     result = run_nested_cv(table, unit_spec, family_set, model, config, experiment, unit,
-                                           n_jobs=n_jobs, force=force)
+                                           n_jobs=n_jobs, force=force, datasets=datasets)
                 else:
                     result = run_transfer(table, unit_spec["train"], unit_spec["test"], family_set, model,
-                                          config, experiment=experiment, unit=unit, n_jobs=n_jobs, force=force)
+                                          config, experiment=experiment, unit=unit, n_jobs=n_jobs, force=force,
+                                          datasets=datasets)
                 wall = f" in {result['wall_s']:.0f} s" if "wall_s" in result else ""
                 log(f"{experiment}/{unit}/{family_set}/{model}: {result['status']}{wall}")
                 rows.append({"unit": unit, "family_set": family_set, "model": model, **result})

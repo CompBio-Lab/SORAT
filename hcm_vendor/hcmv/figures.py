@@ -280,6 +280,8 @@ UNIT_NAMES = {
     "philips": "Philips only",
     "siemens_to_philips": "Siemens → Philips",
     "philips_to_siemens": "Philips → Siemens",
+    "mms2_to_acdc": "M&Ms-2 → ACDC",
+    "pool_to_ge": "Siemens + Philips → GE",
 }
 FPR_GRID = np.linspace(0, 1, 101)
 
@@ -434,7 +436,8 @@ def plot_transfer_calibration(curves: dict, path, family_set: str) -> None:
     _save(fig, path)
 
 
-def plot_gap_forest(table: pd.DataFrame, path, metric_name: str = "AUC") -> None:
+def plot_gap_forest(table: pd.DataFrame, path, metric_name: str = "AUC", labels: dict = None,
+                    title: str = None) -> None:
     """Generalization gap Δ (within − cross) with CI per model, one panel per direction.
 
     ``table`` columns: direction, family_set, model, difference, ci_low, ci_high.
@@ -442,7 +445,8 @@ def plot_gap_forest(table: pd.DataFrame, path, metric_name: str = "AUC") -> None
     directions = [d for d in ("siemens_to_philips", "philips_to_siemens") if d in set(table["direction"])]
     family_sets = list(dict.fromkeys(table["family_set"]))
     models = [m for m in MODEL_ORDER if m in set(table["model"])]
-    fig, axes = plt.subplots(1, len(directions), figsize=(5.2 * len(directions), 0.55 * len(models) + 2.2),
+    fig, axes = plt.subplots(1, len(directions), figsize=(5.2 * len(directions),
+                                                          0.22 * len(models) * len(family_sets) + 2.6),
                              squeeze=False, sharey=True, sharex=True)
     palette = plt.get_cmap("tab10")
     step = 0.6 / max(len(family_sets), 1)
@@ -457,7 +461,7 @@ def plot_gap_forest(table: pd.DataFrame, path, metric_name: str = "AUC") -> None
                 ax.errorbar(r["difference"], yy,
                             xerr=[[r["difference"] - r["ci_low"]], [r["ci_high"] - r["difference"]]],
                             fmt="o", color=palette(i), markersize=5, capsize=2,
-                            label=FAMILY_SET_NAMES[family_set] if j == 0 else None)
+                            label=(labels or FAMILY_SET_NAMES).get(family_set, family_set) if j == 0 else None)
         ax.axvline(0, color="black", linewidth=0.8)
         ax.set_yticks(range(len(models)))
         ax.set_yticklabels([MODEL_NAMES[m] for m in models])
@@ -465,10 +469,10 @@ def plot_gap_forest(table: pd.DataFrame, path, metric_name: str = "AUC") -> None
         ax.set_title(UNIT_NAMES[direction], fontsize=10)
         ax.grid(axis="x", linewidth=0.4, alpha=0.5)
     axes[0][0].invert_yaxis()
-    fig.suptitle(f"Cross-vendor generalization gap in {metric_name}", fontsize=11)
+    fig.suptitle(title or f"Cross-vendor generalization gap in {metric_name}", fontsize=11)
     fig.tight_layout(rect=(0, 0.08, 1, 1))
     handles, labels = axes[0][0].get_legend_handles_labels()
-    fig.legend(handles, labels, fontsize=8, loc="lower center", ncol=len(family_sets), frameon=False)
+    fig.legend(handles, labels, fontsize=8, loc="lower center", ncol=min(len(family_sets), 3), frameon=False)
     _save(fig, path)
 
 
@@ -489,3 +493,22 @@ def plot_probe_null(results: list, path, title: str) -> None:
     fig.suptitle(title, fontsize=11)
     fig.tight_layout()
     _save(fig, path)
+
+
+def plot_external_roc(curves: dict, path, title: str) -> None:
+    """``curves[family_set][model] = (tpr, auc_row)``; one panel per family set."""
+    family_sets = list(curves)
+    fig, axes = plt.subplots(1, len(family_sets), figsize=(4.3 * len(family_sets), 4.6), squeeze=False)
+    for ax, family_set in zip(axes[0], family_sets):
+        for model in MODEL_ORDER:
+            if model in curves[family_set]:
+                tpr, auc = curves[family_set][model]
+                ax.plot(FPR_GRID, tpr, color=MODEL_COLOURS[model], linewidth=1.6,
+                        label=f"{MODEL_NAMES[model]}: {_ci_text(auc)}")
+        _roc_axes(ax, FAMILY_SET_NAMES.get(family_set, family_set).capitalize())
+        ax.legend(title="AUC [95% CI]", fontsize=7, title_fontsize=7.5, loc="lower right")
+    axes[0][0].set_ylabel("Sensitivity")
+    fig.suptitle(title, fontsize=11)
+    fig.tight_layout()
+    _save(fig, path)
+

@@ -24,9 +24,9 @@ def load_run(directory) -> dict:
     return run
 
 
-def load_runs(config: dict, experiment: str) -> dict:
+def load_runs(config: dict, experiment: str, feature_config: str = None) -> dict:
     """``{(unit, family_set, model): run}`` for every completed run of an experiment."""
-    feature_config = config["experiments"]["feature_config"]
+    feature_config = feature_config or config["experiments"]["feature_config"]
     root = runs_root(config) / experiment
     runs = {}
     for manifest in sorted(root.glob(f"*/*/*/{feature_config}/manifest.json")):
