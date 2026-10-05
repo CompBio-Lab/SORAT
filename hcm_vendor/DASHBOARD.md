@@ -15,8 +15,8 @@
   - **The user runs every Nextflow pipeline run** on their GPU allocation, which has no internet. Prepare the command; the user runs it and says when the results are ready.
   - **The user also submits every SLURM batch job** (set 2026-10-01): the node Claude works on is not a compute node. Give the exact `sbatch` command, run from the repo root; the user submits it and says when it finished.
   - **Work in agreed batches.** Do the batch the user approved, stop at a clean checkpoint (tests green, committed, this block updated), then wait for the user to say continue. Do not roll on into the next batch.
-- **Last completed:** Batch 7 on 2026-10-03: texture check and T50 SHAP. Batch 6 on 2026-10-03: T43 (E4), T44 (E5), T45 (GE), SVM grid widening. Batch 5 on 2026-10-01: T40 (E1), preliminary T41 (E2) and T42 (E3), plus an SVM probability fix. Batch 4 on 2026-10-01: T32 (PyTorch MLP, passes sklearn's `check_estimator`) and T34 (runner, result store, `run-experiment` CLI, sbatch script; smoke E1/E2 on compute nodes; full E1 ≈ 20 min on 32 cores). Batch 3 on 2026-09-30: T22 (`qc-report`, no D6 exclusions, texture direction reverses between vendors) and T31 (model zoo, grids, one-fold timing). Also the correlation filter now keeps myocardial mass over myo volume. Batch 2: T30, T33 tested. Batch 1: T14, T12, T21. Earlier: T00–T02, T10, T11, T13, T20.
-- **Batch 7 done 2026-10-03; paused at a checkpoint. Wait for the user's go.** Texture check (normalized texture HCM effects reverse between vendors; explained, not a bug; the user was told and normalized stays primary unless they say otherwise) and T50 SHAP done. Remaining: T51 summary + verdicts, finalize T41/T42 (marked preliminary), T60 midterm (paused by the user; D10 format question), T61–T63.
+- **Last completed:** Batch 8 on 2026-10-05: T41/T42 finalized, T51 summary and verdicts. Batch 7 on 2026-10-03: texture check and T50 SHAP. Batch 6 on 2026-10-03: T43 (E4), T44 (E5), T45 (GE), SVM grid widening. Batch 5 on 2026-10-01: T40 (E1), preliminary T41 (E2) and T42 (E3), plus an SVM probability fix. Batch 4 on 2026-10-01: T32 (PyTorch MLP, passes sklearn's `check_estimator`) and T34 (runner, result store, `run-experiment` CLI, sbatch script; smoke E1/E2 on compute nodes; full E1 ≈ 20 min on 32 cores). Batch 3 on 2026-09-30: T22 (`qc-report`, no D6 exclusions, texture direction reverses between vendors) and T31 (model zoo, grids, one-fold timing). Also the correlation filter now keeps myocardial mass over myo volume. Batch 2: T30, T33 tested. Batch 1: T14, T12, T21. Earlier: T00–T02, T10, T11, T13, T20.
+- **Batch 8 done 2026-10-05; paused at a checkpoint. Wait for the user's go.** T41 and T42 finalized; T51 summary and verdicts written (`results_hcm_vendor/tables/summary.md`), waiting for the user to review the verdicts. The T60 midterm stays on hold until the user says so. Remaining: T61 final figures/tables, T62 final report, T63 reproducibility pass (and T60 when asked).
 - **Batch 3 follow-up (2026-09-30):** all figures were redrawn to stand alone (plain titles, units, n per group, legends), and a Siemens-vs-Philips AUC scatter (`auc_agreement_siemens_philips.png`) was added. The `all-no-wt` family set was added (D11), along with `FIGURES.md`.
 - **Planned batches:**
 - **Open questions for the user:** none. The ceiling question was answered by D11.
@@ -82,14 +82,14 @@
 | T33 | Metrics, bootstrap CIs, paired bootstrap tests | 3 Framework | P0 | Oct 18 | T02 | DONE (2026-09-30) |
 | T34 | Experiment runner, result store, SLURM scripts | 3 Framework | P0 | Oct 21 | T31, T32, T33 | DONE (2026-10-01) |
 | T40 | **E1** pooled + within-vendor nested CV | 4 Experiments | P1 | Oct 25 | T34 | DONE (2026-10-01; grid widening pending user) |
-| T41 | **E2** cross-vendor transfer + generalization gap Δ | 4 Experiments | P1 | Oct 28 | T40 | PRELIMINARY (2026-10-01) |
-| T42 | **E3** vendor probe on NOR + permutation test | 4 Experiments | P1 | Oct 29 | T34 | PRELIMINARY (2026-10-01) |
+| T41 | **E2** cross-vendor transfer + generalization gap Δ | 4 Experiments | P1 | Oct 28 | T40 | DONE (2026-10-05) |
+| T42 | **E3** vendor probe on NOR + permutation test | 4 Experiments | P1 | Oct 29 | T34 | DONE (2026-10-05) |
 | T60 | **Midterm update** (due Nov 1) | M Milestone | P0 | Nov 1 | T22, T40, (T41, T42 preliminary) | TODO |
 | T43 | **E4** feature-family ablation (+ raw vs normalized texture) | 4 Experiments | P1 | Nov 6 | T40, T41, T42 | DONE (2026-10-03) |
 | T44 | **E5** external test on ACDC | 4 Experiments | P1 | Nov 8 | T34 | DONE (2026-10-03) |
 | T45 | GE specificity check | 4 Experiments | P1 | Nov 8 | T34 | DONE (2026-10-03) |
 | T50 | SHAP attributions + Siemens-vs-Philips stability | 5 Interpret | P1 | Nov 14 | T41 | DONE (2026-10-03) |
-| T51 | Statistical comparison summary, hypothesis verdicts | 5 Interpret | P1 | Nov 16 | T43, T44, T45, T50 | TODO |
+| T51 | Statistical comparison summary, hypothesis verdicts | 5 Interpret | P1 | Nov 16 | T43, T44, T45, T50 | DONE (2026-10-05; awaiting user review of verdicts) |
 | T61 | Final figures + tables | 6 Deliver | P1 | Nov 20 | T51 | TODO |
 | T62 | Final report | 6 Deliver | P0 | Nov 26 | T61 | TODO |
 | T63 | Reproducibility pass (one-command rerun, README, tests green) | 6 Deliver | P1 | Nov 25 | T51 | TODO |
@@ -857,6 +857,8 @@ Nested CV runs on each cohort: outer 5×5, inner 5.
 
 **Acceptance:** a Δ table (model × direction) with CIs, plus ROC overlays of within vs cross vendor.
 
+- **2026-10-05: final.** The E2 runs and report were redone in Batch 6 with the widened SVM grid (jobs 13207586, 13207645); only SVM numbers moved. Final ΔAUC (all features, within − cross): LR-EN −0.006 (P→S) / +0.093 [0.020, 0.187] (S→P); SVM +0.166 [0.024, 0.318] / +0.157 [−0.009, 0.335]; RF −0.002 / −0.008; XGB −0.014 / −0.005; MLP +0.244 [0.119, 0.389] / +0.195 [0.066, 0.337]. Specificity at 0.5 drops by 0.69–0.83 Siemens→Philips for LR-EN, SVM and MLP.
+
 **Log:**
 - 2026-10-01 (preliminary): `hcmv/experiments/e2.py`, `python -m hcmv e2-report` → `results_hcm_vendor/runs/E2/analysis/` (transfer metrics, `e2_gap.csv` with Δ for all five metrics, ROC/calibration overlays, Δ forest plot, E1+E2 model comparison). Job 13164014.
 - **ΔAUC (within − cross), all features:** trees transfer with no AUC loss (RF/XGB Δ −0.014 to −0.002, CIs cover 0). LR-EN loses 0.093 [0.020, 0.187] Siemens→Philips but nothing Philips→Siemens. MLP loses 0.195–0.244 and SVM 0.163–0.188.
@@ -883,6 +885,8 @@ Nested CV runs on each cohort: outer 5×5, inner 5.
 - [ ] Implement it, run it, and plot each family's observed balanced accuracy against its null distribution.
 
 **Acceptance:** a table of family, balanced accuracy with CI, permutation p and Holm-adjusted p; the plot is saved.
+
+- **2026-10-05: final.** D8 decided (3-class primary). No code or data changed since job 13164015, so the preliminary numbers stand.
 
 **Log:**
 - 2026-10-01 (preliminary): `hcmv/experiments/e3.py`, `python -m hcmv e3-probe` (job 13164015) → `results_hcm_vendor/runs/E3/` and `runs/E3/analysis/`. D8 default used (3-class primary, Siemens-vs-Philips secondary; awaiting the user's confirmation). The permutation null reruns the first outer repeat with 1000 shuffles, so the smallest possible p is 1/1001 ≈ 0.001.
@@ -1015,6 +1019,11 @@ Nested CV runs on each cohort: outer 5×5, inner 5.
   - Texture preprocessing dependence (raw vs norm).
 
 **Acceptance:** `results_hcm_vendor/tables/summary.md` exists and the user has reviewed the verdicts.
+
+**Log:**
+- 2026-10-05: `hcmv/experiments/summary.py`, `python -m hcmv summary` → `results_hcm_vendor/tables/summary.md` and `summary_tests.csv` (135 tests and estimates in five questions; each keeps its own report's Holm adjustment, plus a stricter Holm across the whole question). It only reads the experiment reports, so rerun them first if any run changes. The verdict rules are written in the module docstring.
+- **Verdicts:** H1 supported (clinical-only ΔAUC −0.101 to −0.005, none positive). H2 supported (texture 0.94/0.97 vs clinical 0.39 and shape 0.43, chance 0.33). H3 partially supported, model-dependent (ΔΔAUC clinical+texture − clinical significant for SVM +0.24 and MLP +0.33, not for LR-EN or trees). H4 not supported (ρ 0.17–0.43).
+- **New limitation found while writing H1:** Δ compares nested-CV models trained on 4/5 of the test vendor (~42–50 subjects) with a cross-vendor model trained on all of the other vendor (52–62), so Δ is slightly biased in favour of transfer. Added to the limitations.
 
 ---
 

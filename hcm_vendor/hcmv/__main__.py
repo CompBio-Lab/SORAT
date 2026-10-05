@@ -206,6 +206,14 @@ def cmd_shap(config: dict, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_summary(config: dict, args: argparse.Namespace) -> int:
+    from .experiments.summary import summary_report
+
+    print(summary_report(config))
+    write_manifest(output_dir(config, "tables"), config, "summary")
+    return 0
+
+
 def cmd_e3_probe(config: dict, args: argparse.Namespace) -> int:
     from .experiments.e3 import e3_report, run_e3, smoke_e3
     from .runner import default_n_jobs, runs_root
@@ -246,6 +254,7 @@ COMMANDS = {
     "e5-report": (cmd_e5_report, "E5 external ACDC test and GE specificity check (T44, T45)"),
     "texture-check": (cmd_texture_check, "Raw vs normalized texture: vendor shift, HCM effect agreement, reliance"),
     "shap": (cmd_shap, "SHAP of the E2 models and Siemens-vs-Philips stability (T50)"),
+    "summary": (cmd_summary, "Consolidated results table and hypothesis verdicts -> tables/summary.md (T51)"),
     "e3-probe": (cmd_e3_probe, "E3 vendor probe on NOR with permutation test, plus its report (T42)"),
 }
 COMMAND_ARGS = {"run-experiment": add_run_experiment_args, "e1-report": add_report_args,

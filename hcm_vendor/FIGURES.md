@@ -231,3 +231,11 @@ For each model, the top 10 features by mean |SHAP| for the Siemens-trained (left
 - `shap_stability.csv`: ρ with CI, top-10 Jaccard and shared count per model.
 - `shap_family_share.csv`, `shap_cluster_importance.csv` (importance and rank per cluster × model × vendor), `correlation_clusters.csv` (feature → cluster).
 
+---
+
+## Results summary and verdicts (T51)
+
+Command: `hcmv_python -m hcmv summary` (seconds; reads the E1–E5, GE and SHAP report CSVs). Outputs: `results_hcm_vendor/tables/`.
+- `summary.md`: the four hypothesis verdicts with effect sizes and CIs, headline tables (E1 AUC pooled and within vendor; E2 ΔAUC and Δspecificity; E5 ACDC; GE specificity) and the limitations. The verdict rules are in `hcmv/experiments/summary.py`.
+- `summary_tests.csv`: every paired test or probe (135 rows) with question, Holm family, estimate, 95% CI, p, the report's own Holm p and a question-wide Holm p.
+
