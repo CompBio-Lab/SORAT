@@ -261,3 +261,28 @@ def make_figures(config: dict) -> list:
     written.append("fig09_model_comparison")
     figures.EXPORT_PDF = False
     return written
+
+
+# ----------------------------------------------------------------------------- reproducibility
+def compare_stores(config: dict, other: str) -> pd.DataFrame:
+    """Overall metric estimates of every run in the primary store vs the same run in ``other``."""
+    root = repo_path(config, config["paths"]["output_root"])
+    primary, rerun = root / config["experiments"].get("runs_dir", "runs"), root / other
+    rows = []
+    for path in sorted(primary.rglob("metrics.json")):
+        twin = rerun / path.relative_to(primary)
+        if "analysis" in path.parts or not twin.exists():
+            continue
+        a, b = json.loads(path.read_text())["overall"], json.loads(twin.read_text())["overall"]
+        for metric in a:
+            rows.append({"run": str(path.parent.relative_to(primary)), "metric": metric,
+                         "stored": a[metric]["estimate"], "rerun": b[metric]["estimate"],
+                         "abs_diff": abs(a[metric]["estimate"] - b[metric]["estimate"])})
+    for path in sorted((primary / "E3").rglob("*.json")):
+        twin = rerun / path.relative_to(primary)
+        if twin.exists() and "analysis" not in path.parts and path.name != "manifest.json":
+            a, b = json.loads(path.read_text()), json.loads(twin.read_text())
+            rows.append({"run": str(path.relative_to(primary)), "metric": "balanced_accuracy",
+                         "stored": a["balanced_accuracy"], "rerun": b["balanced_accuracy"],
+                         "abs_diff": abs(a["balanced_accuracy"] - b["balanced_accuracy"])})
+    return pd.DataFrame(rows)

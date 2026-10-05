@@ -202,7 +202,9 @@ def cmd_shap(config: dict, args: argparse.Namespace) -> int:
     compute(config, n_jobs=args.n_jobs or default_n_jobs(), force=args.force,
             nsamples=200 if args.smoke else None, max_seeds=1 if args.smoke else None)
     print(shap_report(config, n_boot=100 if args.smoke else None))
-    write_manifest(output_dir(config, "runs-smoke" if args.smoke else "runs", "SHAP", "analysis"), config, "shap")
+    from .runner import runs_root
+
+    write_manifest(runs_root(config) / "SHAP" / "analysis", config, "shap")
     return 0
 
 
@@ -230,6 +232,21 @@ def cmd_figures(config: dict, args: argparse.Namespace) -> int:
         print(name)
     write_manifest(output_dir(config, "figures"), config, "figures")
     return 0
+
+
+def cmd_compare_runs(config: dict, args: argparse.Namespace) -> int:
+    from .final import compare_stores
+
+    table = compare_stores(config, args.other)
+    out = output_dir(config, "qc", "rerun_check")
+    table.to_csv(out / f"compare_{args.other}.csv", index=False)
+    print(f"{len(table)} metric values compared; max |difference| {table.abs_diff.max():.2e}")
+    print(table.groupby("metric").abs_diff.agg(["count", "max"]).to_string())
+    return 0
+
+
+def add_compare_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--other", required=True, help="Second result store under output_root, e.g. runs-rerun")
 
 
 def cmd_e3_probe(config: dict, args: argparse.Namespace) -> int:
@@ -275,11 +292,12 @@ COMMANDS = {
     "summary": (cmd_summary, "Consolidated results table and hypothesis verdicts -> tables/summary.md"),
     "tables": (cmd_tables, "Final report tables -> results_hcm_vendor/tables/final (run before figures)"),
     "figures": (cmd_figures, "Final numbered figures (PNG + PDF) -> results_hcm_vendor/figures"),
+    "compare-runs": (cmd_compare_runs, "Compare stored metrics with a rerun store (--other runs-rerun)"),
     "e3-probe": (cmd_e3_probe, "E3 vendor probe on NOR with permutation test, plus its report"),
 }
 COMMAND_ARGS = {"run-experiment": add_run_experiment_args, "e1-report": add_report_args,
                 "e2-report": add_report_args, "e3-probe": add_e3_args,
-                "e4-report": add_report_args, "shap": add_e3_args, "e5-report": add_report_args}
+                "e4-report": add_report_args, "shap": add_e3_args, "compare-runs": add_compare_args, "e5-report": add_report_args}
 
 
 def build_parser() -> argparse.ArgumentParser:

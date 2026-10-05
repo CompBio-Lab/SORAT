@@ -239,3 +239,25 @@ Command: `hcmv_python -m hcmv summary` (seconds; reads the E1–E5, GE and SHAP 
 - `summary.md`: the four hypothesis verdicts with effect sizes and CIs, headline tables (E1 AUC pooled and within vendor; E2 ΔAUC and Δspecificity; E5 ACDC; GE specificity) and the limitations. The verdict rules are in `hcmv/experiments/summary.py`.
 - `summary_tests.csv`: every paired test or probe (135 rows) with question, Holm family, estimate, 95% CI, p, the report's own Holm p and a question-wide Holm p.
 
+---
+
+## Final figures and tables (T61)
+
+Commands: `hcmv_python -m hcmv tables` then `hcmv_python -m hcmv figures` (or the last job of `hcm_vendor/scripts/run_all.sh`). They read the experiment reports, run stores and SHAP caches listed above. Outputs: `results_hcm_vendor/figures/` (PNG and PDF) and `results_hcm_vendor/tables/final/` (CSV and Markdown). Each folder has a `manifest.json` with the commit.
+
+| File | Content | Source data |
+|---|---|---|
+| `fig01_workflow` | Study workflow: data, segmentation, features, models, experiments E1–E5 and SHAP. Counts from the cohort table. | `tables/cohort.parquet` |
+| `fig02_cohort` | (a) subjects per dataset, vendor and diagnosis; (b) ED max wall thickness (nnFormer masks) per vendor × diagnosis, 15 mm line. | cohort, `features_mms2_nnformer-fold0_norm` |
+| `fig03_e1_roc` | E1 ROC curves, all features, pooled / Siemens only / Philips only (= F9). | `runs/E1` |
+| `fig04_gap_by_family` | ΔAUC by feature family and model, both directions, normalized texture (= F15). | `runs/E4/analysis/e4_gap.csv` |
+| `fig05_vendor_probe` | Vendor probe, 3-class, LR: null vs observed per feature family (= F14). | `runs/E3` |
+| `fig06_acdc_roc` | ACDC ROC curves for clinical and all features (subset of F17). | `runs/E5` |
+| `fig07a_shap_ranks`, `fig07b_shap_family_share` | SHAP rank agreement and family shares (= F19, F20). | `runs/SHAP/analysis` |
+| `fig08_calibration_shift` | Calibration within vs across vendors, all features (= F13). | `runs/E1`, `runs/E2` |
+| `fig09_model_comparison` | AUC [95% CI] per model and setting (E1 pooled, within each vendor, both E2 directions), grouped by model family; * = below the best model in that setting (paired bootstrap, Holm p < 0.05). | `runs/E1`, `runs/E2`, `tables/final/model_pairs.csv` |
+
+Tables `table1_cohort` … `table8_shap_stability`: cohort counts; E1 AUC; E2 gap (Δ AUC, balanced accuracy, specificity, Brier; * Holm p < 0.05); E3 probe; E4 contrasts; E5 ACDC; GE specificity; SHAP stability. `model_pairs.csv`: every model pair's paired ΔAUC with CI, p and Holm p per setting.
+
+Reproducibility check: `hcmv_python -m hcmv compare-runs --other runs-rerun` → `results_hcm_vendor/qc/rerun_check/compare_runs-rerun.csv` (all 1145 values identical to a full rerun on `5a2b1e5`).
+

@@ -15,15 +15,15 @@
   - **The user runs every Nextflow pipeline run** on their GPU allocation, which has no internet. Prepare the command; the user runs it and says when the results are ready.
   - **The user also submits every SLURM batch job** (set 2026-10-01): the node Claude works on is not a compute node. Give the exact `sbatch` command, run from the repo root; the user submits it and says when it finished.
   - **Work in agreed batches.** Do the batch the user approved, stop at a clean checkpoint (tests green, committed, this block updated), then wait for the user to say continue. Do not roll on into the next batch.
-- **Last completed:** Batch 8 on 2026-10-05: T41/T42 finalized, T51 summary and verdicts. Batch 7 on 2026-10-03: texture check and T50 SHAP. Batch 6 on 2026-10-03: T43 (E4), T44 (E5), T45 (GE), SVM grid widening. Batch 5 on 2026-10-01: T40 (E1), preliminary T41 (E2) and T42 (E3), plus an SVM probability fix. Batch 4 on 2026-10-01: T32 (PyTorch MLP, passes sklearn's `check_estimator`) and T34 (runner, result store, `run-experiment` CLI, sbatch script; smoke E1/E2 on compute nodes; full E1 ≈ 20 min on 32 cores). Batch 3 on 2026-09-30: T22 (`qc-report`, no D6 exclusions, texture direction reverses between vendors) and T31 (model zoo, grids, one-fold timing). Also the correlation filter now keeps myocardial mass over myo volume. Batch 2: T30, T33 tested. Batch 1: T14, T12, T21. Earlier: T00–T02, T10, T11, T13, T20.
-- **Batch 8 done 2026-10-05; paused at a checkpoint. Wait for the user's go.** T41 and T42 finalized; T51 summary and verdicts written (`results_hcm_vendor/tables/summary.md`), waiting for the user to review the verdicts. The T60 midterm stays on hold until the user says so. Remaining: T61 final figures/tables, T62 final report, T63 reproducibility pass (and T60 when asked).
+- **Last completed:** Batch 9 on 2026-10-05: T61 final tables/figures, T63 reproducibility. Batch 8 on 2026-10-05: T41/T42 finalized, T51 summary and verdicts. Batch 7 on 2026-10-03: texture check and T50 SHAP. Batch 6 on 2026-10-03: T43 (E4), T44 (E5), T45 (GE), SVM grid widening. Batch 5 on 2026-10-01: T40 (E1), preliminary T41 (E2) and T42 (E3), plus an SVM probability fix. Batch 4 on 2026-10-01: T32 (PyTorch MLP, passes sklearn's `check_estimator`) and T34 (runner, result store, `run-experiment` CLI, sbatch script; smoke E1/E2 on compute nodes; full E1 ≈ 20 min on 32 cores). Batch 3 on 2026-09-30: T22 (`qc-report`, no D6 exclusions, texture direction reverses between vendors) and T31 (model zoo, grids, one-fold timing). Also the correlation filter now keeps myocardial mass over myo volume. Batch 2: T30, T33 tested. Batch 1: T14, T12, T21. Earlier: T00–T02, T10, T11, T13, T20.
+- **Batch 9 done 2026-10-05; paused at a checkpoint. Wait for the user's go.** T61 (final tables and figures) and T63 (README, run_all.sh, tag removal, bit-identical clean rerun) done. Remaining: T62 final report and T60 midterm (both on hold until the user asks; D10 format question), and the user's review of the T51 verdicts.
 - **Batch 3 follow-up (2026-09-30):** all figures were redrawn to stand alone (plain titles, units, n per group, legends), and a Siemens-vs-Philips AUC scatter (`auc_agreement_siemens_philips.png`) was added. The `all-no-wt` family set was added (D11), along with `FIGURES.md`.
 - **Planned batches:**
 - **Open questions for the user:** none. The ceiling question was answered by D11.
 - **Figures and tables:** every figure, the command that makes it, its inputs, how to read it and its key numbers are catalogued in `hcm_vendor/FIGURES.md`. All plotting code is in `hcmv/figures.py`. Keep both in sync.
 - **Pushed (2026-09-30):** `main` and `eece568-hcm-vendor` are on `origin` (CompBio-Lab/SORAT), and the project branch tracks `origin/eece568-hcm-vendor`. The user is the only developer and allows direct pushes to `main` (no PR needed). Push at each checkpoint.
 - **How to run things:**
-  - Analysis tests and CLI: `source hcm_vendor/scripts/env.sh`, then `hcmv_python -m pytest hcm_vendor/tests -q -p no:cacheprovider` (85 tests, about 2.5 min) or `hcmv_python -m hcmv <cmd>`.
+  - Analysis tests and CLI: `source hcm_vendor/scripts/env.sh`, then `hcmv_python -m pytest hcm_vendor/tests -q -p no:cacheprovider` (98 tests, 3–13 min depending on the node) or `hcmv_python -m hcmv <cmd>`.
   - Experiments: `sbatch --account=st-zlaksman-1 --output=results_hcm_vendor/logs/%x-%j.out hcm_vendor/scripts/run_experiment.sbatch --experiment E1` (add `--smoke`, `--models`, `--units`, `--family-sets`, `--set key=value`). Finished runs are skipped, so resubmit after a timeout.
   - SORAT tests (25): `module load gcc apptainer && apptainer exec --env PYTHONPATH=/scratch/st-zlaksman-1/pmoheban/venvs/sorat-features-conda/lib/python3.10/site-packages containers/sorat-cinema.sif python -m unittest discover -s tests`.
   - SLURM: `sbatch --account=st-zlaksman-1 --output=results_hcm_vendor/logs/%x-%j.out <script>`.
@@ -90,9 +90,9 @@
 | T45 | GE specificity check | 4 Experiments | P1 | Nov 8 | T34 | DONE (2026-10-03) |
 | T50 | SHAP attributions + Siemens-vs-Philips stability | 5 Interpret | P1 | Nov 14 | T41 | DONE (2026-10-03) |
 | T51 | Statistical comparison summary, hypothesis verdicts | 5 Interpret | P1 | Nov 16 | T43, T44, T45, T50 | DONE (2026-10-05; awaiting user review of verdicts) |
-| T61 | Final figures + tables | 6 Deliver | P1 | Nov 20 | T51 | TODO |
+| T61 | Final figures + tables | 6 Deliver | P1 | Nov 20 | T51 | DONE (2026-10-05) |
 | T62 | Final report | 6 Deliver | P0 | Nov 26 | T61 | TODO |
-| T63 | Reproducibility pass (one-command rerun, README, tests green) | 6 Deliver | P1 | Nov 25 | T51 | TODO |
+| T63 | Reproducibility pass (one-command rerun, README, tests green) | 6 Deliver | P1 | Nov 25 | T51 | DONE (2026-10-05; rerun at the final commit) |
 | S1 | Rerun E1/E2 on ground-truth-mask features (segmentation vs image shift) | Stretch | P2 | — | T12, T41 | TODO |
 | S2 | Segmenter sensitivity (CineMA ACDC ensemble) | Stretch | P2 | — | T43 | TODO |
 | S3 | Feature harmonization baseline (ComBat) | Stretch | P2 | — | T43 | TODO |
@@ -1049,6 +1049,11 @@ Nested CV runs on each cohort: outer 5×5, inner 5.
 
 **Acceptance:** everything is regenerated by one command into `results_hcm_vendor/figures/` and `results_hcm_vendor/tables/`.
 
+**Log:**
+- 2026-10-05: `hcmv/final.py`, `python -m hcmv tables` then `python -m hcmv figures` (also the last step of `scripts/run_all.sh`). Tables: `results_hcm_vendor/tables/final/table1_cohort` … `table8_shap_stability` (CSV + Markdown) and `model_pairs.csv` (paired ΔAUC between every model pair in each E1 cohort and E2 direction, Holm per setting). Figures: `results_hcm_vendor/figures/fig01_workflow` … `fig09_model_comparison`, PNG and PDF, with the shared vendor and model colour maps from `figures.py`.
+- Figure 9 marks with * every model whose AUC is below the best model in that setting (paired bootstrap, Holm p < 0.05). Within the pooled cohort the SVM and MLP are marked; across vendors LR-EN (Siemens→Philips), SVM and MLP are.
+- Figure 2 shows that the 3 GE HCM subjects have ED max wall thickness of 10–12 mm, below the 15 mm threshold, which fits the models calling 2 of them normal.
+
 ### T62: Final report
 **Status:** TODO · **Pri:** P0 · **Target:** Nov 26 (due Nov 27) · **Depends on:** T61
 
@@ -1071,6 +1076,12 @@ Nested CV runs on each cohort: outer 5×5, inner 5.
 - [ ] Update the local (gitignored) `CLAUDE.md` with a short `hcm_vendor/` section.
 
 **Acceptance:** a fresh rerun reproduces the headline numbers; the README is followed end-to-end once.
+
+**Log:**
+- 2026-10-05: ticket and decision tags removed from `hcmv/`, `configs/` and `scripts/` (the grep in the task now finds nothing). `hcm_vendor/README.md` written (environment, cohort and features, the one-command pipeline, store layout). `scripts/run_all.sh` submits every experiment, report, SHAP, texture check, summary, tables and figures as a SLURM dependency chain; `SMOKE=1` and `RUNS_DIR=<name>` variants.
+- **Clean rerun:** `RUNS_DIR=runs-rerun hcm_vendor/scripts/run_all.sh` on `5a2b1e5` (jobs 13230026–13230044, about 1 h wall time; E3 54 min, E1 50 min). `python -m hcmv compare-runs --other runs-rerun` (`results_hcm_vendor/qc/rerun_check/compare_runs-rerun.csv`): **all 1145 metric values (225 runs × 5 metrics + 20 E3 probes) are identical to the stored ones**, as are the E1/E2/E4/E5/GE/E3 report tables and the SHAP stability and cluster importances. The pipeline is deterministic at fixed seeds on this hardware.
+- Bug found by the rerun: `shap_report` wrote to `runs/SHAP/analysis` regardless of `experiments.runs_dir`, so the rerun's report overwrote the primary one (with identical numbers). Fixed; the primary report was regenerated from the primary cache.
+- Tests: 98 analysis tests and 25 SORAT tests pass. Nothing from `results_hcm_vendor/`, `work/` or NIfTI files is tracked. The local `CLAUDE.md` has a short `hcm_vendor/` section.
 
 ---
 

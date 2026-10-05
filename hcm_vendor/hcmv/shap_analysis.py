@@ -37,7 +37,7 @@ from scipy.spatial.distance import squareform
 from scipy.stats import spearmanr
 
 from . import figures
-from .config import output_dir, repo_path
+from .config import repo_path
 from .features import feature_family
 from .preprocessing import select_features
 from .qc import md_table
@@ -187,8 +187,7 @@ def family_share(values: pd.DataFrame) -> pd.Series:
 def shap_report(config: dict, family_set: str = "all", n_boot: int = None) -> str:
     pool = load_pool(config)
     clusters = correlation_clusters(pool, family_set)
-    out = output_dir(config, "runs", "SHAP", "analysis") if not config.get("_smoke") else \
-        runs_root(config) / "SHAP" / "analysis"
+    out = runs_root(config) / "SHAP" / "analysis"
     out.mkdir(parents=True, exist_ok=True)
     n_boot = n_boot or config["bootstrap_resamples"]
     rows, shares, importances, panels = [], [], [], {}
