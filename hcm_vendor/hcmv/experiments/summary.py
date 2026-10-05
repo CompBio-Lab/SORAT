@@ -11,7 +11,7 @@ them) and writes ``results_hcm_vendor/tables/``:
 
 Verdict rules (stated so they can be checked):
 * H1 (clinical features transfer with a small gap): supported if no clinical-only
-  ΔAUC (normalized config, 5 models × 2 directions) is positive with a CI excluding 0;
+  ΔAUC (normalized config, every model × 2 directions) is positive with a CI excluding 0;
   the verdict text gives the range of the point estimates.
 * H2 (texture is the most vendor-predictive family): supported if every texture
   probe beats chance after Holm and has a higher balanced accuracy than the
@@ -108,7 +108,7 @@ def verdicts(config: dict) -> list:
     h1 = "Supported" if worse.empty else "Not supported"
     lines += [f"**H1: clinical features transfer with a small gap — {h1}.** With clinical features only, the "
               f"cross-vendor ΔAUC ranges from {clin.difference.min():+.3f} to {clin.difference.max():+.3f} across "
-              f"the 5 models × 2 directions; none is positive with a CI excluding 0"
+              f"the {clin.model.nunique()} models × 2 directions; none is positive with a CI excluding 0"
               + ("" if worse.empty else f" except {len(worse)}") +
               ". All point estimates are ≤ 0: the within-vendor term comes from nested CV, whose models train on "
               "4/5 of the test vendor (about 42–50 subjects), while the cross-vendor model trains on all of the other "
@@ -143,7 +143,7 @@ def verdicts(config: dict) -> list:
              "Partially supported (model-dependent)" if supported else "Not supported")
     lines += [f"**H3: texture produces the largest gap — {label}.** Adding normalized texture to clinical features "
               "widens the cross-vendor AUC gap (ΔΔAUC, larger of the two directions): " + "; ".join(per_model) +
-              f". Significant after Holm for: {', '.join(supported) or 'none'}. Tree ensembles show no "
+              f". Significant after Holm for: {', '.join(supported) or 'none'}. Tree ensembles and TabPFN show no "
               "texture-driven gap. Raw texture widens the gap less than normalized texture (see the texture check).",
               ""]
 
@@ -153,7 +153,7 @@ def verdicts(config: dict) -> list:
               "; ".join(f"{_name(r.model)} {_ci(r.spearman_rho, r.rho_ci_low, r.rho_ci_high)}"
                         f" (top-10 shared {r.top10_shared})" for r in shap.itertuples()) +
               ". Trees agree most and keep wall thickness on top; Siemens-trained LR-EN, SVM and MLP lean on "
-              "texture.", ""]
+              "texture. TabPFN was not explained: KernelSHAP would need millions of transformer passes.", ""]
     return lines
 
 

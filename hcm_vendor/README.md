@@ -26,8 +26,8 @@ hcmv_python -m pytest hcm_vendor/tests -q -p no:cacheprovider
 `env.sh` runs Python in `jupyter-datascience.sif` with the container home
 `/scratch/st-zlaksman-1/pmoheban/my_jupyter`; override with `HCMV_SIF` and
 `HCMV_CONTAINER_HOME`. The image provides numpy, pandas, scikit-learn, torch, matplotlib
-and SimpleITK; xgboost 3.0.5 and shap 0.49.1 were added with `pip install --user` under a
-constraints file so the image's core packages are not upgraded. Exact versions are in
+and SimpleITK; xgboost 3.0.5, shap 0.49.1 and tabpfn 2.0.9 (TabPFN v2; weights cached in the container
+home) were added with `pip install --user` under a constraints file so the image's core packages are not upgraded. Exact versions are in
 `requirements.txt` (documentation only). `scripts/smoke_env.sbatch` checks the setup on
 a compute node. The SLURM account defaults to `st-zlaksman-1` (`HCMV_SLURM_ACCOUNT`).
 

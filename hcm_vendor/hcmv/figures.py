@@ -662,7 +662,7 @@ def plot_workflow(path, counts: dict) -> None:
     box(5.3, top, 2.6, h, "Features (per subject)", "17 clinical: volumes, mass,\nwall thickness, EF\n"
         "28 shape (myocardium)\n84 texture: first-order + GLCM\n(normalized; raw as sensitivity)", "#fdebd0")
     box(8.3, top, 3.6, h, "Leakage-safe models", "impute → drop constant → |r| > 0.95 filter → scale\n"
-        "Elastic-net LR · RBF SVM · random forest\nXGBoost · MLP (PyTorch)\nclass-balanced, threshold 0.5,\n"
+        "Elastic-net LR · RBF SVM · random forest\nXGBoost · MLP (PyTorch) · TabPFN\nclass-balanced, threshold 0.5,\n"
         "grid search in inner CV", "#ebdef0")
     for x0, x1 in ((2.3, 2.7), (4.9, 5.3), (7.9, 8.3)):
         arrow(x0, top + h / 2, x1, top + h / 2)
