@@ -1,4 +1,4 @@
-"""Feature validation and QC reports (T12, T22)."""
+"""Feature validation and QC reports."""
 
 import numpy as np
 import pandas as pd
@@ -97,7 +97,7 @@ def agreement(pred: pd.DataFrame, gt: pd.DataFrame, columns) -> pd.DataFrame:
 
 
 def validate_gt(config: dict, pred_root: str = None) -> str:
-    """T12 report. ``pred_root`` (e.g. T14 nnFormer features) adds pred-vs-GT agreement."""
+    """Ground-truth validation report. ``pred_root`` (e.g. re-extracted nnFormer features) adds pred-vs-GT agreement."""
     cohort = pd.read_parquet(output_dir(config, "tables") / "cohort.parquet")
     out = output_dir(config, "qc", "t12_validation")
     gt_root = "results_hcm_vendor/features/gt"
@@ -114,7 +114,7 @@ def validate_gt(config: dict, pred_root: str = None) -> str:
                                masks="Manual (ground-truth) segmentations")
 
     lines = [
-        "# T12 validation: ground-truth-mask features", "",
+        "# Validation: ground-truth-mask features", "",
         "## ED wall thickness (median mm) by group, `norm` tables", "",
         md_table(wt), "",
         "## Texture vendor effect among M&Ms-2 NOR (ground-truth masks)", "",
@@ -162,7 +162,7 @@ def _expected_settings(options: dict) -> dict:
 
 
 def check_features(config: dict, root: str, source: str) -> pd.DataFrame:
-    """T14 acceptance checks for every dataset x feature config under ``root``."""
+    """Feature-extraction acceptance checks for every dataset x feature config under ``root``."""
     import json
 
     from .features import read_phase_csvs

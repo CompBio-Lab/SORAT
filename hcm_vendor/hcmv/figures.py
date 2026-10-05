@@ -6,6 +6,8 @@ that makes it, its inputs, how to read it). Keep that file in sync when adding o
 changing a figure here.
 """
 
+from pathlib import Path
+
 import matplotlib
 import matplotlib.ticker
 
@@ -65,8 +67,13 @@ def feature_label(column: str) -> str:
     return column
 
 
+EXPORT_PDF = False  # set by the final-figures command to also write a PDF next to each PNG
+
+
 def _save(fig, path) -> None:
     fig.savefig(path, dpi=150, bbox_inches="tight")
+    if EXPORT_PDF:
+        fig.savefig(Path(path).with_suffix(".pdf"), bbox_inches="tight")
     plt.close(fig)
 
 
@@ -85,7 +92,7 @@ def _boxes(ax, data, colours, labels) -> None:
     ax.set_xticklabels(labels, fontsize=8)
 
 
-# ------------------------------------------------------------------ T12
+# ------------------------------------------------------------------ feature validation
 
 
 def plot_gt_wall_thickness(table: pd.DataFrame, path) -> None:
@@ -134,7 +141,7 @@ def plot_texture_vendor_effect(effects: dict, path, masks: str) -> None:
     _save(fig, path)
 
 
-# ------------------------------------------------------------------ T22
+# ------------------------------------------------------------------ data QC
 
 
 def plot_clinical_distributions(table: pd.DataFrame, columns, path) -> None:
@@ -258,7 +265,7 @@ def plot_pca(panels: list, path, suptitle: str) -> None:
     _save(fig, path)
 
 
-# ------------------------------------------------------------------ T40-T42 (experiments)
+# ------------------------------------------------------------------ experiments
 
 MODEL_ORDER = ["lr_en", "svm", "rf", "xgb", "mlp"]
 MODEL_NAMES = {"lr_en": "Elastic-net LR", "svm": "RBF SVM", "rf": "Random forest", "xgb": "XGBoost",
@@ -335,10 +342,12 @@ def plot_e1_roc(curves: dict, path, family_set: str, cv_text: str = "5×5") -> N
     _save(fig, path)
 
 
-def plot_model_comparison(table: pd.DataFrame, path, family_set: str, metric_name: str = "AUC") -> None:
+def plot_model_comparison(table: pd.DataFrame, path, family_set: str, metric_name: str = "AUC",
+                          marks: set = None, mark_note: str = None, title: str = None) -> None:
     """Dot-and-whisker plot of a metric per model, grouped by model family, one marker per setting.
 
     ``table`` columns: setting, model, estimate, ci_low, ci_high (settings keep their row order).
+    ``marks``: (setting, model) pairs to flag with an asterisk; ``mark_note`` explains it.
     """
     settings = list(dict.fromkeys(table["setting"]))
     markers = ["o", "s", "D", "^", "v", "P"]
@@ -356,13 +365,19 @@ def plot_model_comparison(table: pd.DataFrame, path, family_set: str, metric_nam
             ax.errorbar(r["estimate"], yy, xerr=[[r["estimate"] - r["ci_low"]], [r["ci_high"] - r["estimate"]]],
                         fmt=markers[i % len(markers)], color=palette(i), markersize=5, capsize=2, linewidth=1.2,
                         label=setting if j == 0 else None)
+            if marks and (setting, model) in marks:
+                ax.text(r["ci_high"] + 0.004, yy, "*", color=palette(i), fontsize=11, va="center",
+                        fontweight="bold")
     ax.set_yticks(range(len(models)))
     ax.set_yticklabels([f"{MODEL_NAMES[m]}\n({MODEL_FAMILIES[m].lower()})" for m in models], fontsize=8.5)
     ax.invert_yaxis()
     ax.axvline(0.5, color="grey", linestyle=":", linewidth=0.8)
     ax.set_xlabel(f"{metric_name} (95% bootstrap CI)")
-    ax.set_title(f"Model comparison, {FAMILY_SET_NAMES[family_set]}", fontsize=11)
-    ax.legend(fontsize=8, loc="upper center", bbox_to_anchor=(0.5, -0.12), ncol=min(len(settings), 3), frameon=False)
+    ax.set_title(title or f"Model comparison, {FAMILY_SET_NAMES[family_set]}", fontsize=11)
+    legend = ax.legend(fontsize=8, loc="upper center", bbox_to_anchor=(0.5, -0.12), ncol=min(len(settings), 3),
+                       frameon=False)
+    if mark_note:
+        legend.set_title(mark_note, prop={"size": 7.5})
     ax.grid(axis="x", linewidth=0.4, alpha=0.5)
     _save(fig, path)
 
@@ -618,4 +633,95 @@ def plot_shap_beeswarm(by_vendor: dict, path, model: str, top: int = 10) -> None
     cbar = fig.colorbar(scatter, ax=axes[0].tolist(), shrink=0.8, pad=0.01)
     cbar.set_label("Feature value (standardized)", fontsize=8)
     fig.suptitle(f"{MODEL_NAMES[model]}: top {top} features by mean |SHAP| (n = 114 subjects)", fontsize=11)
+    _save(fig, path)
+
+
+def plot_workflow(path, counts: dict) -> None:
+    """Study workflow: data -> segmentation -> features -> models -> experiments."""
+    from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
+
+    fig, ax = plt.subplots(figsize=(12, 5.2))
+    ax.set_xlim(0, 12)
+    ax.set_ylim(0, 5.2)
+    ax.axis("off")
+
+    def box(x, y, w, h, title, body, colour):
+        ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0.05", facecolor=colour, edgecolor="#333333",
+                                    linewidth=1))
+        ax.text(x + w / 2, y + h - 0.18, title, ha="center", va="top", fontsize=9.5, fontweight="bold")
+        ax.text(x + w / 2, y + h - 0.55, body, ha="center", va="top", fontsize=8, linespacing=1.35)
+
+    def arrow(x0, y0, x1, y1):
+        ax.add_patch(FancyArrowPatch((x0, y0), (x1, y1), arrowstyle="-|>", mutation_scale=14, color="#333333"))
+
+    top, h = 2.75, 2.2
+    box(0.1, top, 2.2, h, "Cine MRI", f"M&Ms-2 NOR/HCM\nSiemens {counts['Siemens']}, Philips "
+        f"{counts['Philips']}, GE {counts['GE']}\nACDC test NOR/HCM: {counts['ACDC']}\n(ED and ES frames)", "#dbe9f6")
+    box(2.7, top, 2.2, h, "Segmentation", "SORAT pipeline\nnnFormer (ACDC-trained)\nLV, RV, myocardium\n"
+        "(ground-truth masks\nfor validation)", "#e5f5e0")
+    box(5.3, top, 2.6, h, "Features (per subject)", "17 clinical: volumes, mass,\nwall thickness, EF\n"
+        "28 shape (myocardium)\n84 texture: first-order + GLCM\n(normalized; raw as sensitivity)", "#fdebd0")
+    box(8.3, top, 3.6, h, "Leakage-safe models", "impute → drop constant → |r| > 0.95 filter → scale\n"
+        "Elastic-net LR · RBF SVM · random forest\nXGBoost · MLP (PyTorch)\nclass-balanced, threshold 0.5,\n"
+        "grid search in inner CV", "#ebdef0")
+    for x0, x1 in ((2.3, 2.7), (4.9, 5.3), (7.9, 8.3)):
+        arrow(x0, top + h / 2, x1, top + h / 2)
+
+    experiments = [
+        ("E1", "nested 5×5 CV:\npooled and within\neach vendor"),
+        ("E2", "train on one vendor,\ntest on the other;\ngap Δ = within − cross"),
+        ("E3", "vendor probe on\nnormal hearts +\npermutation test"),
+        ("E4", "Δ by feature family;\nraw vs normalized\ntexture"),
+        ("E5 / GE", "external ACDC test;\nGE specificity"),
+        ("SHAP", "attributions of E2\nmodels; stability\nacross vendors"),
+    ]
+    w, gap, y = 1.8, 0.16, 0.25
+    x = 0.1
+    centres = []
+    for name, body in experiments:
+        box(x, y, w, 1.85, name, body, "#f2f2f2")
+        centres.append(x + w / 2)
+        x += w + gap
+    bus = y + 1.85 + 0.32
+    ax.plot([10.1, 10.1], [top, bus], color="#333333", linewidth=1.2)
+    ax.plot([centres[0], centres[-1]], [bus, bus], color="#333333", linewidth=1.2)
+    for c in centres:
+        arrow(c, bus, c, y + 1.9)
+    fig.suptitle("Study workflow: does an HCM classifier built on segmentation features transfer across MRI vendors?",
+                 fontsize=11)
+    _save(fig, path)
+
+
+def plot_cohort_panel(cohort: pd.DataFrame, table: pd.DataFrame, path) -> None:
+    """(a) subjects per dataset, vendor and diagnosis; (b) ED max wall thickness from nnFormer masks."""
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.6), gridspec_kw={"width_ratios": [1, 1.4]})
+    groups = [("M&Ms-2", v) for v in VENDOR_ORDER] + [("ACDC", "Siemens")]
+    ax = axes[0]
+    x = np.arange(len(groups))
+    for k, disease in enumerate(("NOR", "HCM")):
+        n = [int(((cohort.dataset == ("mms2" if ds == "M&Ms-2" else "acdc")) & (cohort.vendor == v) &
+                  (cohort.disease == disease)).sum()) for ds, v in groups]
+        bars = ax.bar(x + (k - 0.5) * 0.38, n, width=0.38, color=DISEASE_COLOURS[disease], alpha=0.8,
+                      label=DISEASE_NAMES[disease])
+        ax.bar_label(bars, fontsize=8)
+    ax.set_xticks(x)
+    ax.set_xticklabels([f"{ds}\n{v}" for ds, v in groups], fontsize=8.5)
+    ax.set_ylabel("Subjects")
+    ax.set_title("(a) Cohort", fontsize=10)
+    ax.legend(fontsize=7.5, loc="upper right")
+
+    ax = axes[1]
+    cells = [(v, d) for v in VENDOR_ORDER for d in ("NOR", "HCM")]
+    data, labels = [], []
+    for v, d in cells:
+        values = table.loc[(table.vendor == v) & (table.disease == d), "ed_wall_thickness_max_mm"].dropna()
+        data.append(values)
+        labels.append(f"{v}\n{d} (n={len(values)})")
+    _boxes(ax, data, [DISEASE_COLOURS[d] for _, d in cells], labels)
+    ax.axhline(15, color="crimson", linestyle="--", linewidth=1)
+    ax.text(len(cells) + 0.45, 15.3, "15 mm clinical HCM threshold", color="crimson", fontsize=8, ha="right")
+    ax.set_ylabel("ED maximum wall thickness (mm)")
+    ax.set_title("(b) Wall thickness from nnFormer masks, M&Ms-2", fontsize=10)
+    fig.suptitle("Study cohort", fontsize=11)
+    fig.tight_layout()
     _save(fig, path)

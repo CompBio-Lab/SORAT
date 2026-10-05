@@ -5,7 +5,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=32G
-# T12: ground-truth-mask features for the study cohort (all feature_configs).
+# Ground-truth-mask features for the study cohort (all feature_configs).
 # Submit from the repo root:
 #   sbatch --account=st-zlaksman-1 --output=results_hcm_vendor/logs/%x-%j.out hcm_vendor/scripts/extract_gt_features.sbatch
 

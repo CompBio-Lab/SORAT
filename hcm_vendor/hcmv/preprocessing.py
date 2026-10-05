@@ -1,4 +1,4 @@
-"""Leakage-safe preprocessing (T30): every step is fitted inside the training fold."""
+"""Leakage-safe preprocessing: every step is fitted inside the training fold."""
 
 import numpy as np
 import pandas as pd
@@ -26,7 +26,7 @@ FAMILY_SETS = {
 }
 # Column substrings removed from a family set. `all-no-wt` drops every wall-thickness
 # feature (ED/ES mean and max), the direct diagnostic criterion for HCM, so the models
-# must rely on the remaining evidence (sensitivity analysis, D11).
+# must rely on the remaining evidence (sensitivity analysis).
 FAMILY_SET_EXCLUDE = {"all-no-wt": ("wall_thickness",)}
 
 

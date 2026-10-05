@@ -1,4 +1,4 @@
-"""E2 analysis (T41): cross-vendor transfer and the generalization gap Δ.
+"""E2 analysis: cross-vendor transfer and the generalization gap Δ.
 
 For a direction A→B, Δ_{A→B} = metric_{B→B} − metric_{A→B}, both on the same B subjects:
 

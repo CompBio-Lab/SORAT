@@ -1,4 +1,4 @@
-"""Why does normalized texture transfer across vendors worse than raw texture? (follow-up to T43)
+"""Why does normalized texture transfer across vendors worse than raw texture?
 
 For the texture features of the M&Ms-2 train pool (Siemens + Philips) under each
 radiomics config (``norm`` and ``raw``), this measures:

@@ -1,4 +1,4 @@
-"""E4 analysis (T43): feature-family ablation of the cross-vendor gap, plus raw vs normalized texture.
+"""E4 analysis: feature-family ablation of the cross-vendor gap, plus raw vs normalized texture.
 
 Uses the E1 and E2 runs of every family set (``clinical``, ``clinical+shape``,
 ``clinical+texture``, ``all``) and both feature configs (``norm``; ``raw`` for the

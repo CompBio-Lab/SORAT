@@ -1,4 +1,4 @@
-"""Consolidated results and hypothesis verdicts (T51).
+"""Consolidated results and hypothesis verdicts.
 
 Reads the analysis outputs of E1–E5, the GE check and SHAP (it does not recompute
 them) and writes ``results_hcm_vendor/tables/``:

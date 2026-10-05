@@ -1,4 +1,4 @@
-"""Model zoo (T31): class-balanced estimators and their hyperparameter grids.
+"""Model zoo: class-balanced estimators and their hyperparameter grids.
 
 ``get_model`` returns an unfitted estimator and a grid whose keys are prefixed
 with ``model__``, ready for ``GridSearchCV(build_pipeline(estimator), grid)``.

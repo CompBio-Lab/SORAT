@@ -1,4 +1,4 @@
-"""Cross-validation splits (T30). One row per subject, so every split is patient-level."""
+"""Cross-validation splits. One row per subject, so every split is patient-level."""
 
 from dataclasses import dataclass
 

@@ -1,8 +1,8 @@
-"""SHAP attributions of the E2 models and their stability across training vendors (T50).
+"""SHAP attributions of the E2 models and their stability across training vendors.
 
 For each model, the Siemens-trained and the Philips-trained E2 pipelines (feature set
 ``all``, primary feature config) are explained on the **same 114 pooled subjects**
-(D9), in each pipeline's post-preprocessing feature space:
+in each pipeline's post-preprocessing feature space:
 
 * RF and XGB: exact TreeSHAP (``shap.TreeExplainer``); RF attributions are on the
   probability scale, XGB on the log-odds scale.
@@ -219,7 +219,7 @@ def shap_report(config: dict, family_set: str = "all", n_boot: int = None) -> st
     for model, by_vendor in panels.items():
         figures.plot_shap_beeswarm(by_vendor, out / f"shap_beeswarm_{model}.png", model)
 
-    lines = ["# SHAP stability across training vendors (T50)", "",
+    lines = ["# SHAP stability across training vendors", "",
              f"E2 pipelines trained on Siemens or on Philips, feature set `{family_set}`, explained on the same "
              f"{len(pool)} pooled subjects. Importance = mean |φ| summed within |r| > 0.95 correlation clusters "
              f"({clusters.nunique()} clusters from {len(clusters)} features); ρ CI from {n_boot} subject bootstraps.",

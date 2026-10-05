@@ -1,4 +1,4 @@
-"""Feature tables (T21): per-phase SORAT CSVs -> one row per subject with families.
+"""Feature tables: per-phase SORAT CSVs -> one row per subject with families.
 
 Per-phase CSVs are named ``<pid>_<source>_<ED|ES>_features.csv`` where ``source``
 is a SORAT model tag (e.g. ``nnformer__fold0``) or ``gt``. Each holds one row with

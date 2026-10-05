@@ -1,4 +1,4 @@
-"""Metrics and resampling statistics (T33).
+"""Metrics and resampling statistics.
 
 Predictions are handled as a matrix ``P`` of shape (n_subjects, n_repeats): one
 column per outer-CV repeat (out-of-fold probabilities) or a single column for a
@@ -9,7 +9,7 @@ each column, and bootstrap resamples *subjects* (rows), stratified by class.
 import numpy as np
 from scipy import stats as _stats
 
-THRESHOLD = 0.5  # D7: fixed; models are trained class-balanced
+THRESHOLD = 0.5  # fixed decision threshold; models are trained class-balanced
 
 
 def fast_auc(y, prob) -> float:

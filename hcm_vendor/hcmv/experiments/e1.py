@@ -1,4 +1,4 @@
-"""E1 analysis (T40): pooled and within-vendor nested CV.
+"""E1 analysis: pooled and within-vendor nested CV.
 
 Reads ``runs/E1`` and writes ``runs/E1/analysis/``:
 

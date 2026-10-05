@@ -1,4 +1,4 @@
-"""E3 (T42): can the scanner vendor be predicted from features of normal hearts?
+"""E3: can the scanner vendor be predicted from features of normal hearts?
 
 Only NOR subjects are used, so disease cannot carry the signal. For each feature
 probe (clinical, shape, texture normalized, texture raw, all) and each target

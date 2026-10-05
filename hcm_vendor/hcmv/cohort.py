@@ -1,4 +1,4 @@
-"""Study cohort (T20) and pipeline samplesheets (T13).
+"""Study cohort and pipeline samplesheets.
 
 The cohort table has one row per subject with disease label, vendor and the
 subject's role in the experiments:

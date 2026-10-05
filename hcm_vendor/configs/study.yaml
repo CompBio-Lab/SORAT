@@ -23,7 +23,7 @@ cohort:
     "Philips Medical Systems": Philips
     "GE MEDICAL SYSTEMS": GE
   train_vendors: [Siemens, Philips]
-  expected_counts:            # asserted when the cohort table is built (T20)
+  expected_counts:            # asserted when the cohort table is built
     mms2:
       Siemens: {HCM: 30, NOR: 22}
       Philips: {HCM: 27, NOR: 35}
@@ -31,7 +31,7 @@ cohort:
     acdc:
       Siemens: {HCM: 10, NOR: 10}
 
-feature_configs:              # keys mirror params.feature_extraction.radiomics (T11, D2, D5)
+feature_configs:              # keys mirror params.feature_extraction.radiomics
   raw: {}                     # PyRadiomics defaults, as in the original SORAT runs
   norm:                       # primary: harmonized for cross-scanner comparison
     normalize: true
@@ -49,8 +49,8 @@ cv:
 bootstrap_resamples: 2000
 permutations: 1000
 
-# T31: model zoo. Grids are searched by GridSearchCV inside each outer training fold
-# (inner CV scoring: roc_auc). All models are class-balanced (D7). `null` means None.
+# Model zoo. Grids are searched by GridSearchCV inside each outer training fold
+# (inner CV scoring: roc_auc). All models are class-balanced. `null` means None.
 inner_scoring: roc_auc
 models:
   lr_en:        # C = logspace(-3, 2, 8)
@@ -73,7 +73,7 @@ models:
     dropout: [0.2, 0.5]
     weight_decay: [0.0001, 0.001, 0.01]
 
-# T34: experiment runner. Results go to <output_root>/runs/<experiment>/<unit>/<family_set>/<model>/<feature_config>/.
+# Experiment runner. Results go to <output_root>/runs/<experiment>/<unit>/<family_set>/<model>/<feature_config>/.
 experiments:
   runs_dir: runs               # result store under output_root; smoke runs add a -smoke suffix
   feature_config: norm
@@ -96,14 +96,14 @@ experiments:
       philips_to_siemens:
         train: {role: train_pool, vendor: Philips}
         test: {role: train_pool, vendor: Siemens}
-  E5:                         # external test (T44): all M&Ms-2 NOR/HCM (incl. GE) -> ACDC NOR/HCM
+  E5:                         # external test: all M&Ms-2 NOR/HCM (incl. GE) -> ACDC NOR/HCM
     kind: transfer
     datasets: [mms2, acdc]
     directions:
       mms2_to_acdc:
         train: {dataset: mms2}
         test: {dataset: acdc}
-  GE:                         # GE specificity check (T45): Siemens + Philips pool -> GE subjects
+  GE:                         # GE specificity check: Siemens + Philips pool -> GE subjects
     kind: transfer
     directions:
       pool_to_ge:
@@ -119,11 +119,11 @@ smoke:
     rf: {n_estimators: 50}
     mlp: {max_epochs: 100, patience: 10}
 
-# T42 (E3): vendor probe on normal (NOR) subjects only, with a label-permutation test.
+# E3: vendor probe on normal (NOR) subjects only, with a label-permutation test.
 e3:
   disease: NOR
   targets:
-    three_vendor: [Siemens, Philips, GE]     # primary (D8): chance = 1/3
+    three_vendor: [Siemens, Philips, GE]     # primary: chance = 1/3
     siemens_vs_philips: [Siemens, Philips]   # secondary: the two training vendors
   probes:                                    # name: [feature config, family set]
     clinical: [norm, clinical]

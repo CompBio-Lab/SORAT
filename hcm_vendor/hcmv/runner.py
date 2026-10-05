@@ -1,4 +1,4 @@
-"""Experiment runner and result store (T34).
+"""Experiment runner and result store.
 
 Two primitives:
 

@@ -1,4 +1,4 @@
-"""External checks: E5 on ACDC (T44) and GE specificity (T45).
+"""External checks: E5 on ACDC and GE specificity.
 
 E5: models tuned and refitted on all M&Ms-2 NOR/HCM subjects (n = 135, all three
 vendors) predict the 20 ACDC test subjects (10 NOR, 10 HCM). n = 20 makes every CI

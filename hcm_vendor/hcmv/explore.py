@@ -1,4 +1,4 @@
-"""Data QC and exploratory report (T22): D6 exclusions, Dice QC, missingness,
+"""Data QC and exploratory report: failed-case exclusions, Dice QC, missingness,
 univariate AUCs, vendor effects, correlation structure and PCA."""
 
 import numpy as np
@@ -28,12 +28,12 @@ KEY_CLINICAL = [
     "ed_wall_thickness_mean_mm", "lvef_pct", "mass_to_volume_g_per_ml",
 ]
 
-# D6: failed cases are defined by automated criteria only (Dice is QC, never a filter).
+# Failed cases are defined by automated criteria only (Dice is QC, never a filter).
 MIN_LV_EDV_ML = 20.0
 
 
 def apply_d6(table: pd.DataFrame) -> pd.DataFrame:
-    """Return ``subject_id, reason`` for every subject that fails the D6 criteria."""
+    """Return ``subject_id, reason`` for every subject that fails the failed-case criteria."""
     features = feature_columns(table, FAMILIES)
     reasons = {}
 
@@ -130,10 +130,10 @@ def qc_report(config: dict) -> str:
     tag = config["segmentation_model_tag"].replace("__", "-")
     load = lambda dataset, cfg: pd.read_parquet(tables_dir / f"features_{dataset}_{tag}_{cfg}.parquet")  # noqa: E731
     tables = {(d, c): load(d, c) for d in ("mms2", "acdc") for c in ("norm", "raw")}
-    lines = ["# T22: data QC and exploratory report", "",
+    lines = ["# Data QC and exploratory report", "",
              "Source: nnFormer (fold 0) features. Figures and CSVs are in this folder.", ""]
 
-    # --- D6 exclusions
+    # --- failed-case exclusions
     excluded = []
     for (dataset, cfg), table in tables.items():
         failed = apply_d6(table)
@@ -142,11 +142,11 @@ def qc_report(config: dict) -> str:
         excluded.append(failed)
     excluded = pd.concat(excluded, ignore_index=True)
     excluded.to_csv(out / "d6_excluded.csv", index=False)
-    lines += ["## D6 failed-case exclusions", "",
+    lines += ["## Failed-case exclusions", "",
               "Criteria: missing/NaN features, empty LV or MYO at ED/ES, "
               f"LV EDV < {MIN_LV_EDV_ML:g} ml, LVEF or RVEF outside 0–100%. Dice is QC only.", ""]
     if excluded.empty:
-        lines.append("**No subject fails D6** in any dataset or config, so nothing is excluded.")
+        lines.append("**No subject fails the failed-case criteria** in any dataset or config, so nothing is excluded.")
     else:
         lines.append(md_table(excluded.set_index("subject_id")))
     lines.append("")

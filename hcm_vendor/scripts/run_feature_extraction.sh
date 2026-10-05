@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# T14: re-extract nnFormer features for the study cohort with every named radiomics
+# Re-extract nnFormer features for the study cohort with every named radiomics
 # config in hcm_vendor/configs/study.yaml. Runs the Nextflow FEATURES_ONLY entry
 # once per dataset x config, sequentially (Nextflow runs sharing a launch dir lock).
 #

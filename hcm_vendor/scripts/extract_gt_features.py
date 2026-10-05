@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""T12: extract SORAT features from ground-truth masks for the study cohort.
+"""Extract SORAT features from ground-truth masks for the study cohort.
 
 Runs inside containers/sorat-cinema.sif with the PyRadiomics venv on PYTHONPATH
 (see extract_gt_features.sbatch). Ground-truth labels are canonicalized to the

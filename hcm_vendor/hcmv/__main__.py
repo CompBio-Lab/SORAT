@@ -214,6 +214,24 @@ def cmd_summary(config: dict, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_tables(config: dict, args: argparse.Namespace) -> int:
+    from .final import make_tables
+
+    for name in make_tables(config):
+        print(name)
+    write_manifest(output_dir(config, "tables", "final"), config, "tables")
+    return 0
+
+
+def cmd_figures(config: dict, args: argparse.Namespace) -> int:
+    from .final import make_figures
+
+    for name in make_figures(config):
+        print(name)
+    write_manifest(output_dir(config, "figures"), config, "figures")
+    return 0
+
+
 def cmd_e3_probe(config: dict, args: argparse.Namespace) -> int:
     from .experiments.e3 import e3_report, run_e3, smoke_e3
     from .runner import default_n_jobs, runs_root
@@ -240,22 +258,24 @@ def add_e3_args(parser: argparse.ArgumentParser) -> None:
 COMMANDS = {
     "show-config": (cmd_show_config, "Print the resolved study config and its hash"),
     "manifest": (cmd_manifest, "Write a run manifest (git, config hash, packages)"),
-    "cohort": (cmd_cohort, "Build the study cohort table (T20)"),
-    "make-samplesheets": (cmd_make_samplesheets, "Write SORAT samplesheets for the study cohort (T13)"),
-    "check-features": (cmd_check_features, "T14 checks; --set checks.root=... checks.source=gt for GT"),
+    "cohort": (cmd_cohort, "Build the study cohort table"),
+    "make-samplesheets": (cmd_make_samplesheets, "Write SORAT samplesheets for the study cohort"),
+    "check-features": (cmd_check_features, "Feature-extraction checks; --set checks.root=... checks.source=gt for GT"),
     "radiomics-flags": (cmd_radiomics_flags, "Print Nextflow radiomics flags; --set feature_config=<name>"),
-    "feature-tables": (cmd_feature_tables, "Build nnFormer and GT feature tables (T21)"),
-    "qc-report": (cmd_qc_report, "T22 data QC + exploratory report -> results_hcm_vendor/qc/t22"),
-    "validate-gt": (cmd_validate_gt, "T12 report; --set validation.pred_root=<dir> adds nnFormer-vs-GT"),
-    "run-experiment": (cmd_run_experiment, "Nested CV or transfer runs into the result store (T34)"),
-    "e1-report": (cmd_e1_report, "E1 tables, ROC curves, model comparisons, grid edge check (T40)"),
-    "e2-report": (cmd_e2_report, "E2 transfer metrics, generalization gap, ROC/calibration overlays (T41)"),
-    "e4-report": (cmd_e4_report, "E4 family-set ablation of the cross-vendor gap, raw vs normalized texture (T43)"),
-    "e5-report": (cmd_e5_report, "E5 external ACDC test and GE specificity check (T44, T45)"),
+    "feature-tables": (cmd_feature_tables, "Build nnFormer and GT feature tables"),
+    "qc-report": (cmd_qc_report, "Data QC + exploratory report -> results_hcm_vendor/qc/t22"),
+    "validate-gt": (cmd_validate_gt, "Ground-truth validation report; --set validation.pred_root=<dir> adds nnFormer-vs-GT"),
+    "run-experiment": (cmd_run_experiment, "Nested CV or transfer runs into the result store"),
+    "e1-report": (cmd_e1_report, "E1 tables, ROC curves, model comparisons, grid edge check"),
+    "e2-report": (cmd_e2_report, "E2 transfer metrics, generalization gap, ROC/calibration overlays"),
+    "e4-report": (cmd_e4_report, "E4 family-set ablation of the cross-vendor gap, raw vs normalized texture"),
+    "e5-report": (cmd_e5_report, "E5 external ACDC test and GE specificity check"),
     "texture-check": (cmd_texture_check, "Raw vs normalized texture: vendor shift, HCM effect agreement, reliance"),
-    "shap": (cmd_shap, "SHAP of the E2 models and Siemens-vs-Philips stability (T50)"),
-    "summary": (cmd_summary, "Consolidated results table and hypothesis verdicts -> tables/summary.md (T51)"),
-    "e3-probe": (cmd_e3_probe, "E3 vendor probe on NOR with permutation test, plus its report (T42)"),
+    "shap": (cmd_shap, "SHAP of the E2 models and Siemens-vs-Philips stability"),
+    "summary": (cmd_summary, "Consolidated results table and hypothesis verdicts -> tables/summary.md"),
+    "tables": (cmd_tables, "Final report tables -> results_hcm_vendor/tables/final (run before figures)"),
+    "figures": (cmd_figures, "Final numbered figures (PNG + PDF) -> results_hcm_vendor/figures"),
+    "e3-probe": (cmd_e3_probe, "E3 vendor probe on NOR with permutation test, plus its report"),
 }
 COMMAND_ARGS = {"run-experiment": add_run_experiment_args, "e1-report": add_report_args,
                 "e2-report": add_report_args, "e3-probe": add_e3_args,

@@ -1,4 +1,4 @@
-"""PyTorch multilayer perceptron wrapped as a scikit-learn binary classifier (T32).
+"""PyTorch multilayer perceptron wrapped as a scikit-learn binary classifier.
 
 ``TorchMLPClassifier`` drops into ``build_pipeline`` and ``GridSearchCV`` like any
 sklearn estimator. Inputs are expected to be standardized already (the pipeline's
@@ -8,7 +8,7 @@ Training, all inside the data passed to ``fit`` so it never sees the outer test 
 
 1. Carve a stratified validation split (``val_fraction``) from the training rows.
 2. Train ``Linear -> ReLU -> Dropout`` x len(hidden) -> ``Linear(1)`` with
-   ``BCEWithLogitsLoss(pos_weight=n_neg/n_pos)`` (class balancing, D7) and Adam
+   ``BCEWithLogitsLoss(pos_weight=n_neg/n_pos)`` (class balancing) and Adam
    (L2 penalty via ``weight_decay``), in shuffled mini-batches.
 3. After every epoch, score the validation loss (class-weighted, dropout off). Stop
    after ``patience`` epochs without improvement and restore the best weights.
