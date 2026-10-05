@@ -3,7 +3,8 @@
 ``get_model`` returns an unfitted estimator and a grid whose keys are prefixed
 with ``model__``, ready for ``GridSearchCV(build_pipeline(estimator), grid)``.
 Four families: linear (``lr_en``), kernel (``svm``), tree ensembles (``rf``, ``xgb``)
-and neural (``mlp``, see :mod:`hcmv.mlp`).
+neural (``mlp``, see :mod:`hcmv.mlp`) and a pre-trained transformer (``tabpfn``, TabPFN v2,
+which has no hyperparameters to tune).
 """
 
 import numpy as np
@@ -62,12 +63,18 @@ def _estimator(name: str, seed: int):
                                      eval_metric="logloss", random_state=seed)
     if name == "mlp":
         return TorchMLPClassifier(random_state=seed)
+    if name == "tabpfn":
+        # Pre-trained tabular transformer (TabPFN v2): no training or tuning, predictions come from
+        # in-context learning on the training fold. Imported lazily: it loads torch and its checkpoint.
+        from tabpfn import TabPFNClassifier
+
+        return TabPFNClassifier(device="cpu", random_state=seed, balance_probabilities=True, n_jobs=1)
     raise ValueError(f"Unknown model {name!r}; expected one of {MODEL_NAMES}")
 
 
-MODEL_NAMES = ("lr_en", "svm", "rf", "xgb", "mlp")
+MODEL_NAMES = ("lr_en", "svm", "rf", "xgb", "mlp", "tabpfn")
 # Models whose fit depends on the seed beyond tie-breaking; transfers average them over seeds.
-STOCHASTIC_MODELS = ("rf", "xgb", "mlp")
+STOCHASTIC_MODELS = ("rf", "xgb", "mlp", "tabpfn")
 
 
 # Grid keys of wrapped estimators live one level down (``model__estimator__C``).

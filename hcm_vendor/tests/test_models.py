@@ -30,7 +30,7 @@ def _toy(n=80, seed=0):
 
 def test_grid_sizes_match_ticket(config):
     sizes = {name: grid_size(get_model(name, config)[1]) for name in MODEL_NAMES}
-    assert sizes == {"lr_en": 24, "svm": 20, "rf": 18, "xgb": 16, "mlp": 12}
+    assert sizes == {"lr_en": 24, "svm": 20, "rf": 18, "xgb": 16, "mlp": 12, "tabpfn": 1}
 
 
 def test_grid_values_parse_from_yaml(config):

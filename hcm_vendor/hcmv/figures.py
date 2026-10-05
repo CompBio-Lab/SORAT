@@ -267,12 +267,12 @@ def plot_pca(panels: list, path, suptitle: str) -> None:
 
 # ------------------------------------------------------------------ experiments
 
-MODEL_ORDER = ["lr_en", "svm", "rf", "xgb", "mlp"]
+MODEL_ORDER = ["lr_en", "svm", "rf", "xgb", "mlp", "tabpfn"]
 MODEL_NAMES = {"lr_en": "Elastic-net LR", "svm": "RBF SVM", "rf": "Random forest", "xgb": "XGBoost",
-               "mlp": "MLP"}
+               "mlp": "MLP", "tabpfn": "TabPFN"}
 MODEL_FAMILIES = {"lr_en": "Linear", "svm": "Kernel", "rf": "Tree ensemble", "xgb": "Tree ensemble",
-                  "mlp": "Neural"}
-MODEL_COLOURS = {"lr_en": "#1b9e77", "svm": "#d95f02", "rf": "#7570b3", "xgb": "#e7298a", "mlp": "#66a61e"}
+                  "mlp": "Neural", "tabpfn": "Pre-trained transformer"}
+MODEL_COLOURS = {"lr_en": "#1b9e77", "svm": "#d95f02", "rf": "#7570b3", "xgb": "#e7298a", "mlp": "#66a61e", "tabpfn": "#a6761d"}
 FAMILY_SET_NAMES = {
     "all": "all features",
     "all-no-wt": "all features except wall thickness",

@@ -72,6 +72,7 @@ models:
     hidden: [[32, 16], [64, 32]]
     dropout: [0.2, 0.5]
     weight_decay: [0.0001, 0.001, 0.01]
+  tabpfn: {}    # TabPFN v2 (pre-trained transformer, tabpfn 2.0.9): used as is, nothing tuned
 
 # Experiment runner. Results go to <output_root>/runs/<experiment>/<unit>/<family_set>/<model>/<feature_config>/.
 experiments:
