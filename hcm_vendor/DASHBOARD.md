@@ -16,7 +16,7 @@
   - **The user also submits every SLURM batch job** (set 2026-10-01): the node Claude works on is not a compute node. Give the exact `sbatch` command, run from the repo root; the user submits it and says when it finished.
   - **Work in agreed batches.** Do the batch the user approved, stop at a clean checkpoint (tests green, committed, this block updated), then wait for the user to say continue. Do not roll on into the next batch.
 - **Last completed:** Batch 10 on 2026-10-05: TabPFN as a sixth model. Batch 9 on 2026-10-05: T61 final tables/figures, T63 reproducibility. Batch 8 on 2026-10-05: T41/T42 finalized, T51 summary and verdicts. Batch 7 on 2026-10-03: texture check and T50 SHAP. Batch 6 on 2026-10-03: T43 (E4), T44 (E5), T45 (GE), SVM grid widening. Batch 5 on 2026-10-01: T40 (E1), preliminary T41 (E2) and T42 (E3), plus an SVM probability fix. Batch 4 on 2026-10-01: T32 (PyTorch MLP, passes sklearn's `check_estimator`) and T34 (runner, result store, `run-experiment` CLI, sbatch script; smoke E1/E2 on compute nodes; full E1 ≈ 20 min on 32 cores). Batch 3 on 2026-09-30: T22 (`qc-report`, no D6 exclusions, texture direction reverses between vendors) and T31 (model zoo, grids, one-fold timing). Also the correlation filter now keeps myocardial mass over myo volume. Batch 2: T30, T33 tested. Batch 1: T14, T12, T21. Earlier: T00–T02, T10, T11, T13, T20.
-- **Batch 10 done 2026-10-05; paused at a checkpoint. Wait for the user's go.** TabPFN v2 added as a sixth model (user request) and run through E1, E2, E4 (incl. raw), E5 and GE; reports, summary, final tables and figures regenerated. TabPFN is not in SHAP (compute; offered to the user as a reduced follow-up). Remaining: T62 final report and T60 midterm (on hold until the user asks; D10 format question) and the user's review of the T51 verdicts.
+- **Batch 11 in progress (2026-10-06, user's go): S1 (ground-truth-mask features), S3 (ComBat), S6 (upstream docs PR).** The user signed off the T51 verdicts "as long as they are validated findings". S6: PR #3 opened. S1 jobs (runs-gt store) and S3 job (E2C) submitted; `s1-report` and `s3-report` run after them (job 13250883).
 - **Batch 3 follow-up (2026-09-30):** all figures were redrawn to stand alone (plain titles, units, n per group, legends), and a Siemens-vs-Philips AUC scatter (`auc_agreement_siemens_philips.png`) was added. The `all-no-wt` family set was added (D11), along with `FIGURES.md`.
 - **Planned batches:**
 - **Open questions for the user:** none. The ceiling question was answered by D11.
@@ -89,7 +89,7 @@
 | T44 | **E5** external test on ACDC | 4 Experiments | P1 | Nov 8 | T34 | DONE (2026-10-03) |
 | T45 | GE specificity check | 4 Experiments | P1 | Nov 8 | T34 | DONE (2026-10-03) |
 | T50 | SHAP attributions + Siemens-vs-Philips stability | 5 Interpret | P1 | Nov 14 | T41 | DONE (2026-10-03) |
-| T51 | Statistical comparison summary, hypothesis verdicts | 5 Interpret | P1 | Nov 16 | T43, T44, T45, T50 | DONE (2026-10-05; awaiting user review of verdicts) |
+| T51 | Statistical comparison summary, hypothesis verdicts | 5 Interpret | P1 | Nov 16 | T43, T44, T45, T50 | DONE (2026-10-05; user signed off 2026-10-06) |
 | T61 | Final figures + tables | 6 Deliver | P1 | Nov 20 | T51 | DONE (2026-10-05) |
 | T62 | Final report | 6 Deliver | P0 | Nov 26 | T61 | TODO |
 | T63 | Reproducibility pass (one-command rerun, README, tests green) | 6 Deliver | P1 | Nov 25 | T51 | DONE (2026-10-05; rerun at the final commit) |

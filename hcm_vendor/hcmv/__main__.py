@@ -249,6 +249,22 @@ def add_compare_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--other", required=True, help="Second result store under output_root, e.g. runs-rerun")
 
 
+def cmd_s1_report(config: dict, args: argparse.Namespace) -> int:
+    from .followups import s1_report
+
+    print(s1_report(config))
+    write_manifest(output_dir(config, "followups", "s1_ground_truth"), config, "s1-report")
+    return 0
+
+
+def cmd_s3_report(config: dict, args: argparse.Namespace) -> int:
+    from .followups import s3_report
+
+    print(s3_report(config))
+    write_manifest(output_dir(config, "followups", "s3_combat"), config, "s3-report")
+    return 0
+
+
 def cmd_e3_probe(config: dict, args: argparse.Namespace) -> int:
     from .experiments.e3 import e3_report, run_e3, smoke_e3
     from .runner import default_n_jobs, runs_root
@@ -293,6 +309,8 @@ COMMANDS = {
     "tables": (cmd_tables, "Final report tables -> results_hcm_vendor/tables/final (run before figures)"),
     "figures": (cmd_figures, "Final numbered figures (PNG + PDF) -> results_hcm_vendor/figures"),
     "compare-runs": (cmd_compare_runs, "Compare stored metrics with a rerun store (--other runs-rerun)"),
+    "s1-report": (cmd_s1_report, "Cross-vendor gap with ground-truth vs nnFormer masks (needs runs-gt)"),
+    "s3-report": (cmd_s3_report, "Cross-vendor gap without vs with ComBat harmonization (needs E2C runs)"),
     "e3-probe": (cmd_e3_probe, "E3 vendor probe on NOR with permutation test, plus its report"),
 }
 COMMAND_ARGS = {"run-experiment": add_run_experiment_args, "e1-report": add_report_args,
