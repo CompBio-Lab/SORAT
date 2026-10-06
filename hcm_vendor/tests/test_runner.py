@@ -129,3 +129,17 @@ def test_run_experiment_and_summary(config, monkeypatch):
     assert collect_results(f"{config['paths']['output_root']}/runs-smoke/E1").shape[0] == 4
     run_experiment(config, "E1", ["lr_en", "svm"], ["all", "all-no-wt"], units=["pooled"], log=messages.append)
     assert sum("skipped" in m for m in messages) == 4
+
+
+def test_transfer_with_combat_records_harmonization(config):
+    table = _table()
+    plain = run_transfer(table, {"vendor": "Siemens"}, {"vendor": "Philips"}, "all", "lr_en", config,
+                         experiment="E2", unit="siemens_to_philips")
+    harmonized = run_transfer(table, {"vendor": "Siemens"}, {"vendor": "Philips"}, "all", "lr_en", config,
+                              experiment="E2C", unit="siemens_to_philips", harmonize="combat")
+    spec = json.loads(open(f"{harmonized['dir']}/manifest.json").read())["spec"]
+    assert spec["harmonize"] == "combat"
+    assert "harmonize" not in json.loads(open(f"{plain['dir']}/manifest.json").read())["spec"]
+    a = pd.read_parquet(f"{plain['dir']}/predictions.parquet")
+    b = pd.read_parquet(f"{harmonized['dir']}/predictions.parquet")
+    assert len(a) == len(b) == 20 and not np.allclose(a["prob"], b["prob"])

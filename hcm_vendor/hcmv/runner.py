@@ -263,14 +263,20 @@ def run_nested_cv(table: pd.DataFrame, cohort_filter: dict, family_set: str, mod
 
 def run_transfer(table: pd.DataFrame, train_filter: dict, test_filter: dict, family_set: str, model: str,
                  config: dict, seeds=None, experiment: str = "E2", unit: str = "transfer", n_jobs: int = 1,
-                 force: bool = False, datasets=("mms2",)) -> dict:
-    """Tune and refit on the training cohort, predict the test cohort; returns a status dict."""
+                 force: bool = False, datasets=("mms2",), harmonize: str = None) -> dict:
+    """Tune and refit on the training cohort, predict the test cohort; returns a status dict.
+
+    ``harmonize="combat"`` first harmonizes every feature across vendors with ComBat,
+    fitted on the training and test subjects' features together (no labels).
+    """
     if seeds is None:
         n_seeds = config["experiments"]["transfer_seeds"] if model in STOCHASTIC_MODELS else 1
         seeds = [config["seed"] + i for i in range(n_seeds)]
     seeds = [int(s) for s in seeds]
     spec = run_spec(config, "transfer", experiment, unit, {"train": train_filter, "test": test_filter},
                     family_set, model, seeds=seeds, datasets=datasets)
+    if harmonize:  # only added when used, so existing run hashes stay unchanged
+        spec["harmonize"] = harmonize
     spec_hash = _hash(spec)
     directory = run_dir(config, spec)
     if not force and is_complete(directory, spec_hash):
@@ -280,6 +286,10 @@ def run_transfer(table: pd.DataFrame, train_filter: dict, test_filter: dict, fam
     overlap = set(train.index) & set(test.index)
     if overlap:
         raise ValueError(f"{len(overlap)} subjects are in both train and test, e.g. {sorted(overlap)[:3]}")
+    if harmonize == "combat":
+        train, test = _combat_pair(train, test)
+    elif harmonize:
+        raise ValueError(f"Unknown harmonization {harmonize!r}")
     columns = select_features(train, family_set)
     y_train = train["y"].to_numpy().astype(int)
     y_test = test["y"].to_numpy().astype(int)
@@ -314,6 +324,20 @@ def run_transfer(table: pd.DataFrame, train_filter: dict, test_filter: dict, fam
     return {"status": "done", "dir": str(directory), "wall_s": wall_s}
 
 
+def _combat_pair(train: pd.DataFrame, test: pd.DataFrame):
+    """ComBat-harmonize all feature columns of train and test together, batch = vendor."""
+    from .features import feature_family
+    from .harmonize import combat
+
+    both = pd.concat([train, test])
+    columns = [c for c in both.columns if feature_family(c) is not None]
+    X = both[columns].astype(float)
+    X = X.fillna(X.median())
+    both = both.copy()
+    both[columns] = combat(X, both["vendor"].to_numpy())
+    return both.loc[train.index], both.loc[test.index]
+
+
 # ----------------------------------------------------------------------------- experiments
 def default_n_jobs() -> int:
     return int(os.environ.get("SLURM_CPUS_PER_TASK", "1"))
@@ -340,7 +364,7 @@ def run_experiment(config: dict, experiment: str, models, family_sets=None, unit
                 else:
                     result = run_transfer(table, unit_spec["train"], unit_spec["test"], family_set, model,
                                           config, experiment=experiment, unit=unit, n_jobs=n_jobs, force=force,
-                                          datasets=datasets)
+                                          datasets=datasets, harmonize=spec.get("harmonize"))
                 wall = f" in {result['wall_s']:.0f} s" if "wall_s" in result else ""
                 log(f"{experiment}/{unit}/{family_set}/{model}: {result['status']}{wall}")
                 rows.append({"unit": unit, "family_set": family_set, "model": model, **result})

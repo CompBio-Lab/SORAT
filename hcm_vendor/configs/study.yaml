@@ -97,6 +97,16 @@ experiments:
       philips_to_siemens:
         train: {role: train_pool, vendor: Philips}
         test: {role: train_pool, vendor: Siemens}
+  E2C:                        # E2 after ComBat harmonization across vendors (fitted on features, no labels)
+    kind: transfer
+    harmonize: combat
+    directions:
+      siemens_to_philips:
+        train: {role: train_pool, vendor: Siemens}
+        test: {role: train_pool, vendor: Philips}
+      philips_to_siemens:
+        train: {role: train_pool, vendor: Philips}
+        test: {role: train_pool, vendor: Siemens}
   E5:                         # external test: all M&Ms-2 NOR/HCM (incl. GE) -> ACDC NOR/HCM
     kind: transfer
     datasets: [mms2, acdc]
