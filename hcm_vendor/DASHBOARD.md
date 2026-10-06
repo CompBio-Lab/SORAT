@@ -1071,6 +1071,11 @@ Nested CV runs on each cohort: outer 5×5, inner 5.
 - [ ] Sections: introduction; data (cohort table); methods (SORAT, feature fixes and deviations from the proposal, models, protocol, statistics); results for E1–E5 and SHAP; discussion; limitations; conclusion; AI-use statement (as in the proposal).
 - [ ] Source goes in `hcm_vendor/reports/final/`. Every number is traceable to a result-store file.
 
+**Notes for the limitations section (from a review thread, 2026-10-06; not yet verified here):**
+- E1 fits RF, XGB, MLP and TabPFN with one seed per outer fold, while E2 averages 5 seeds. That is a second small bias in Δ towards transfer, on top of the 4/5-fold training-size one; its size has not been measured.
+- On two of the three GE HCM subjects, nnFormer's ED max wall thickness is about 3 mm below the ground-truth masks (13.4 vs 10.0 mm and 14.6 vs 11.9 mm). These are the two cases every model misses, so segmentation error contributes.
+- SORAT's Dice table may have LV and RV swapped (RV Dice is higher everywhere). Unverified; Dice is QC only and not used in the analysis.
+
 **Acceptance:** the user has signed off; the submission commit is tagged (e.g. `eece568-final`).
 
 ### T63: Reproducibility pass
