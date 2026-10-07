@@ -78,10 +78,11 @@ def compare_gaps(a: tuple, b: tuple, config: dict, metrics=("auc", "specificity"
     return table
 
 
-def _gap_rows(table: pd.DataFrame, label_a: str, label_b: str, names: dict, family_set: str) -> pd.DataFrame:
+def _gap_rows(table: pd.DataFrame, label_a: str, label_b: str, names: dict, family_set: str,
+             metric: str = "auc") -> pd.DataFrame:
     """Long table for plot_gap_forest: one 'family_set' per analysis, with that analysis's gap CI."""
     rows = []
-    t = table[(table.metric == "auc") & (table.family_set == family_set)]
+    t = table[(table.metric == metric) & (table.family_set == family_set)]
     for label in (label_a, label_b):
         for r in t.itertuples():
             rows.append({"direction": r.direction, "model": r.model, "family_set": names[label],
@@ -162,6 +163,19 @@ def s1_report(config: dict) -> str:
     return "\n".join(lines)
 
 
+def s3_figures(table: pd.DataFrame, out) -> None:
+    names = {"raw": "no harmonization", "combat": "ComBat"}
+    for fs in ("all", "clinical"):
+        for metric, label in (("auc", "AUC"), ("specificity", "specificity")):
+            rows = _gap_rows(table, "raw", "combat", names, fs, metric)
+            if len(rows):
+                suffix = "" if metric == "auc" else "_specificity"
+                figures.plot_gap_forest(rows, out / f"s3_gap_{fs}{suffix}.png", metric_name=label,
+                                        labels={v: v for v in names.values()},
+                                        title=f"Cross-vendor {label} gap without vs with ComBat "
+                                              f"({figures.FAMILY_SET_NAMES[fs]})")
+
+
 def s3_report(config: dict) -> str:
     e1 = load_runs(config, "E1")
     e2, e2c = load_runs(config, "E2"), load_runs(config, "E2C")
@@ -170,13 +184,7 @@ def s3_report(config: dict) -> str:
     out = output_dir(config, "followups", "s3_combat")
     table = compare_gaps((e1, e2), (e1, e2c), config, label_a="raw", label_b="combat")
     table.to_csv(out / "s3_gap_without_vs_with_combat.csv", index=False)
-    names = {"raw": "no harmonization", "combat": "ComBat"}
-    for fs in ("all", "clinical"):
-        rows = _gap_rows(table, "raw", "combat", names, fs)
-        if len(rows):
-            figures.plot_gap_forest(rows, out / f"s3_gap_{fs}.png", labels={v: v for v in names.values()},
-                                    title=f"Cross-vendor AUC gap without vs with ComBat "
-                                          f"({figures.FAMILY_SET_NAMES[fs]})")
+    s3_figures(table, out)
     lines = ["# S3: does ComBat harmonization close the cross-vendor gap?", "",
              "Gap Δ = within-vendor (E1) − cross-vendor (E2 without, E2C with ComBat) on the same test subjects. "
              "ΔΔ = Δ(without) − Δ(with ComBat); positive = ComBat narrows the gap. ComBat is fitted on both "

@@ -15,8 +15,8 @@
   - **The user runs every Nextflow pipeline run** on their GPU allocation, which has no internet. Prepare the command; the user runs it and says when the results are ready.
   - **The user also submits every SLURM batch job** (set 2026-10-01): the node Claude works on is not a compute node. Give the exact `sbatch` command, run from the repo root; the user submits it and says when it finished.
   - **Work in agreed batches.** Do the batch the user approved, stop at a clean checkpoint (tests green, committed, this block updated), then wait for the user to say continue. Do not roll on into the next batch.
-- **Last completed:** Batch 10 on 2026-10-05: TabPFN as a sixth model. Batch 9 on 2026-10-05: T61 final tables/figures, T63 reproducibility. Batch 8 on 2026-10-05: T41/T42 finalized, T51 summary and verdicts. Batch 7 on 2026-10-03: texture check and T50 SHAP. Batch 6 on 2026-10-03: T43 (E4), T44 (E5), T45 (GE), SVM grid widening. Batch 5 on 2026-10-01: T40 (E1), preliminary T41 (E2) and T42 (E3), plus an SVM probability fix. Batch 4 on 2026-10-01: T32 (PyTorch MLP, passes sklearn's `check_estimator`) and T34 (runner, result store, `run-experiment` CLI, sbatch script; smoke E1/E2 on compute nodes; full E1 ≈ 20 min on 32 cores). Batch 3 on 2026-09-30: T22 (`qc-report`, no D6 exclusions, texture direction reverses between vendors) and T31 (model zoo, grids, one-fold timing). Also the correlation filter now keeps myocardial mass over myo volume. Batch 2: T30, T33 tested. Batch 1: T14, T12, T21. Earlier: T00–T02, T10, T11, T13, T20.
-- **Batch 11 in progress (2026-10-06, user's go): S1 (ground-truth-mask features), S3 (ComBat), S6 (upstream docs PR).** The user signed off the T51 verdicts "as long as they are validated findings". S6: PR #3 opened. S1 jobs (runs-gt store) and S3 job (E2C) submitted; `s1-report` and `s3-report` run after them (job 13250883).
+- **Last completed:** Batch 11 on 2026-10-07: S1 ground-truth masks, S3 ComBat, S6 docs PR. Batch 10 on 2026-10-05: TabPFN as a sixth model. Batch 9 on 2026-10-05: T61 final tables/figures, T63 reproducibility. Batch 8 on 2026-10-05: T41/T42 finalized, T51 summary and verdicts. Batch 7 on 2026-10-03: texture check and T50 SHAP. Batch 6 on 2026-10-03: T43 (E4), T44 (E5), T45 (GE), SVM grid widening. Batch 5 on 2026-10-01: T40 (E1), preliminary T41 (E2) and T42 (E3), plus an SVM probability fix. Batch 4 on 2026-10-01: T32 (PyTorch MLP, passes sklearn's `check_estimator`) and T34 (runner, result store, `run-experiment` CLI, sbatch script; smoke E1/E2 on compute nodes; full E1 ≈ 20 min on 32 cores). Batch 3 on 2026-09-30: T22 (`qc-report`, no D6 exclusions, texture direction reverses between vendors) and T31 (model zoo, grids, one-fold timing). Also the correlation filter now keeps myocardial mass over myo volume. Batch 2: T30, T33 tested. Batch 1: T14, T12, T21. Earlier: T00–T02, T10, T11, T13, T20.
+- **Batch 11 done 2026-10-07; paused at a checkpoint. Wait for the user's go.** S1, S3 and S6 done (results in the Stretch log). The user signed off the T51 verdicts on 2026-10-06. Remaining: T62 final report and T60 midterm (on hold until the user asks; D10 format question), S2/S4/S5 (not requested), PR #3 review.
 - **Batch 3 follow-up (2026-09-30):** all figures were redrawn to stand alone (plain titles, units, n per group, legends), and a Siemens-vs-Philips AUC scatter (`auc_agreement_siemens_philips.png`) was added. The `all-no-wt` family set was added (D11), along with `FIGURES.md`.
 - **Planned batches:**
 - **Open questions for the user:** none. The ceiling question was answered by D11.
@@ -93,12 +93,12 @@
 | T61 | Final figures + tables | 6 Deliver | P1 | Nov 20 | T51 | DONE (2026-10-05) |
 | T62 | Final report | 6 Deliver | P0 | Nov 26 | T61 | TODO |
 | T63 | Reproducibility pass (one-command rerun, README, tests green) | 6 Deliver | P1 | Nov 25 | T51 | DONE (2026-10-05; rerun at the final commit) |
-| S1 | Rerun E1/E2 on ground-truth-mask features (segmentation vs image shift) | Stretch | P2 | — | T12, T41 | TODO |
+| S1 | Rerun E1/E2 on ground-truth-mask features (segmentation vs image shift) | Stretch | P2 | — | T12, T41 | DONE (2026-10-07) |
 | S2 | Segmenter sensitivity (CineMA ACDC ensemble) | Stretch | P2 | — | T43 | TODO |
-| S3 | Feature harmonization baseline (ComBat) | Stretch | P2 | — | T43 | TODO |
+| S3 | Feature harmonization baseline (ComBat) | Stretch | P2 | — | T43 | DONE (2026-10-07) |
 | S4 | Scanner-level (within-vendor) probe | Stretch | P2 | — | T42 | TODO |
 | S5 | AHA-segment wall thickness | Stretch | P2 | — | T10 | TODO |
-| S6 | Upstream SORAT PR for T10/T11 (separate from analysis code) | Stretch | P2 | — | T14 | TODO |
+| S6 | Upstream SORAT PR for T10/T11 (separate from analysis code) | Stretch | P2 | — | T14 | DONE (2026-10-06; PR #3 open for review) |
 
 ### Timeline
 
@@ -1100,6 +1100,18 @@ Nested CV runs on each cohort: outer 5×5, inner 5.
 ---
 
 ## Stretch (P2, only after T51 is on track)
+
+**Log (2026-10-07):**
+- **S6:** the wall-thickness and radiomics fixes (`acbb1a3`, `412b122`, `77a5dcc`) and their tests were already on `main`, committed directly. What was missing was documentation, so S6 became a README-only PR: [CompBio-Lab/SORAT#3](https://github.com/CompBio-Lab/SORAT/pull/3) (branch `sorat-feature-docs`, built from `main` without the user's uncommitted README edits) adds every `--feature_extraction.*` option to the parameter table and an "Extracted Features" section (in-plane wall thickness, radiomics defaults, harmonized example, warning about whole-image normalization).
+- **S1 (ground-truth masks):** `--set experiments.source=gt --set experiments.runs_dir=runs-gt` for E1, E2 (five family sets, six models) and E3 (jobs 13250723–13250725; GT E1 took 6 h 52 min), then `hcmv s1-report` → `results_hcm_vendor/followups/s1_ground_truth/`.
+  - **The gap is larger with manual masks, not smaller.** All features, ΔAUC Siemens→Philips: RF −0.008 (nnFormer) vs +0.304 (ground truth), XGB −0.005 vs +0.184, TabPFN +0.005 vs +0.169; Philips→Siemens LR-EN −0.006 vs +0.238, MLP +0.244 vs +0.379. ΔΔ (nnFormer − GT) is negative and significant after Holm for most models with texture. Clinical-only gaps stay ≈ 0 on both (largest +0.042).
+  - **E3 on ground-truth features:** clinical (0.64) and shape (0.63) features now identify the vendor above chance, unlike with nnFormer (0.39, 0.43); texture is similar (0.91–0.99).
+  - **E1 pooled AUC is lower with manual masks** (0.93–0.98 vs 0.95–1.00).
+  - Interpretation (inferred): one automatic segmenter applied to every scan gives more consistent geometry than manual contours made at different sites, whose conventions differ by vendor. So nnFormer is not the source of the gap; it reduces it. The remaining nnFormer gap comes from the images (texture).
+- **S3 (ComBat):** `hcmv/harmonize.py` (own empirical-Bayes ComBat, no covariates), `run_transfer(harmonize="combat")`, experiment `E2C` (job 13250881), then `hcmv s3-report` → `results_hcm_vendor/followups/s3_combat/`.
+  - **ComBat fixes most of the specificity collapse but not the ranking loss.** Δspecificity Siemens→Philips, all features: LR-EN 0.69 → 0.35, SVM 0.81 → 0.24, MLP 0.83 → 0.29 (p_Holm < 0.0005); Philips→Siemens MLP 0.82 → 0.05.
+  - **ΔAUC barely changes**, except the MLP Siemens→Philips (clinical+texture 0.317 → 0.146; all 0.195 → 0.122, p_Holm < 0.0005). Trees and TabPFN get very slightly worse (+0.01 to +0.05, n.s.).
+  - Clinical-only: ComBat slightly lowers specificity Siemens→Philips (Δ +0.14 worse), consistent with it removing part of each vendor's disease mix (no disease covariate is possible without the test labels).
 
 - **S1: ground-truth-mask features as a reference.** Rerun E1 and E2 (and E3) on the T12 ground-truth features. The comparison separates how much of Δ and of the vendor signal comes from *segmentation* differences and how much from *image* differences. This is high value, and most of the data already exists from T12.
 - **S2: segmenter sensitivity.** Repeat E1 and E2 with CineMA ACDC-ensemble features. That needs a T14-style re-extraction. Exclude the `cinema__mnms*` models: M&Ms-1 and M&Ms-2 training data overlap the M&Ms-2 NOR/HCM subjects, so they leak.
