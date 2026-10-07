@@ -221,6 +221,17 @@ Weight: 70
 | `--feature_extraction.require_virtualenv` | `false` | If `true`, fail fast unless `--feature_extraction.virtualenv_path` is provided and valid |
 | `--feature_extraction.samplesheet` | `null` | Optional samplesheet override for `-entry FEATURES_ONLY` |
 | `--feature_extraction.results_dir` | `null` | Existing results directory to read segmentations from in `-entry FEATURES_ONLY` |
+| `--feature_extraction.output_dir` | `null` | Directory for the feature CSVs. When unset, features go to `<results_dir>/features/raw` (or `features/postprocessed`), i.e. inside the source results directory |
+| `--feature_extraction.model_tag` | `null` | Exact model tag(s) to extract features for, comma-separated (e.g. `nnformer__fold0`) |
+| `--feature_extraction.seed` | `ensemble` | Variant choice when `model_tag` is unset: `ensemble`, `all`, or a seed such as `seed0` |
+| `--feature_extraction.radiomics.normalize` | `false` | Z-score the image before radiomics (PyRadiomics `normalize`; uses the whole image, not just the mask) |
+| `--feature_extraction.radiomics.normalize_scale` | `null` | Scale applied after normalization (PyRadiomics `normalizeScale`, e.g. `100`) |
+| `--feature_extraction.radiomics.remove_outliers` | `null` | Clip normalized intensities beyond N standard deviations (`removeOutliers`) |
+| `--feature_extraction.radiomics.bin_count` | `null` | Fixed number of grey-level bins (`binCount`); mutually exclusive with `bin_width` |
+| `--feature_extraction.radiomics.bin_width` | `null` | Grey-level bin width (`binWidth`; PyRadiomics default 25) |
+| `--feature_extraction.radiomics.resample_spacing` | `null` | Resample to `'x,y,z'` mm before extraction; `0` keeps that axis (e.g. `'1.25,1.25,0'`) |
+| `--feature_extraction.radiomics.force2d` | `false` | Compute texture per slice in 2-D (`force2D`) |
+| `--feature_extraction.radiomics.force2d_dimension` | `0` | Axis treated as the slice axis when `force2d` is on (`force2Ddimension`) |
 | `--slurm_max_forks` | `30` | Maximum concurrent task submissions in `slurm` profile |
 | `--slurm_queue_size` | `64` | Max tasks queued/submitted to executor at once |
 | `--slurm_submit_rate` | `50/1min` | Submission throttling rate to reduce scheduler pressure |
@@ -371,6 +382,36 @@ Important compatibility note:
 - `EXTRACT_FEATURES` keeps the container Python interpreter and only adds venv `site-packages` via `PYTHONPATH`.
 - Do not rely on `source <venv>/bin/activate` inside container tasks.
 - Your virtualenv must have `site-packages` for the same Python major.minor as the container runtime.
+
+### Extracted Features
+
+Each feature CSV holds one row per mask and phase (ED or ES):
+- **Volumes and mass:** LV, RV and myocardial volume (ml) and myocardial mass (g, volume × 1.05 g/ml).
+- **Wall thickness** (`wall_thickness_mean_mm`, `_max_mm`, `_p95_mm`): measured in-plane, slice by slice, because
+  short-axis stacks are strongly anisotropic. In each slice, endocardial samples are myocardium pixels 4-connected to
+  the LV cavity; thickness at a sample is its in-plane distance (mm) to the nearest pixel that is neither myocardium
+  nor LV. The RV counts as exterior, so the septum is measured to its RV border. Mean, max and 95th percentile are
+  taken over all samples in all slices. Earlier versions measured in 3-D and treated the RV as wall, which inflated
+  values to about 22 mm in normal hearts.
+- **Radiomics** on the myocardium mask: shape, first-order and GLCM features from PyRadiomics.
+
+The radiomics defaults reproduce the original runs (no normalization, bin width 25, 3-D, native spacing). For
+comparisons across scanners a harmonized setup is available, for example:
+
+```bash
+nextflow run main.nf -entry FEATURES_ONLY ... \
+    --feature_extraction.radiomics.normalize true \
+    --feature_extraction.radiomics.normalize_scale 100 \
+    --feature_extraction.radiomics.bin_count 32 \
+    --feature_extraction.radiomics.resample_spacing '1.25,1.25,0' \
+    --feature_extraction.radiomics.force2d true \
+    --feature_extraction.output_dir /path/to/features_norm
+```
+
+Note that `normalize` z-scores against the whole image, whose content (blood pool, background, field of view)
+differs between scanners, so normalized texture features are not automatically comparable across vendors; check
+them on your data before relying on them. Set `--feature_extraction.output_dir` explicitly so a new configuration
+does not overwrite features inside an existing results directory.
 
 ## Output Structure
 
