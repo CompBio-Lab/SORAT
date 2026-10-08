@@ -221,6 +221,19 @@ Weight: 70
 | `--feature_extraction.require_virtualenv` | `false` | If `true`, fail fast unless `--feature_extraction.virtualenv_path` is provided and valid |
 | `--feature_extraction.samplesheet` | `null` | Optional samplesheet override for `-entry FEATURES_ONLY` |
 | `--feature_extraction.results_dir` | `null` | Existing results directory to read segmentations from in `-entry FEATURES_ONLY` |
+| `--feature_extraction.output_dir` | `null` | Directory for the feature CSVs. When unset, `-entry FEATURES_ONLY` writes to this run's `<outdir>/features/raw` (or `features/postprocessed`), never into `--feature_extraction.results_dir`; the main workflow writes under its results directory |
+| `--feature_extraction.model_tag` | `null` | Exact model tag(s) to extract features for, comma-separated (e.g. `nnformer__fold0`) |
+| `--feature_extraction.seed` | `ensemble` | Variant choice when `model_tag` is unset: `ensemble`, `all`, or a seed such as `seed0` |
+| `--feature_extraction.radiomics.normalize` | `false` | Z-score the image before radiomics (PyRadiomics `normalize`; uses the whole image, not just the mask) |
+| `--feature_extraction.radiomics.normalize_scale` | `null` | Scale applied after normalization (PyRadiomics `normalizeScale`, e.g. `100`) |
+| `--feature_extraction.radiomics.remove_outliers` | `null` | Clip normalized intensities beyond N standard deviations (`removeOutliers`) |
+| `--feature_extraction.radiomics.bin_count` | `null` | Fixed number of grey-level bins (`binCount`); mutually exclusive with `bin_width` |
+| `--feature_extraction.radiomics.bin_width` | `null` | Grey-level bin width (`binWidth`; PyRadiomics default 25) |
+| `--feature_extraction.radiomics.resample_spacing` | `null` | Resample to `'x,y,z'` mm before extraction; `0` keeps that axis (e.g. `'1.25,1.25,0'`) |
+| `--feature_extraction.radiomics.force2d` | `false` | Compute texture per slice in 2-D (`force2D`) |
+| `--feature_extraction.radiomics.force2d_dimension` | `0` | Axis treated as the slice axis when `force2d` is on (`force2Ddimension`) |
+| `--feature_extraction.radiomics.intensity_reference` | `null` | `lv_bloodpool`: divide each image by the mean intensity of its LV blood pool (× `intensity_reference_scale`, default 100) before radiomics; an alternative to `normalize`, which uses the whole image |
+| `--feature_extraction.radiomics.intensity_reference_scale` | `null` | Value given to the reference tissue's mean intensity (default 100) |
 | `--slurm_max_forks` | `30` | Maximum concurrent task submissions in `slurm` profile |
 | `--slurm_queue_size` | `64` | Max tasks queued/submitted to executor at once |
 | `--slurm_submit_rate` | `50/1min` | Submission throttling rate to reduce scheduler pressure |
@@ -298,7 +311,7 @@ nextflow run main.nf \
 Use `-entry FEATURES_ONLY` to read existing segmentation masks from a previous run and produce feature CSVs without rerunning preprocess/segmentation.
 
 Important path split:
-- `--feature_extraction.results_dir` points to an existing completed SORAT results directory that already has segmentation files.
+- `--feature_extraction.results_dir` points to an existing completed SORAT results directory that already has segmentation files. Features are written to this run's `--outdir` (under `features/`), not into that directory.
 - `--outdir` is where this new isolated run writes its outputs (`features/`, `pipeline_info/`, etc.).
 
 #### Example: Use direct model predictions
@@ -371,6 +384,38 @@ Important compatibility note:
 - `EXTRACT_FEATURES` keeps the container Python interpreter and only adds venv `site-packages` via `PYTHONPATH`.
 - Do not rely on `source <venv>/bin/activate` inside container tasks.
 - Your virtualenv must have `site-packages` for the same Python major.minor as the container runtime.
+
+### Extracted Features
+
+Each feature CSV holds one row per mask and phase (ED or ES):
+- **Volumes and mass:** LV, RV and myocardial volume (ml) and myocardial mass (g, volume × 1.05 g/ml).
+- **Wall thickness** (`wall_thickness_mean_mm`, `_max_mm`, `_p95_mm`): measured in-plane, slice by slice, because
+  short-axis stacks are strongly anisotropic. In each slice, endocardial samples are myocardium pixels 4-connected to
+  the LV cavity; thickness at a sample is its in-plane distance (mm) to the nearest pixel that is neither myocardium
+  nor LV. The RV counts as exterior, so the septum is measured to its RV border. Mean, max and 95th percentile are
+  taken over all samples in all slices. Earlier versions measured in 3-D and treated the RV as wall, which inflated
+  values to about 22 mm in normal hearts.
+- **Radiomics** on the myocardium mask: shape, first-order and GLCM features from PyRadiomics.
+
+The radiomics defaults reproduce the original runs (no normalization, bin width 25, 3-D, native spacing). For
+comparisons across scanners a harmonized setup is available, for example:
+
+```bash
+nextflow run main.nf -entry FEATURES_ONLY ... \
+    --feature_extraction.radiomics.normalize true \
+    --feature_extraction.radiomics.normalize_scale 100 \
+    --feature_extraction.radiomics.bin_count 32 \
+    --feature_extraction.radiomics.resample_spacing '1.25,1.25,0' \
+    --feature_extraction.radiomics.force2d true \
+    --feature_extraction.output_dir /path/to/features_norm
+```
+
+`--feature_extraction.radiomics.intensity_reference lv_bloodpool` (with `normalize` off) instead expresses intensities relative to the LV blood pool of the same image, a tissue present in every short-axis cine.
+
+Note that `normalize` z-scores against the whole image, whose content (blood pool, background, field of view)
+differs between scanners, so normalized texture features are not automatically comparable across vendors; check
+them on your data before relying on them. Set `--feature_extraction.output_dir` explicitly so a new configuration
+does not overwrite features inside an existing results directory.
 
 ## Output Structure
 

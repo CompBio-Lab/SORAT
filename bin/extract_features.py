@@ -277,15 +277,26 @@ def build_radiomics_settings(
     force2d: bool = False,
     force2d_dimension: int = 0,
     remove_outliers: Optional[float] = None,
+    intensity_reference: Optional[str] = None,
+    intensity_reference_scale: Optional[float] = None,
 ) -> dict:
     """Translate CLI options into PyRadiomics extractor settings.
 
     Only non-default options are included, so an empty dict reproduces the
     PyRadiomics defaults used by earlier SORAT runs (no normalization,
     binWidth 25, 3-D texture, native spacing).
+
+    ``intensity_reference`` is not a PyRadiomics setting: it is recorded here as
+    ``intensityReference`` (and ``intensityReferenceScale``) and applied by
+    ``normalize_to_reference`` before PyRadiomics runs.
     """
     if bin_count is not None and bin_width is not None:
         raise ValueError("Use either a radiomics bin count or a bin width, not both")
+    if intensity_reference is not None and intensity_reference not in INTENSITY_REFERENCES:
+        raise ValueError(f"Unknown intensity reference {intensity_reference!r}; "
+                         f"expected one of {sorted(INTENSITY_REFERENCES)}")
+    if intensity_reference is not None and normalize:
+        raise ValueError("Use either PyRadiomics normalize or an intensity reference, not both")
 
     settings = {}
     if normalize:
@@ -303,7 +314,42 @@ def build_radiomics_settings(
     if force2d:
         settings["force2D"] = True
         settings["force2Ddimension"] = int(force2d_dimension)
+    if intensity_reference is not None:
+        settings["intensityReference"] = intensity_reference
+        settings["intensityReferenceScale"] = float(
+            intensity_reference_scale if intensity_reference_scale is not None else 100.0)
     return settings
+
+
+# Labels whose mean intensity can serve as the per-image intensity reference.
+INTENSITY_REFERENCES = {"lv_bloodpool": "LV"}
+REFERENCE_KEYS = ("intensityReference", "intensityReferenceScale")
+
+
+def normalize_to_reference(image_img: sitk.Image, mask_arr: np.ndarray, reference: str = "lv_bloodpool",
+                           scale: float = 100.0) -> sitk.Image:
+    """Express intensities relative to a reference tissue in the same image.
+
+    Each voxel is divided by the mean intensity of the reference label (the LV blood
+    pool for ``lv_bloodpool``) and multiplied by ``scale``, so 100 means "as bright as
+    the blood pool". Unlike PyRadiomics ``normalize``, which z-scores against the whole
+    image (whose content depends on the field of view, background and anatomy), the
+    reference is a tissue present in every short-axis cine at the same phase.
+    """
+    if reference not in INTENSITY_REFERENCES:
+        raise ValueError(f"Unknown intensity reference {reference!r}")
+    arr = sitk.GetArrayFromImage(image_img).astype(np.float32)
+    if arr.shape != mask_arr.shape:
+        raise ValueError(f"Image {arr.shape} and mask {mask_arr.shape} grids differ")
+    region = mask_arr == LABEL_LV
+    if not np.any(region):
+        raise ValueError("Intensity reference region (LV blood pool) is empty")
+    ref = float(np.mean(arr[region]))
+    if not np.isfinite(ref) or ref <= 0:
+        raise ValueError(f"Intensity reference mean must be positive, got {ref}")
+    out = sitk.GetImageFromArray(arr / ref * float(scale))
+    out.CopyInformation(image_img)
+    return out
 
 
 def extract_radiomics_features(
@@ -314,7 +360,8 @@ def extract_radiomics_features(
     # in runtimes without PyRadiomics.
     from radiomics import featureextractor
 
-    extractor = featureextractor.RadiomicsFeatureExtractor(**(settings or {}))
+    settings = {k: v for k, v in (settings or {}).items() if k not in REFERENCE_KEYS}
+    extractor = featureextractor.RadiomicsFeatureExtractor(**settings)
     extractor.disableAllFeatures()
     extractor.enableFeatureClassByName("shape")
     extractor.enableFeatureClassByName("firstorder")
@@ -374,6 +421,10 @@ def compute_phase_features(
 
     # Radiomics extraction can fail for empty or malformed MYO regions; keep pipeline robust.
     try:
+        reference = (radiomics_settings or {}).get("intensityReference")
+        if reference:
+            image_phase = normalize_to_reference(
+                image_phase, mask_arr, reference, (radiomics_settings or {}).get("intensityReferenceScale", 100.0))
         features.update(extract_radiomics_features(image_phase, mask_img, radiomics_settings))
     except Exception as exc:
         features["radiomics_error"] = str(exc)
@@ -474,6 +525,14 @@ def parse_args() -> argparse.Namespace:
         help="Array axis treated as the slice direction for --radiomics_force2d (0 = z)",
     )
     parser.add_argument(
+        "--radiomics_intensity_reference", choices=["lv_bloodpool"], default=None,
+        help="Divide intensities by the mean of a reference tissue (LV blood pool) before radiomics",
+    )
+    parser.add_argument(
+        "--radiomics_intensity_reference_scale", type=float, default=None,
+        help="Value assigned to the reference tissue's mean intensity (default 100)",
+    )
+    parser.add_argument(
         "--output_csv",
         default=None,
         help="Output CSV path (default: [patient_id]_features.csv)",
@@ -496,6 +555,8 @@ def main() -> None:
         force2d=args.radiomics_force2d,
         force2d_dimension=args.radiomics_force2d_dimension,
         remove_outliers=args.radiomics_remove_outliers,
+        intensity_reference=args.radiomics_intensity_reference,
+        intensity_reference_scale=args.radiomics_intensity_reference_scale,
     )
 
     image_path = Path(args.image)

@@ -1232,7 +1232,10 @@ workflow FEATURES_ONLY {
     def results_dir = file(params.feature_extraction.results_dir ?: params.outdir).toAbsolutePath().toString()
     def selectedMaskSource = resolveFeatureMaskSource('FEATURES_ONLY')
     def selectedModels = selectPreferredFeatureModels(results_dir, models_to_run, 'FEATURES_ONLY')
-    params.feature_extraction.output_dir = normalizeOptionalPath(params.feature_extraction.output_dir) ?: resolveFeatureOutputDir(results_dir, selectedMaskSource)
+    // Default to this run's --outdir, so a FEATURES_ONLY run never writes into the
+    // results directory it reads segmentations from.
+    def featureOutRoot = file(params.outdir).toAbsolutePath().toString()
+    params.feature_extraction.output_dir = normalizeOptionalPath(params.feature_extraction.output_dir) ?: resolveFeatureOutputDir(featureOutRoot, selectedMaskSource)
 
     if (params.eta.enabled as boolean) {
         def etaUnits = Math.max(1, countSamplesheetRows(samplesheet_path) * estimateRequestedModelCount(models_to_run))

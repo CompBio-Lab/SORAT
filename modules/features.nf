@@ -34,6 +34,8 @@ process EXTRACT_FEATURES {
         isSet(radiomics.bin_width) ? "--radiomics_bin_width ${radiomics.bin_width}" : "",
         isSet(radiomics.resample_spacing) ? "--radiomics_resample_spacing '${radiomics.resample_spacing}'" : "",
         isTrue(radiomics.force2d) ? "--radiomics_force2d --radiomics_force2d_dimension ${radiomics.force2d_dimension ?: 0}" : "",
+        isSet(radiomics.intensity_reference) ? "--radiomics_intensity_reference ${radiomics.intensity_reference}" : "",
+        isSet(radiomics.intensity_reference_scale) ? "--radiomics_intensity_reference_scale ${radiomics.intensity_reference_scale}" : "",
     ].findAll { it }.join(' ')
     """
     # Optional: use packages from a pre-built virtualenv while keeping container python.
