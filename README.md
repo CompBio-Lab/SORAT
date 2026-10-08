@@ -210,6 +210,7 @@ Weight: 70
 | `--compare` | `true` | Generate comparison report |
 | `--inference_only` | `false` | Run inference only (skip metrics + report generation) |
 | `--evaluation.label_schema` | `architecture_default` | Evaluation contract; use `atrial_binary_union` when a binary biatrial reference is compared with atrial labels 1--3 collapsed to foreground |
+| `--evaluation.gt_label_map` | `auto` | Raw ventricular GT labels, e.g. `rv=1,myo=2,lv=3` (ACDC) or `lv=1,myo=2,rv=3` (M&Ms, M&Ms-2). `auto` infers them from anatomy and logs a warning when the inference is ambiguous |
 | `--debug` | `false` | Generate debug analytics report (execution/runtime/GPU/scalability/success + scientific utility metrics) |
 | `--postprocess.enabled` | `false` | Enable optional LV-intensity postprocessing (LV dark regions -> MYO) |
 | `--postprocess.use_for_metrics` | `true` | If postprocess enabled, compute metrics on corrected segmentations |

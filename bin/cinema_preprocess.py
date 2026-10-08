@@ -12,12 +12,12 @@ import argparse
 import json
 from pathlib import Path
 try:
-    from frame_manifest import build_frame_manifest, write_manifest
+    from frame_manifest import build_frame_manifest, verify_frame_references, write_manifest
 except ImportError:
     import os as _os
     import sys as _sys
     _sys.path.insert(0, _os.getcwd())
-    from frame_manifest import build_frame_manifest, write_manifest  # noqa: F401
+    from frame_manifest import build_frame_manifest, verify_frame_references, write_manifest  # noqa: F401
 
 import numpy as np
 import SimpleITK as sitk
@@ -198,12 +198,13 @@ def preprocess_patient(
     # Build frame manifest (handles ED/ES vs all-frames logic)
     manifest = build_frame_manifest(
         info_cfg_path=info_cfg,
-        num_frames=array_4d.shape[-1],
+        num_frames=array_4d.shape[0],  # (t, z, y, x)
         patient_id=patient_id,
         frames_mode=frames_mode,
         max_frames=max_frames,
         ground_truth_path=ground_truth,
     )
+    verify_frame_references(input_path, manifest, patient_id)
     original_spacing = image_4d.GetSpacing()[:3]
     # Capture the original image geometry so segmentation predictions can be
     # resampled back into the original coordinate space downstream (matching
