@@ -532,7 +532,8 @@ def plot_external_roc(curves: dict, path, title: str) -> None:
 
 def plot_texture_effect_agreement(features: pd.DataFrame, path) -> None:
     """Per texture feature: HCM effect (Cohen's d) on Siemens vs Philips, one panel per radiomics config."""
-    configs = [c for c in ("norm", "raw") if c in set(features["feature_config"])]
+    configs = [c for c in ("norm", "raw", "ref") if c in set(features["feature_config"])]
+    titles = {"norm": "Normalized", "raw": "Raw", "ref": "Blood-pool reference"}
     fig, axes = plt.subplots(1, len(configs), figsize=(5.2 * len(configs), 5.2), squeeze=False, sharex=True,
                              sharey=True)
     for ax, cfg in zip(axes[0], configs):
@@ -545,7 +546,7 @@ def plot_texture_effect_agreement(features: pd.DataFrame, path) -> None:
         ax.scatter(f.loc[~same, "d_hcm_siemens"], f.loc[~same, "d_hcm_philips"], s=20, c="#d95f02", alpha=0.8,
                    label=f"opposite direction ({(~same).sum()} of {len(f)})")
         shift = f["shift_siemens_to_philips"].abs().median()
-        ax.set_title(f"{'Normalized' if cfg == 'norm' else 'Raw'} texture\n"
+        ax.set_title(f"{titles[cfg]} texture\n"
                      f"median vendor shift {shift:.1f} SD", fontsize=10)
         ax.set_xlabel("HCM effect on Siemens (Cohen's d)")
         ax.legend(fontsize=8, loc="upper left")

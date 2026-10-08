@@ -28,7 +28,9 @@ from .e2 import DIRECTIONS, _aligned, gap_table
 
 ABLATION_SETS = ("clinical", "clinical+shape", "clinical+texture", "all")
 TEXTURE_SETS = ("clinical+texture", "all")
-CONFIGS = ("norm", "raw")
+CONFIGS = ("norm", "raw", "ref")
+ALT_CONFIGS = ("raw", "ref")  # compared with norm
+CONFIG_LABELS = {"norm": "normalized", "raw": "raw", "ref": "blood-pool reference"}
 
 
 def _gap_inputs(e1: dict, e2: dict, direction: str, family_set: str, model: str):
@@ -82,14 +84,15 @@ def contrasts(e1: dict, e2: dict, config: dict) -> pd.DataFrame:
                 rows.append({"contrast": "family vs clinical", "direction": direction, "model": model,
                              "a": f"{family_set} (norm)", "b": "clinical (norm)",
                              **gap_difference(other, base, config)})
-            for family_set in TEXTURE_SETS:
-                norm = _gap_inputs(e1["norm"], e2["norm"], direction, family_set, model)
-                raw = _gap_inputs(e1.get("raw", {}), e2.get("raw", {}), direction, family_set, model)
-                if norm is None or raw is None:
-                    continue
-                rows.append({"contrast": "raw vs norm", "direction": direction, "model": model,
-                             "a": f"{family_set} (raw)", "b": f"{family_set} (norm)",
-                             **gap_difference(raw, norm, config)})
+            for alt in ALT_CONFIGS:
+                for family_set in TEXTURE_SETS:
+                    norm = _gap_inputs(e1["norm"], e2["norm"], direction, family_set, model)
+                    other = _gap_inputs(e1.get(alt, {}), e2.get(alt, {}), direction, family_set, model)
+                    if norm is None or other is None:
+                        continue
+                    rows.append({"contrast": f"{alt} vs norm", "direction": direction, "model": model,
+                                 "a": f"{family_set} ({alt})", "b": f"{family_set} (norm)",
+                                 **gap_difference(other, norm, config)})
     table = pd.DataFrame(rows)
     if len(table):
         table["p_holm"] = np.nan
@@ -102,8 +105,8 @@ def e4_report(config: dict) -> str:
     e1 = {cfg: load_runs(config, "E1", cfg) for cfg in CONFIGS}
     e2 = {cfg: load_runs(config, "E2", cfg) for cfg in CONFIGS}
     keep = lambda runs, sets: {k: v for k, v in runs.items() if k[1] in sets}  # noqa: E731
-    e1 = {"norm": keep(e1["norm"], ABLATION_SETS), "raw": keep(e1["raw"], TEXTURE_SETS)}
-    e2 = {"norm": keep(e2["norm"], ABLATION_SETS), "raw": keep(e2["raw"], TEXTURE_SETS)}
+    e1 = {cfg: keep(runs, ABLATION_SETS if cfg == "norm" else TEXTURE_SETS) for cfg, runs in e1.items()}
+    e2 = {cfg: keep(runs, ABLATION_SETS if cfg == "norm" else TEXTURE_SETS) for cfg, runs in e2.items()}
     if not e2["norm"]:
         raise FileNotFoundError("No E2 runs for the ablation family sets")
     out = analysis_dir(config, "E4")
@@ -127,10 +130,10 @@ def e4_report(config: dict) -> str:
                             title="Cross-vendor AUC gap by feature family (normalized texture)")
     texture = auc_gap[auc_gap.family_set.isin(TEXTURE_SETS)].copy()
     texture["family_set"] = texture["family_set"] + " | " + texture["feature_config"]
-    labels = {f"{s} | {c}": f"{figures.FAMILY_SET_NAMES[s]}, {'raw' if c == 'raw' else 'normalized'} texture"
+    labels = {f"{s} | {c}": f"{figures.FAMILY_SET_NAMES[s]}, {CONFIG_LABELS[c]} texture"
               for s in TEXTURE_SETS for c in CONFIGS}
     figures.plot_gap_forest(texture.sort_values("family_set"), out / "e4_gap_auc_raw_vs_norm.png", labels=labels,
-                            title="Cross-vendor AUC gap: raw vs normalized texture")
+                            title="Cross-vendor AUC gap by texture preprocessing")
 
     lines = ["# E4: feature-family ablation", "",
              "Δ = AUC within the test vendor (E1 nested CV) − AUC trained on the other vendor (E2), on the same "

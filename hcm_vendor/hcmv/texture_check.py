@@ -1,7 +1,7 @@
 """Why does normalized texture transfer across vendors worse than raw texture?
 
 For the texture features of the M&Ms-2 train pool (Siemens + Philips) under each
-radiomics config (``norm`` and ``raw``), this measures:
+radiomics config (``norm``, ``raw`` and ``ref``, the blood-pool reference), this measures:
 
 1. **Vendor shift:** for every texture feature, how far the other vendor's NOR mean
    lies from the training vendor's NOR mean, in SDs of the training vendor's NOR
@@ -34,7 +34,7 @@ from .preprocessing import build_preprocessor, select_features
 from .qc import md_table
 from .stats import fast_auc
 
-CONFIGS = ("norm", "raw")
+CONFIGS = ("norm", "raw", "ref")
 VENDORS = ("Siemens", "Philips")
 
 
