@@ -1027,11 +1027,6 @@ workflow {
                 meta?.architecture != 'atrial_nnunet'
             }
 
-        ch_atrial_segmentations = ch_all_segmentations
-            .filter { patient_id, model, frame_tag, frame_idx, seg, meta ->
-                meta?.architecture == 'atrial_nnunet'
-            }
-
         ch_postprocess_inputs = ch_postprocess_candidates
             .combine(ch_input_context, by: 0)
             .map { patient_id, model, frame_tag, frame_idx, seg, meta, image_path, gt_path, info_cfg ->
@@ -1043,12 +1038,16 @@ workflow {
 
         POSTPROCESS_LV_MYO(ch_postprocess_inputs)
 
+        // Raw model output is always scored. Post-processed masks are scored in
+        // addition, under '<model>_pp', so the two are never mixed in one row.
         if (params.postprocess.use_for_metrics) {
-            ch_segmentations_for_metrics = POSTPROCESS_LV_MYO.out.segmentations
-                .map { patient_id, model, frame_tag, frame_idx, seg, meta_pp, image_path, info_cfg ->
-                    [ patient_id, model, frame_tag, frame_idx, seg, meta_pp ]
-                }
-                .mix(ch_atrial_segmentations)
+            ch_segmentations_for_metrics = ch_all_segmentations
+                .mix(
+                    POSTPROCESS_LV_MYO.out.segmentations
+                        .map { patient_id, model, frame_tag, frame_idx, seg, meta_pp, image_path, info_cfg ->
+                            [ patient_id, "${model}_pp".toString(), frame_tag, frame_idx, seg, meta_pp ]
+                        }
+                )
         }
 
         VISUALIZE_POSTPROCESS_DELTA(POSTPROCESS_LV_MYO.out.before_after)

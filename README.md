@@ -213,7 +213,7 @@ Weight: 70
 | `--evaluation.gt_label_map` | `auto` | Raw ventricular GT labels, e.g. `rv=1,myo=2,lv=3` (ACDC) or `lv=1,myo=2,rv=3` (M&Ms, M&Ms-2). `auto` infers them from anatomy and logs a warning when the inference is ambiguous |
 | `--debug` | `false` | Generate debug analytics report (execution/runtime/GPU/scalability/success + scientific utility metrics) |
 | `--postprocess.enabled` | `false` | Enable optional LV-intensity postprocessing (LV dark regions -> MYO) |
-| `--postprocess.use_for_metrics` | `true` | If postprocess enabled, compute metrics on corrected segmentations |
+| `--postprocess.use_for_metrics` | `false` | If postprocess enabled, also score the corrected segmentations, reported as `<model>_pp` next to the raw model output (raw output is always scored) |
 | `--postprocess.visualize` | `true` | Generate before/after/delta postprocess visualizations |
 | `--visualization.enabled` | `true` | Generate ED/ES previews for each model output. If GT exists, previews include prediction-vs-GT overlays, per-structure DSC, and difference maps |
 | `--feature_extraction.enabled` | `false` | Enable interpretable feature extraction (volumes, wall thickness, radiomics) in the main workflow |
