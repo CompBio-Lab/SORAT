@@ -188,13 +188,19 @@ def feature_columns(table: pd.DataFrame, families) -> list:
 
 
 def write_feature_tables(config: dict, cohort: pd.DataFrame, source: str, root: str,
-                         configs=("norm", "raw"), datasets=("mms2", "acdc")) -> dict:
-    """Build and save tables for every dataset x feature config under ``root``."""
+                         configs=None, datasets=("mms2", "acdc")) -> dict:
+    """Build and save tables for every dataset x feature config under ``root``.
+
+    ``configs`` defaults to every config in ``feature_configs`` whose folder exists.
+    """
     out = output_dir(config, "tables")
     written = {}
+    configs = configs or list(config["feature_configs"])
     for dataset in datasets:
         for cfg in configs:
             directory = repo_path(config, root) / dataset / cfg
+            if not directory.exists():
+                continue
             table, log = build_feature_table(directory, source, cohort, dataset)
             name = f"features_{dataset}_{source.replace('__', '-')}_{cfg}"
             table.to_parquet(out / f"{name}.parquet")

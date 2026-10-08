@@ -40,6 +40,12 @@ feature_configs:              # keys mirror params.feature_extraction.radiomics
     resample_spacing: "1.25,1.25,0"
     force2d: true
     force2d_dimension: 0
+  ref:                        # like norm, but intensities relative to the LV blood pool (x100) instead of
+    intensity_reference: lv_bloodpool   # PyRadiomics' whole-image z-score
+    bin_count: 32
+    resample_spacing: "1.25,1.25,0"
+    force2d: true
+    force2d_dimension: 0
 
 seed: 20261001
 cv:
@@ -141,6 +147,7 @@ e3:
     shape: [norm, shape]
     texture_norm: [norm, texture]
     texture_raw: [raw, texture]
+    texture_ref: [ref, texture]
     all: [norm, all]
   classifiers: [logreg, rf]                  # primary: multinomial L2 LR with C tuned inside; secondary: fixed RF
   logreg_C: [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]

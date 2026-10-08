@@ -40,7 +40,8 @@ from ..stats import holm, permutation_p_value
 from .common import analysis_dir
 
 PROBE_NAMES = {"clinical": "Clinical", "shape": "Shape", "texture_norm": "Texture (normalized)",
-               "texture_raw": "Texture (raw)", "all": "All features"}
+               "texture_raw": "Texture (raw)", "texture_ref": "Texture (blood-pool reference)",
+               "all": "All features"}
 TARGET_NAMES = {"three_vendor": "Siemens vs Philips vs GE", "siemens_vs_philips": "Siemens vs Philips"}
 CLASSIFIER_NAMES = {"logreg": "multinomial logistic regression", "rf": "random forest"}
 

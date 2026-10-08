@@ -158,6 +158,9 @@ def _expected_settings(options: dict) -> dict:
     if options.get("force2d"):
         settings["force2D"] = True
         settings["force2Ddimension"] = int(options.get("force2d_dimension", 0))
+    if options.get("intensity_reference"):
+        settings["intensityReference"] = options["intensity_reference"]
+        settings["intensityReferenceScale"] = float(options.get("intensity_reference_scale") or 100.0)
     return settings
 
 
