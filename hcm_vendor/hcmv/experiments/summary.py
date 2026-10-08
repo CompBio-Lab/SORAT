@@ -171,9 +171,12 @@ LIMITATIONS = [
     "M&Ms-1 was excluded because it overlaps M&Ms-2.",
     "Wall thickness follows our corrected definition (in-plane, per slice); results depend on it, and the original "
     "SORAT measure was wrong.",
-    "Texture depends on preprocessing: PyRadiomics whole-image normalization makes HCM texture effects reverse "
-    "between vendors for 56 of 84 features; raw texture transfers better. The normalized config also changes "
-    "binning, resampling and 2D extraction, which were not separated.",
+    "Texture depends on preprocessing: with the normalized config, HCM texture effects point in opposite directions "
+    "on Siemens and Philips for 56 of 84 features (raw: 20 of 84). A blood-pool intensity reference showed the two "
+    "causes: GLCM features are identical under any intensity rescaling with a fixed bin count, so their reversals "
+    "(48% agreement vs 79% raw) come from the 32-bin, 2D, 1.25 mm extraction settings; first-order features depend "
+    "on the reference (agreement 14% whole-image, 39% blood pool, 72% raw). Raw texture transfers best; texture "
+    "identifies the vendor (balanced accuracy 0.94–1.00) under every setting tried.",
     "The gap Δ compares nested-CV models trained on 4/5 of the test vendor (about 42–50 subjects) with a model "
     "trained on all of the other vendor (52–62 subjects), so Δ is slightly biased towards 0 or below; clinical-only "
     "gaps are all ≤ 0 partly for this reason.",

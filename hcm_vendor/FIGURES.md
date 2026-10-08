@@ -283,3 +283,16 @@ Cross-vendor gap without (blue) vs with ComBat (orange), in AUC and in specifici
 - `s1_gap_nnformer_vs_gt.csv`: Δ for each mask source with CI, ΔΔ = Δ(nnFormer) − Δ(GT) with paired-bootstrap CI, p and Holm p (AUC and specificity; every direction × family set × model). `s1_e1_auc.csv`, `s1_e3_probe.csv`, `summary.md`.
 - `s3_gap_without_vs_with_combat.csv`: Δ without and with ComBat, ΔΔ with CI, p, Holm p. `summary.md`.
 
+---
+
+## Blood-pool intensity reference (S7, 2026-10-08)
+
+Feature config `ref` (intensities ÷ LV blood-pool mean × 100; binCount 32, 2D, 1.25 mm, like `norm`), extracted by the user with `DATASETS="mms2 acdc" CONFIGS=ref hcm_vendor/scripts/run_feature_extraction.sh` (SORAT `main` d9157cc). Runs: E1/E2 `--family-sets clinical+texture,all --set experiments.feature_config=ref` (jobs 13267147–13267148), E3 (13267149); reports by job 13267150 (`e4-report`, `texture-check`, `summary`) on commit `6ac56d4`.
+
+These existing outputs now include `ref` alongside `norm` and `raw`:
+- **F16** `runs/E4/analysis/e4_gap_auc_raw_vs_norm.png` (title now "Cross-vendor AUC gap by texture preprocessing"): six colours = {all, clinical+texture} × {normalized, raw, blood-pool reference}. Blood-pool texture does not shrink the gap relative to raw; it helps the MLP Philips→Siemens and hurts LR-EN Siemens→Philips.
+- **F18** `qc/texture_check/texture_effect_agreement.png`: third panel for blood-pool reference texture (37 of 84 features with the same HCM direction on both vendors; median vendor shift 1.7 SD).
+- **F14 / table 4** E3: new probe `texture_ref` (balanced accuracy 0.98 LR, 1.00 RF, 3-class).
+- Tables: `runs/E4/analysis/e4_gap.csv`, `e4_contrasts.csv` (new contrast type `ref vs norm`), `e4_e1_auc.csv`; `qc/texture_check/per_feature.csv`, `summary.csv`, `reliance.csv`; `tables/summary.md` (limitations updated).
+- Key check (not a separate file): GLCM Cohen's d is identical under `norm` and `ref` (max difference 0.006), first-order is not; computed from `qc/texture_check/per_feature.csv`.
+
