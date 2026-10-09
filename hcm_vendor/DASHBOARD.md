@@ -16,7 +16,7 @@
   - **The user also submits every SLURM batch job** (set 2026-10-01): the node Claude works on is not a compute node. Give the exact `sbatch` command, run from the repo root; the user submits it and says when it finished.
   - **Work in agreed batches.** Do the batch the user approved, stop at a clean checkpoint (tests green, committed, this block updated), then wait for the user to say continue. Do not roll on into the next batch.
 - **Last completed:** Batch 12 on 2026-10-08: S7 blood-pool intensity reference. Batch 11 on 2026-10-07: S1 ground-truth masks, S3 ComBat, S6 docs PR. Batch 10 on 2026-10-05: TabPFN as a sixth model. Batch 9 on 2026-10-05: T61 final tables/figures, T63 reproducibility. Batch 8 on 2026-10-05: T41/T42 finalized, T51 summary and verdicts. Batch 7 on 2026-10-03: texture check and T50 SHAP. Batch 6 on 2026-10-03: T43 (E4), T44 (E5), T45 (GE), SVM grid widening. Batch 5 on 2026-10-01: T40 (E1), preliminary T41 (E2) and T42 (E3), plus an SVM probability fix. Batch 4 on 2026-10-01: T32 (PyTorch MLP, passes sklearn's `check_estimator`) and T34 (runner, result store, `run-experiment` CLI, sbatch script; smoke E1/E2 on compute nodes; full E1 ≈ 20 min on 32 cores). Batch 3 on 2026-09-30: T22 (`qc-report`, no D6 exclusions, texture direction reverses between vendors) and T31 (model zoo, grids, one-fold timing). Also the correlation filter now keeps myocardial mass over myo volume. Batch 2: T30, T33 tested. Batch 1: T14, T12, T21. Earlier: T00–T02, T10, T11, T13, T20.
-- **Batch 12 done 2026-10-08; paused at a checkpoint. Wait for the user's go.** S7 (blood-pool intensity reference) done: no improvement over raw texture, and it showed the GLCM reversal comes from the bin/2D/resampling settings (see Stretch log). S1, S3, S6 done 2026-10-07. Remaining: T62 final report and T60 midterm (on hold until the user asks), S2/S4/S5 (not requested). The report thread was briefed through the coordinator.
+- **Batch 12 done 2026-10-08; paused at a checkpoint. Wait for the user's go.** S7 (blood-pool intensity reference) done: no improvement over raw texture, and it showed the GLCM reversal comes from the bin/2D/resampling settings (see Stretch log). S1, S3, S6 done 2026-10-07. Remaining: T62 final report and T60 midterm (on hold until the user asks), S2/S4/S5 (not requested). The report thread was briefed through the coordinator. **Pending T46:** ACDC frame bug found by the SORAT paper thread; rerun E5 once fixed ACDC segmentations exist (raise with the user at the next 'continue'). Note: the shared working tree may be on `main` (paper thread); do not switch branches while another thread is working.
 - **Batch 3 follow-up (2026-09-30):** all figures were redrawn to stand alone (plain titles, units, n per group, legends), and a Siemens-vs-Philips AUC scatter (`auc_agreement_siemens_philips.png`) was added. The `all-no-wt` family set was added (D11), along with `FIGURES.md`.
 - **Planned batches:**
 - **Open questions for the user:** none. The ceiling question was answered by D11.
@@ -88,6 +88,7 @@
 | T43 | **E4** feature-family ablation (+ raw vs normalized texture) | 4 Experiments | P1 | Nov 6 | T40, T41, T42 | DONE (2026-10-03) |
 | T44 | **E5** external test on ACDC | 4 Experiments | P1 | Nov 8 | T34 | DONE (2026-10-03) |
 | T45 | GE specificity check | 4 Experiments | P1 | Nov 8 | T34 | DONE (2026-10-03) |
+| T46 | **Rerun E5 (ACDC) after the SORAT ACDC frame fix** | 4 Experiments | P1 | — | SORAT ACDC rerun | PENDING (raised 2026-10-08; user approved; start when the user says continue) |
 | T50 | SHAP attributions + Siemens-vs-Philips stability | 5 Interpret | P1 | Nov 14 | T41 | DONE (2026-10-03) |
 | T51 | Statistical comparison summary, hypothesis verdicts | 5 Interpret | P1 | Nov 16 | T43, T44, T45, T50 | DONE (2026-10-05; user signed off 2026-10-06) |
 | T61 | Final figures + tables | 6 Deliver | P1 | Nov 20 | T51 | DONE (2026-10-05) |
@@ -961,6 +962,17 @@ Nested CV runs on each cohort: outer 5×5, inner 5.
 - **AUC on ACDC (10 HCM / 10 NOR):** 0.84–1.00 across models and family sets; LR-EN 1.00 on clinical, clinical+texture and all. Every CI is wide.
 - **Sensitivity is 1.00 (10/10) for almost every model, but specificity is 0.40–0.80** (Wilson CIs roughly 0.2–0.94): the same over-calling of HCM on a new site seen in E2. Clinical-only models are the most specific (0.80 for LR-EN, SVM, RF, XGB).
 - Caveats are written into `summary.md`: in-domain ACDC segmentations (nnFormer trained on ACDC training data) and 3 T scans without per-subject field strength.
+
+### T46: Rerun E5 (ACDC) after the SORAT ACDC frame fix
+**Status:** PENDING (added 2026-10-08 from the SORAT paper thread; the user approved rerunning once fixed ACDC outputs exist; do not start until the user says continue)
+
+**Why:** the SORAT paper review found that SORAT read ACDC `Info.cfg` ED/ES indices as 0-based although they are 1-based, so every ACDC segmentation was of the frame after ED or ES. All ACDC features used here (`results_hcm_vendor/features/{nnformer,gt}/acdc/*`, `tables/features_acdc_*`) are therefore suspect, and so are **E5** and the ACDC rows of the T12 validation and T22 QC. M&Ms-2 is unaffected (its cfg indices were regenerated and verified 0-based). Two other SORAT bugs found there do not affect this study: HD95 spacing axis order (HD95 is not used) and scoring on post-processed masks by default (we use `mask_source predictions`). The fixes are on SORAT `main` (paper thread); the user is rerunning the ACDC segmentations.
+
+**Tasks:**
+- [ ] Merge SORAT `main` into this branch; confirm the frame fix.
+- [ ] Re-extract ACDC nnFormer features (norm, raw, ref) from the rerun segmentations (Nextflow, via the user) and GT features (`extract_gt_features.sbatch`; check it uses the corrected indices).
+- [ ] Rebuild ACDC feature tables; rerun `run-experiment --experiment E5`, `e5-report`, `summary`, `tables`, `figures`; recheck the T12/T22 ACDC rows.
+- [ ] Report changes to the user and the coordinator (report thread).
 
 ### T45: GE specificity check
 **Status:** TODO · **Pri:** P1 · **Target:** Nov 8 · **Depends on:** T34
