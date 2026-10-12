@@ -713,7 +713,7 @@ def load_metrics_data(outdir: Path) -> pd.DataFrame:
     comparison_agg = outdir / 'comparison' / 'aggregated_metrics.csv'
     if comparison_agg.exists():
         try:
-            return pd.read_csv(comparison_agg)
+            return pd.read_csv(comparison_agg, dtype={"patient_id": str})
         except Exception:
             pass
 
@@ -721,7 +721,7 @@ def load_metrics_data(outdir: Path) -> pd.DataFrame:
     dfs = []
     for fp in metrics_files:
         try:
-            df = pd.read_csv(fp)
+            df = pd.read_csv(fp, dtype={"patient_id": str})
             if not df.empty:
                 dfs.append(df)
         except Exception:
@@ -750,7 +750,7 @@ def compute_scientific_metrics(metrics_df: pd.DataFrame, input_samplesheet: Path
 
     if input_samplesheet.exists():
         try:
-            input_df = pd.read_csv(input_samplesheet)
+            input_df = pd.read_csv(input_samplesheet, dtype={"patient_id": str})
             summary['n_patients_input'] = int(input_df['patient_id'].nunique()) if 'patient_id' in input_df.columns else len(input_df)
         except Exception:
             pass

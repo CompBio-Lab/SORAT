@@ -189,7 +189,7 @@ def generate_report(
     output_figures.mkdir(parents=True, exist_ok=True)
     
     # Load metrics
-    df = pd.read_csv(summary_file)
+    df = pd.read_csv(summary_file, dtype={"patient_id": str})
 
     model_list = [m.strip() for m in models.split(',') if m.strip()]
 
