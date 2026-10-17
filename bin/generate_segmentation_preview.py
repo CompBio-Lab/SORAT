@@ -320,12 +320,18 @@ def render_preview(
         plt.close(fig)
         return
 
-    if label_schema == "atrial_binary_union":
-        metric_pred = (seg_2d > 0).astype(np.uint8)
+    if label_schema in ("atrial_binary_union", "atrial_la_cavity"):
+        if label_schema == "atrial_binary_union":
+            metric_pred = (seg_2d > 0).astype(np.uint8)
+            metric_defs = {
+                1: ("Biatrial", np.array([0.25, 0.50, 1.0], dtype=np.float32), "fill")
+            }
+        else:
+            metric_pred = (seg_2d == 3).astype(np.uint8)
+            metric_defs = {
+                1: ("LA cavity", np.array([0.25, 0.50, 1.0], dtype=np.float32), "fill")
+            }
         metric_gt = (gt_2d > 0).astype(np.uint8)
-        metric_defs = {
-            1: ("Biatrial", np.array([0.25, 0.50, 1.0], dtype=np.float32), "fill")
-        }
         gt_overlay = to_overlay(image_2d, metric_gt, metric_defs)
         pred_mask = to_mask_rgb(seg_2d, label_defs)
         gt_mask = to_mask_rgb(metric_gt, metric_defs)
@@ -417,7 +423,7 @@ def main() -> None:
     parser.add_argument(
         "--label_schema",
         default="architecture_default",
-        choices=["architecture_default", "atrial_binary_union"],
+        choices=["architecture_default", "atrial_binary_union", "atrial_la_cavity"],
         help="Ground-truth/evaluation schema for this run",
     )
     args = parser.parse_args()
@@ -451,7 +457,7 @@ def main() -> None:
             resample_label_to_reference(
                 gt_img,
                 seg_img,
-                strict=(args.label_schema == "atrial_binary_union"),
+                strict=(args.label_schema in ("atrial_binary_union", "atrial_la_cavity")),
             )
         )
 

@@ -30,6 +30,10 @@ except ImportError:
 VENTRICULAR_LABELS = [(1, "rv"), (2, "myo"), (3, "lv")]
 ATRIAL_LABELS = [(1, "wall"), (2, "ra"), (3, "la")]
 BINARY_ATRIAL_LABELS = [(1, "biatrial")]
+LA_CAVITY_LABELS = [(3, "la")]
+
+# Schemas that compare atrial predictions with a single-structure binary reference.
+BINARY_REFERENCE_SCHEMAS = ("atrial_binary_union", "atrial_la_cavity")
 
 
 def dice_score(pred: np.ndarray, gt: np.ndarray) -> float:
@@ -110,14 +114,14 @@ def resample_to_reference(
 
 def get_label_spec(architecture: str, label_schema: str = "architecture_default") -> list[tuple[int, str]]:
     """Return label ids and names for a given model architecture."""
-    if label_schema == "atrial_binary_union":
+    if label_schema in BINARY_REFERENCE_SCHEMAS:
         if architecture != "atrial_nnunet":
-            raise ValueError("label_schema=atrial_binary_union requires architecture=atrial_nnunet")
-        return BINARY_ATRIAL_LABELS
+            raise ValueError(f"label_schema={label_schema} requires architecture=atrial_nnunet")
+        return BINARY_ATRIAL_LABELS if label_schema == "atrial_binary_union" else LA_CAVITY_LABELS
     if label_schema != "architecture_default":
         raise ValueError(
             f"Unknown label schema '{label_schema}'. "
-            "Valid values: architecture_default, atrial_binary_union"
+            "Valid values: architecture_default, atrial_binary_union, atrial_la_cavity"
         )
     if architecture == "atrial_nnunet":
         return ATRIAL_LABELS
@@ -149,14 +153,14 @@ def compute_metrics_for_volume(
     gt_size = gt_sitk.GetSize()
     
     if pred_size != gt_size or (
-        label_schema == "atrial_binary_union" and not _same_geometry(pred_sitk, gt_sitk)
+        label_schema in BINARY_REFERENCE_SCHEMAS and not _same_geometry(pred_sitk, gt_sitk)
     ):
         print(f"  Resampling prediction from {pred_size} to {gt_size}")
         pred_sitk = resample_to_reference(
             pred_sitk,
             gt_sitk,
             is_label=True,
-            strict=(label_schema == "atrial_binary_union"),
+            strict=(label_schema in BINARY_REFERENCE_SCHEMAS),
         )
     
     pred = sitk.GetArrayFromImage(pred_sitk)
@@ -171,6 +175,10 @@ def compute_metrics_for_volume(
     for label, name in label_spec:
         if label_schema == "atrial_binary_union":
             pred_mask = np.isin(pred, (1, 2, 3)).astype(np.uint8)
+            gt_mask = (gt > 0).astype(np.uint8)
+        elif label_schema == "atrial_la_cavity":
+            # Binary LA-cavity reference (e.g. 2018 Atrial Segmentation Challenge).
+            pred_mask = (pred == label).astype(np.uint8)
             gt_mask = (gt > 0).astype(np.uint8)
         else:
             pred_mask = (pred == label).astype(np.uint8)
@@ -294,7 +302,7 @@ def main():
     parser.add_argument(
         '--label_schema',
         default='architecture_default',
-        choices=['architecture_default', 'atrial_binary_union'],
+        choices=['architecture_default', 'atrial_binary_union', 'atrial_la_cavity'],
         help='Ground-truth/evaluation schema for this run',
     )
     parser.add_argument(

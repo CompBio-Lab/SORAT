@@ -209,7 +209,7 @@ Weight: 70
 | `--singularity_cache_dir` | `$HOME/.singularity_cache` | Per-user Singularity cache location (can use `SORAT_SINGULARITY_CACHEDIR`) |
 | `--compare` | `true` | Generate comparison report |
 | `--inference_only` | `false` | Run inference only (skip metrics + report generation) |
-| `--evaluation.label_schema` | `architecture_default` | Evaluation contract; use `atrial_binary_union` when a binary biatrial reference is compared with atrial labels 1--3 collapsed to foreground |
+| `--evaluation.label_schema` | `architecture_default` | Evaluation contract; use `atrial_binary_union` when a binary biatrial reference is compared with atrial labels 1--3 collapsed to foreground, or `atrial_la_cavity` when a binary left-atrial cavity reference (e.g. 2018 Atrial Segmentation Challenge) is compared with atrial label 3 |
 | `--evaluation.gt_label_map` | `auto` | Raw ventricular GT labels, e.g. `rv=1,myo=2,lv=3` (ACDC) or `lv=1,myo=2,rv=3` (M&Ms, M&Ms-2). `auto` infers them from anatomy and logs a warning when the inference is ambiguous |
 | `--debug` | `false` | Generate debug analytics report (execution/runtime/GPU/scalability/success + scientific utility metrics) |
 | `--postprocess.enabled` | `false` | Enable optional LV-intensity postprocessing (LV dark regions -> MYO) |

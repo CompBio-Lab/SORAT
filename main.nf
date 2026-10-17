@@ -739,11 +739,11 @@ workflow {
 
     def models_to_run = parseModels(params.models)
     def labelSchema = (params.evaluation?.label_schema ?: 'architecture_default').toString().trim()
-    if (!(labelSchema in ['architecture_default', 'atrial_binary_union'])) {
-        exit 1, "ERROR: main workflow: invalid evaluation.label_schema '${labelSchema}'. Valid values: architecture_default, atrial_binary_union."
+    if (!(labelSchema in ['architecture_default', 'atrial_binary_union', 'atrial_la_cavity'])) {
+        exit 1, "ERROR: main workflow: invalid evaluation.label_schema '${labelSchema}'. Valid values: architecture_default, atrial_binary_union, atrial_la_cavity."
     }
-    if (labelSchema == 'atrial_binary_union' && !models_to_run.contains('atrial_nnunet')) {
-        exit 1, "ERROR: evaluation.label_schema=atrial_binary_union requires atrial_nnunet in --models."
+    if (labelSchema in ['atrial_binary_union', 'atrial_la_cavity'] && !models_to_run.contains('atrial_nnunet')) {
+        exit 1, "ERROR: evaluation.label_schema=${labelSchema} requires atrial_nnunet in --models."
     }
     log.info "Evaluation label schema: ${labelSchema}"
     def effective_input_samplesheet = resolveEffectiveSamplesheet(
