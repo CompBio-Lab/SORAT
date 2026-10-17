@@ -75,7 +75,7 @@ class PrepareInputTests(unittest.TestCase):
         sitk.WriteImage(img, str(self.dir / "lge.nrrd"))
         sitk.WriteImage(sitk.GetImageFromArray((arr > 128).astype(np.uint8) * 255), str(self.dir / "la.nrrd"))
         out = self.run_cli("--patient_id", "p1", "--image", str(self.dir / "lge.nrrd"),
-                           "--ground_truth", str(self.dir / "la.nrrd"), "--image_spacing", "0.625,0.625,1.25")
+                           "--ground_truth", str(self.dir / "la.nrrd"), "--image_spacing", "0.625x0.625x1.25")
         conv = sitk.ReadImage(str(out / "p1_image.nii.gz"))
         self.assertEqual(conv.GetSpacing(), (0.625, 0.625, 1.25))
         self.assertTrue(np.array_equal(sitk.GetArrayFromImage(conv), arr))
@@ -91,8 +91,13 @@ class PrepareInputTests(unittest.TestCase):
                              capture_output=True, text=True, check=True)
         self.assertIn("spacing 1 x 1 x 1", res.stderr)
 
+    def test_spacing_formats(self):
+        self.assertEqual(P.parse_spacing("0.625x0.625x1.25"), (0.625, 0.625, 1.25))
+        self.assertEqual(P.parse_spacing("0.625,0.625,1.25"), (0.625, 0.625, 1.25))
+        self.assertIsNone(P.parse_spacing(""))
+
     def test_bad_spacing_is_rejected(self):
-        for text in ("1,2", "1,0,1", "a,b,c"):
+        for text in ("1,2", "1,0,1", "a,b,c", "1x2"):
             with self.assertRaises(ValueError):
                 P.parse_spacing(text)
 

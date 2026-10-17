@@ -15,10 +15,12 @@ process PREPARE_INPUT {
     publishDir "${params.outdir}/inputs/${patient_id}", mode: params.publish_dir_mode
 
     input:
-    tuple val(patient_id), path(image), val(ground_truth), val(info_cfg), val(image_spacing), val(dicom_series)
+    tuple val(patient_id), path(image), val(ground_truth), val(gt_directory), val(info_cfg), val(image_spacing), val(dicom_series)
 
     output:
-    tuple val(patient_id), path("${patient_id}_image.nii.gz"), path("${patient_id}_gt.nii.gz", arity: '0..1'), val(info_cfg), emit: inputs
+    // gt_directory: a per-frame ground-truth directory (ACDC/M&Ms-2 layout), passed through untouched
+    tuple val(patient_id), path("${patient_id}_image.nii.gz"), val(info_cfg), val(gt_directory), emit: images
+    tuple val(patient_id), path("${patient_id}_gt.nii.gz"), optional: true, emit: ground_truth
     path "${patient_id}_input_provenance.json", emit: provenance
     path "versions.yml", emit: versions
 

@@ -781,9 +781,18 @@ workflow {
     // ground-truth file is not NIfTI, or that set image_spacing go through
     // PREPARE_INPUT; ground-truth directories (ACDC/M&Ms-2 per-frame layout)
     // are always passed through unchanged.
+    def singlePatient = params.single_patient as boolean
+    def providedPatientName = params.patient_name ? params.patient_name.toString().trim() : null
+    if (providedPatientName) { singlePatient = true }
+    def targetPatient = singlePatient ? resolveSinglePatient(effective_input_samplesheet, providedPatientName) : null
+    if (singlePatient) {
+        log.info "Single-patient mode: running patient '$targetPatient' only"
+    }
+
     ch_rows = Channel
         .fromPath(effective_input_samplesheet, checkIfExists: true)
         .splitCsv(header: true)
+        .filter { row -> !singlePatient || row.patient_id == targetPatient }
         .map { row ->
             def patient_id = row.patient_id
             def image_file = file(row.image, checkIfExists: true)
@@ -800,30 +809,24 @@ workflow {
 
     PREPARE_INPUT(
         ch_rows.prepare.map { patient_id, image_file, gt_file, info_file, spacing, series ->
-            [ patient_id, image_file, gt_file && !gt_file.isDirectory() ? gt_file.toString() : '', info_file, spacing, series ]
+            def gt_is_dir = gt_file && gt_file.isDirectory()
+            [ patient_id, image_file, gt_file && !gt_is_dir ? gt_file.toString() : '', gt_is_dir ? gt_file.toString() : '',
+              info_file, spacing, series ]
         }
     )
 
     ch_input = ch_rows.ready
         .map { patient_id, image_file, gt_file, info_file, spacing, series -> [ patient_id, image_file, gt_file, info_file ] }
         .mix(
-            PREPARE_INPUT.out.inputs.map { patient_id, image_file, gt_files, info_file ->
-                def gt_list = gt_files instanceof List ? gt_files : [gt_files]
-                [ patient_id, image_file, gt_list ? gt_list[0] : null, info_file ]
-            }
+            // Ground truth is optional: rows without it have no entry in the
+            // ground_truth channel, so the join keeps them with a null.
+            PREPARE_INPUT.out.images
+                .join(PREPARE_INPUT.out.ground_truth, remainder: true)
+                .map { patient_id, image_file, info_file, gt_directory, gt_file ->
+                    [ patient_id, image_file, gt_file ?: (gt_directory ? file(gt_directory) : null), info_file ]
+                }
         )
 
-    def singlePatient = params.single_patient as boolean
-    def providedPatientName = params.patient_name ? params.patient_name.toString().trim() : null
-    if (providedPatientName) { singlePatient = true }
-    if (singlePatient) {
-        def targetPatient = resolveSinglePatient(effective_input_samplesheet, providedPatientName)
-        log.info "Single-patient mode: running patient '$targetPatient' only"
-        ch_input = ch_input
-            .filter { patient_id, image_file, gt_file, info_file ->
-                patient_id == targetPatient
-            }
-    }
 
     def auto_discover = params.auto_discover_models as boolean
     

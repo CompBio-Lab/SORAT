@@ -15,7 +15,8 @@ formats instead, without converting datasets by hand:
   frames ordered by trigger time (then acquisition time, then instance number).
 
 Some releases store a placeholder voxel spacing (the 2018 Atrial Segmentation
-Challenge stores 1 x 1 x 1). ``--image_spacing x,y,z`` (mm) replaces the
+Challenge stores 1 x 1 x 1). ``--image_spacing XxYxZ`` (mm, e.g. 0.625x0.625x1.25;
+commas also accepted) replaces the
 spatial spacing of the image and its ground truth; it is never inferred. When
 no override is given and every spatial spacing is exactly 1.0, a warning is
 printed so a missing value cannot pass unnoticed.
@@ -54,9 +55,13 @@ def is_nifti(path: Path) -> bool:
 def parse_spacing(text: Optional[str]) -> Optional[Tuple[float, float, float]]:
     if text is None or not str(text).strip():
         return None
-    parts = [float(v) for v in str(text).replace(";", ",").split(",") if v.strip()]
+    normalized = str(text).lower().replace("x", ",").replace(";", ",")
+    try:
+        parts = [float(v) for v in normalized.split(",") if v.strip()]
+    except ValueError:
+        parts = []
     if len(parts) != 3 or any(v <= 0 for v in parts):
-        raise ValueError(f"--image_spacing must be three positive numbers in mm, got '{text}'")
+        raise ValueError(f"image_spacing must be three positive numbers in mm (e.g. 0.625x0.625x1.25), got '{text}'")
     return tuple(parts)
 
 
@@ -204,8 +209,18 @@ def main() -> int:
 
     spacing = parse_spacing(args.image_spacing)
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    records = [prepare(args.image, args.out_dir / f"{args.patient_id}_image.nii.gz", spacing,
-                       args.dicom_series or None, "image")]
+    image_out = args.out_dir / f"{args.patient_id}_image.nii.gz"
+    records = [prepare(args.image, image_out, spacing, args.dicom_series or None, "image")]
+    if not records[0]["converted"]:
+        # The row is here because its ground truth needs converting; keep the
+        # NIfTI image unchanged but expose it under the expected name.
+        source = args.image.resolve()
+        if source.name.lower().endswith(".nii.gz"):
+            image_out.unlink(missing_ok=True)
+            image_out.symlink_to(source)
+        else:
+            sitk.WriteImage(sitk.ReadImage(str(source)), str(image_out), useCompression=True)
+        records[0]["output"] = str(image_out)
     if args.ground_truth:
         gt = prepare(Path(args.ground_truth), args.out_dir / f"{args.patient_id}_gt.nii.gz", spacing, None,
                      "ground_truth")

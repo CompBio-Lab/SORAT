@@ -135,7 +135,7 @@ Create a CSV file with the following columns:
 | `image` | Yes | Image: NIfTI (`.nii`, `.nii.gz`), another format SimpleITK reads (NRRD, MetaImage), or a DICOM series directory (see [Non-NIfTI inputs](#non-nifti-inputs)) |
 | `ground_truth` | No | Ground truth: a NIfTI or other image file, or a directory of per-frame files (ACDC, M&Ms-2 layouts) |
 | `info_cfg` | No | **Optional** metadata config with ED/ES frame numbers. When absent, the pipeline segments all temporal frames of the cardiac cycle. |
-| `image_spacing` | No | Spatial voxel spacing `x,y,z` in mm. Replaces the spacing stored in the image and ground truth; use it only when the files carry a placeholder (e.g. 1 x 1 x 1) |
+| `image_spacing` | No | Spatial voxel spacing `XxYxZ` in mm (e.g. `0.625x0.625x1.25`; no commas, so the CSV needs no quoting). Replaces the spacing stored in the image and ground truth; use it only when the files carry a placeholder (e.g. 1 x 1 x 1) |
 | `dicom_series` | No | SeriesInstanceUID to read when a DICOM directory holds more than one series |
 
 #### Example samplesheet.csv
@@ -199,7 +199,7 @@ used as they are.
 
 ```csv
 patient_id,image,ground_truth,info_cfg,image_spacing,dicom_series
-lasc001,/data/lasc/001/lgemri.nrrd,/data/lasc/001/laendo.nrrd,,"0.625,0.625,1.25",
+lasc001,/data/lasc/001/lgemri.nrrd,/data/lasc/001/laendo.nrrd,,0.625x0.625x1.25,
 inst001,/data/institution/inst001/cine_sax,,/data/institution/inst001/Info.cfg,,
 ```
 
