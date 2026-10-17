@@ -132,9 +132,11 @@ Create a CSV file with the following columns:
 | Column | Required | Description |
 |--------|----------|-------------|
 | `patient_id` | Yes | Unique patient identifier |
-| `image` | Yes | Path to 4D cardiac MRI NIfTI file |
-| `ground_truth` | No | Path to ground truth segmentation |
-| `info_cfg` | No | **Optional** metadata config with ED/ES frame indices. When absent, the pipeline segments all temporal frames of the cardiac cycle. |
+| `image` | Yes | Image: NIfTI (`.nii`, `.nii.gz`), another format SimpleITK reads (NRRD, MetaImage), or a DICOM series directory (see [Non-NIfTI inputs](#non-nifti-inputs)) |
+| `ground_truth` | No | Ground truth: a NIfTI or other image file, or a directory of per-frame files (ACDC, M&Ms-2 layouts) |
+| `info_cfg` | No | **Optional** metadata config with ED/ES frame numbers. When absent, the pipeline segments all temporal frames of the cardiac cycle. |
+| `image_spacing` | No | Spatial voxel spacing `x,y,z` in mm. Replaces the spacing stored in the image and ground truth; use it only when the files carry a placeholder (e.g. 1 x 1 x 1) |
+| `dicom_series` | No | SeriesInstanceUID to read when a DICOM directory holds more than one series |
 
 #### Example samplesheet.csv
 
@@ -174,13 +176,43 @@ Guidance:
 - When \`info_cfg\` is absent, the pipeline uses \`frames_mode=auto\` and segments all frames. Override with \`--frames_mode ed_es\` to force 2-frame mode.
 - Keep column names unchanged even if your on-disk folder names are different.
 
+### Non-NIfTI inputs
+
+Rows whose `image` is not NIfTI, whose `ground_truth` is a non-NIfTI file, or
+that set `image_spacing` go through `PREPARE_INPUT` (`bin/prepare_input.py`)
+before preprocessing. It writes NIfTI with the original geometry to
+`<outdir>/inputs/<patient_id>/`, together with
+`<patient_id>_input_provenance.json` (source paths, SHA-256 checksums, reader,
+DICOM series UID, output geometry and any spacing override). NIfTI rows are
+used as they are.
+
+- **DICOM:** a directory holding exactly one series (or the one named in
+  `dicom_series`). One image per slice position gives a 3-D volume; a cine
+  series with several images per position gives a 4-D volume, with slices
+  ordered along the slice normal and frames by trigger time. DICOM-RT or SEG
+  contours are not read; provide ground truth as an image file.
+- **Placeholder spacing:** if every spatial spacing is exactly 1.0 and no
+  `image_spacing` is given, a warning is printed. SORAT never infers spacing.
+- The isolated entry points (`POSTPROCESS_ONLY`, `FEATURES_ONLY`) read the
+  samplesheet directly and expect NIfTI; point them at the converted files in
+  `<outdir>/inputs/`.
+
+```csv
+patient_id,image,ground_truth,info_cfg,image_spacing,dicom_series
+lasc001,/data/lasc/001/lgemri.nrrd,/data/lasc/001/laendo.nrrd,,"0.625,0.625,1.25",
+inst001,/data/institution/inst001/cine_sax,,/data/institution/inst001/Info.cfg,,
+```
+
 ### Info.cfg Format (Optional)
 
-The Info.cfg file specifies ED and ES frame indices:
+The Info.cfg file gives ED and ES as frame numbers counted from 1, as defined
+by ACDC (`ED: 1` is the first frame). SORAT converts them to array indices and,
+when the dataset provides per-frame phase images next to the cine, checks the
+selected frames against them.
 
 ```
-ED: 0
-ES: 12
+ED: 1
+ES: 13
 Group: NOR
 Height: 175
 Weight: 70

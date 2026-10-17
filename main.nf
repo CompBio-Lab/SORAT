@@ -48,6 +48,7 @@ include { GENERATE_DEBUG_REPORT } from './modules/debug'
 include { DISCOVER_POSTPROCESS_INPUTS; POSTPROCESS_LV_MYO; VISUALIZE_POSTPROCESS_DELTA } from './modules/postprocess'
 include { GENERATE_SEGMENTATION_PREVIEWS } from './modules/visualization'
 include { EXTRACT_FEATURES } from './modules/features'
+include { PREPARE_INPUT } from './modules/inputs'
 include { validateInput } from './lib/utils'
 include { parseManifest; frameTagFromFilename; discoverFramePattern; normalizeSegList } from './lib/frame_utils'
 
@@ -733,6 +734,13 @@ def resolveFeatureMaskSource(contextLabel = 'main workflow') {
 ========================================================================================
 */
 
+
+// True for NIfTI files (.nii / .nii.gz); directories and other formats are converted by PREPARE_INPUT.
+def isNiftiPath(path) {
+    def name = path.getName().toLowerCase()
+    return !path.isDirectory() && (name.endsWith('.nii') || name.endsWith('.nii.gz'))
+}
+
 workflow {
 
     assertSlurmAccountForProfile('main workflow')
@@ -767,17 +775,43 @@ workflow {
     def debug_outdir = file(params.outdir).toAbsolutePath().toString()
     def debug_input_samplesheet = file(effective_input_samplesheet).toAbsolutePath().toString()
     
-    // Validate and parse input samplesheet
-    ch_input = Channel
+    // Validate and parse input samplesheet. Optional columns: image_spacing
+    // ('x,y,z' mm, replaces placeholder spacing) and dicom_series (UID).
+    // Rows whose image is not NIfTI (NRRD, MetaImage, DICOM directory), whose
+    // ground-truth file is not NIfTI, or that set image_spacing go through
+    // PREPARE_INPUT; ground-truth directories (ACDC/M&Ms-2 per-frame layout)
+    // are always passed through unchanged.
+    ch_rows = Channel
         .fromPath(effective_input_samplesheet, checkIfExists: true)
         .splitCsv(header: true)
-        .map { row -> 
+        .map { row ->
             def patient_id = row.patient_id
             def image_file = file(row.image, checkIfExists: true)
             def gt_file = row.ground_truth ? file(row.ground_truth, checkIfExists: true) : null
             def info_file = row.info_cfg ? file(row.info_cfg, checkIfExists: true) : null
-            [ patient_id, image_file, gt_file, info_file ]
+            def spacing = (row.image_spacing ?: '').toString().trim()
+            def series = (row.dicom_series ?: '').toString().trim()
+            [ patient_id, image_file, gt_file, info_file, spacing, series ]
         }
+        .branch { patient_id, image_file, gt_file, info_file, spacing, series ->
+            prepare: !isNiftiPath(image_file) || (gt_file && !gt_file.isDirectory() && !isNiftiPath(gt_file)) || spacing
+            ready: true
+        }
+
+    PREPARE_INPUT(
+        ch_rows.prepare.map { patient_id, image_file, gt_file, info_file, spacing, series ->
+            [ patient_id, image_file, gt_file && !gt_file.isDirectory() ? gt_file.toString() : '', info_file, spacing, series ]
+        }
+    )
+
+    ch_input = ch_rows.ready
+        .map { patient_id, image_file, gt_file, info_file, spacing, series -> [ patient_id, image_file, gt_file, info_file ] }
+        .mix(
+            PREPARE_INPUT.out.inputs.map { patient_id, image_file, gt_files, info_file ->
+                def gt_list = gt_files instanceof List ? gt_files : [gt_files]
+                [ patient_id, image_file, gt_list ? gt_list[0] : null, info_file ]
+            }
+        )
 
     def singlePatient = params.single_patient as boolean
     def providedPatientName = params.patient_name ? params.patient_name.toString().trim() : null
