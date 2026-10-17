@@ -182,8 +182,11 @@ def prepare(
     role: str,
 ) -> dict:
     """Write ``path`` as NIfTI at ``out_path`` (or pass NIfTI through) and describe it."""
+    # Nextflow stages inputs as symlinks; record the real file so provenance
+    # points at the dataset, not the work directory.
+    source = str(path.resolve())
     if is_nifti(path) and spacing is None:
-        return {"role": role, "source": str(path), "converted": False, "output": str(path)}
+        return {"role": role, "source": source, "converted": False, "output": str(path)}
 
     image, info, sources = read_any(path, series_uid)
     if spacing is not None:
@@ -192,7 +195,7 @@ def prepare(
         print(f"WARNING: {path} has spacing 1 x 1 x 1; if that is a placeholder, set image_spacing "
               "in the samplesheet", file=sys.stderr)
     sitk.WriteImage(image, str(out_path), useCompression=True)
-    return {"role": role, "source": str(path), "converted": True, "output": str(out_path),
+    return {"role": role, "source": source, "converted": True, "output": str(out_path),
             "source_sha256": sha256_of(sources), "spacing_override_mm": list(spacing) if spacing else None,
             **info, "geometry": geometry(image)}
 

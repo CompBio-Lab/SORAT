@@ -370,12 +370,9 @@ def generate_report(
             ncols = max(1, len(structures))
             fig, axes = plt.subplots(nrows, ncols, figsize=(max(16, ncols * 4.8), max(5.5, nrows * 4.2)), sharey=True)
 
-            axes = np.array(axes)
-            if axes.ndim == 1:
-                if nrows == 1:
-                    axes = axes.reshape(1, -1)
-                else:
-                    axes = axes.reshape(-1, 1)
+            # plt.subplots returns a bare Axes for 1x1 and a 1-D array for one row
+            # or column; always index as [row][col].
+            axes = np.array(axes, dtype=object).reshape(nrows, ncols)
 
             for row_idx, phase in enumerate(phases):
                 for col_idx, structure in enumerate(structures):
