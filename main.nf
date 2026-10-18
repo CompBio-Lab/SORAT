@@ -845,7 +845,7 @@ workflow {
     // segmentations are physically aligned with the original image (was
     // origin 0 + identity, which broke feature extraction on oblique / offset
     // acquisitions such as M&Ms).
-    def cinema_preprocess_key = 'cinema_s1.0x1.0x10.0_crop192x192_v5'
+    def cinema_preprocess_key = 'cinema_s1.0x1.0x10.0_crop192x192_v6'
     def nnformer_preprocess_key = 'nnformer_frame_extract_v4'
     def vsa3l_preprocess_key = "vsa3l_input${params.vsa3l.input_size.join('x')}_v5"
     def atrial_nnunet_preprocess_key = 'atrial_nnunet_frame_extract_v4'

@@ -2,10 +2,14 @@
 """
 CineMA Preprocessing Script for SORAT Pipeline
 
-Preprocesses cardiac MRI data for CineMA model:
-- Resample to target spacing (default: 1.0 x 1.0 x 10.0 mm)
-- Crop to target size (default: 192 x 192) based on LV center
-- Normalize intensity to [0, 1]
+Preprocesses cardiac MRI data for the CineMA model with CineMA's own
+functions (cinema.data.sitk), as in its training preprocessing
+(cinema/data/<dataset>/preprocess.py), except for the crop:
+- Resample to target spacing (default: 1.0 x 1.0 x 10.0 mm), resample_spacing_4d
+- Centre crop to 192 x 192 (CineMA crops around the ground-truth LV, which is
+  not available at deployment); smaller images are zero-padded afterwards
+- Clip each frame to its 0.95-99.5 percentile range and scale to [0, 255],
+  clip_and_normalise_intensity_4d + cast_to_uint8
 """
 
 import argparse
@@ -21,6 +25,14 @@ except ImportError:
 
 import numpy as np
 import SimpleITK as sitk
+from cinema.data.sitk import (
+    cast_to_uint8,
+    clip_and_normalise_intensity_4d,
+    crop_4d,
+    get_center_crop_size_from_bbox,
+    resample_spacing_3d,
+    resample_spacing_4d,
+)
 try:
     from geometry_utils import read_nifti_with_sitk_fallback
 except ImportError:
@@ -43,26 +55,6 @@ def convert_to_native(obj):
     elif isinstance(obj, list):
         return [convert_to_native(i) for i in obj]
     return obj
-
-
-def resample_image(image: sitk.Image, target_spacing: tuple, interpolator=sitk.sitkLinear) -> sitk.Image:
-    """Resample image to target spacing."""
-    original_spacing = image.GetSpacing()
-    original_size = image.GetSize()
-    
-    new_size = [
-        int(round(osz * ospc / tspc))
-        for osz, ospc, tspc in zip(original_size, original_spacing, target_spacing)
-    ]
-    
-    resampler = sitk.ResampleImageFilter()
-    resampler.SetOutputSpacing(target_spacing)
-    resampler.SetSize(new_size)
-    resampler.SetOutputDirection(image.GetDirection())
-    resampler.SetOutputOrigin(image.GetOrigin())
-    resampler.SetInterpolator(interpolator)
-    
-    return resampler.Execute(image)
 
 
 def _spatial_direction_3d(direction: tuple) -> list:
@@ -150,18 +142,6 @@ def center_crop_or_pad(array: np.ndarray, target_size: tuple) -> tuple:
     return result, (offsets[0], offsets[1])
 
 
-def normalize_intensity(array: np.ndarray) -> np.ndarray:
-    """Normalize intensity to [0, 255] range."""
-    array = array.astype(np.float32)
-    min_val = np.min(array)
-    max_val = np.max(array)
-    
-    if max_val - min_val > 0:
-        array = (array - min_val) / (max_val - min_val) * 255.0
-    
-    return array.astype(np.uint8)
-
-
 def preprocess_patient(
     input_path: Path,
     output_dir: Path,
@@ -217,30 +197,25 @@ def preprocess_patient(
     # Transpose to (x, y, z, t)
     array_4d = np.transpose(array_4d, (3, 2, 1, 0))
     
-    # Resample each frame
-    resampled_frames = []
-    for t in range(array_4d.shape[-1]):
-        frame_3d = array_4d[..., t]
-        frame_sitk = sitk.GetImageFromArray(np.transpose(frame_3d, (2, 1, 0)))
-        frame_sitk.SetSpacing(original_spacing)
-        
-        resampled = resample_image(frame_sitk, target_spacing)
-        resampled_array = np.transpose(sitk.GetArrayFromImage(resampled), (2, 1, 0))
-        resampled_frames.append(resampled_array)
-    
-    resampled_4d = np.stack(resampled_frames, axis=-1)
-    
-    # Crop/pad to target size
-    cropped_4d, crop_offsets = center_crop_or_pad(resampled_4d, crop_size)
-    
-    # Physical origin of the 192x192 cropped grid in the original space.
+    # Resample, centre crop and normalise with CineMA's own functions, on the
+    # image's real geometry (CineMA's resampling keeps voxel corners aligned,
+    # so the origin moves by half the spacing change).
+    resampled = resample_spacing_4d(image=image_4d, is_label=False, target_spacing=tuple(target_spacing))
+    size_3d = resampled.GetSize()[:3]
+    crop_lower, crop_upper = get_center_crop_size_from_bbox(
+        bbox_min=(0, 0, 0), bbox_max=size_3d, current_size=size_3d, target_size=(*crop_size, size_3d[2]))
+    cropped = crop_4d(resampled, crop_lower, crop_upper)
+    normalized = cast_to_uint8(clip_and_normalise_intensity_4d(cropped, intensity_range=None))
+    normalized_4d = np.transpose(sitk.GetArrayFromImage(normalized), (3, 2, 1, 0))  # (x, y, z, t)
+
+    # Images smaller than the crop are zero-padded (negative offsets).
+    normalized_4d, pad_offsets = center_crop_or_pad(normalized_4d, crop_size)
+
+    # Physical origin of the 192x192 grid in the original space.
     crop_origin_3d = _crop_origin_3d(
-        original_origin_3d, original_direction_3d, target_spacing, crop_offsets
+        [float(x) for x in cropped.GetOrigin()[:3]], original_direction_3d, target_spacing, pad_offsets
     )
-    
-    # Normalize intensity
-    normalized_4d = normalize_intensity(cropped_4d)
-    
+
     # Save preprocessed 4D volume
     output_4d = sitk.GetImageFromArray(np.transpose(normalized_4d, (3, 2, 1, 0)))
     output_4d.SetSpacing(target_spacing + (1.0,))  # Add time spacing
@@ -278,7 +253,8 @@ def preprocess_patient(
             for gt_path in gt_candidates:
                 if gt_path.exists():
                     gt = read_nifti_with_sitk_fallback(gt_path, dtype=np.uint8)
-                    gt_resampled = resample_image(gt, target_spacing, sitk.sitkNearestNeighbor)
+                    gt_resampled = resample_spacing_3d(image=gt, is_label=True, target_spacing=tuple(target_spacing))
+                    gt_resampled = sitk.Crop(gt_resampled, crop_lower, crop_upper)
                     gt_array = np.transpose(sitk.GetArrayFromImage(gt_resampled), (2, 1, 0))
                     gt_cropped, _ = center_crop_or_pad(gt_array, crop_size)
                     gt_out = sitk.GetImageFromArray(np.transpose(gt_cropped, (2, 1, 0)).astype(np.uint8))
