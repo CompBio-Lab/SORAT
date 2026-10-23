@@ -73,7 +73,7 @@ PyTorch wheels only include kernels for some GPU generations. Before a full run 
 apptainer exec --nv containers/sorat-vsa3l.sif python /app/bin/validate_cuda_runtime.py --json
 ```
 
-The report lists the device, its compute capability and the architectures compiled into PyTorch. The images are built for CUDA 11.8 with `sm_70` support, so they run on V100 and newer cards. SORAT runs the same check during VSA-3L model discovery and stops before submitting segmentation jobs if the image and GPU don't match.
+The report lists the device, its compute capability and the architectures compiled into PyTorch. The short-axis images use CUDA 11.8 and the atrial image CUDA 12.1; all include `sm_70` kernels, so they run on V100 and newer cards. SORAT runs the same check during VSA-3L model discovery and stops before submitting segmentation jobs if the image and GPU don't match.
 
 ## Clusters
 

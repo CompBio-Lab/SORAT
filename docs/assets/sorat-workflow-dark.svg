@@ -1,50 +1,41 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 380" width="960" height="380" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
-<title>SORAT workflow</title><style>.flow{animation:dash 1.6s linear infinite} @keyframes dash{to{stroke-dashoffset:-28}} @media (prefers-reduced-motion: reduce){.flow{animation:none}}</style>
-<text x="24" y="30" font-size="11" font-weight="600" fill="#9198a1" text-anchor="start">INPUT</text>
-<text x="254" y="30" font-size="11" font-weight="600" fill="#9198a1" text-anchor="start">DATA CONTRACT</text>
-<text x="494" y="30" font-size="11" font-weight="600" fill="#9198a1" text-anchor="start">MODEL CONTAINERS</text>
-<text x="734" y="30" font-size="11" font-weight="600" fill="#9198a1" text-anchor="start">EVALUATION</text>
-<rect x="24" y="142" width="196" height="110" rx="10" fill="#0d1117" stroke="#3d444d"/>
-<text x="40" y="168" font-size="14" font-weight="600" fill="#e6edf3" text-anchor="start">Samplesheet</text>
-<text x="40" y="190" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">Cine SAX or atrial LGE</text>
-<text x="40" y="209" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">NIfTI · NRRD · DICOM</text>
-<text x="40" y="228" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">Optional reference masks</text>
-<rect x="254" y="142" width="206" height="110" rx="10" fill="#0d1117" stroke="#3d444d"/>
-<text x="270" y="168" font-size="14" font-weight="600" fill="#e6edf3" text-anchor="start">One convention</text>
-<text x="270" y="190" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">ED/ES frames verified</text>
-<text x="270" y="209" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">Label maps declared</text>
-<text x="270" y="228" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">Original geometry kept</text>
-<path d="M220,197 C237.0,197 237.0,197 254,197" fill="none" stroke="#656c76" stroke-width="1.5"/><path class="flow" d="M220,197 C237.0,197 237.0,197 254,197" fill="none" stroke="#4493f8" stroke-width="1.5" stroke-dasharray="4 10"/><circle cx="254" cy="197" r="3" fill="#656c76"/>
-<rect x="494" y="52" width="206" height="62" rx="10" fill="#0d1117" stroke="#3d444d"/>
-<rect x="494" y="62" width="4" height="42" rx="2" fill="#2a78d6"/>
-<text x="510" y="78" font-size="14" font-weight="600" fill="#e6edf3" text-anchor="start">CineMA</text>
-<text x="510" y="100" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">9 checkpoints + ensembles</text>
-<path d="M460,197 C477.0,197 477.0,83 494,83" fill="none" stroke="#656c76" stroke-width="1.5"/><path class="flow" d="M460,197 C477.0,197 477.0,83 494,83" fill="none" stroke="#4493f8" stroke-width="1.5" stroke-dasharray="4 10"/><circle cx="494" cy="83" r="3" fill="#656c76"/>
-<path d="M700,83 C717.0,83 717.0,197 734,197" fill="none" stroke="#656c76" stroke-width="1.5"/><path class="flow" d="M700,83 C717.0,83 717.0,197 734,197" fill="none" stroke="#4493f8" stroke-width="1.5" stroke-dasharray="4 10"/><circle cx="734" cy="197" r="3" fill="#656c76"/>
-<rect x="494" y="128" width="206" height="62" rx="10" fill="#0d1117" stroke="#3d444d"/>
-<rect x="494" y="138" width="4" height="42" rx="2" fill="#eda100"/>
-<text x="510" y="154" font-size="14" font-weight="600" fill="#e6edf3" text-anchor="start">nnFormer</text>
-<text x="510" y="176" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">3-D transformer</text>
-<path d="M460,197 C477.0,197 477.0,159 494,159" fill="none" stroke="#656c76" stroke-width="1.5"/><path class="flow" d="M460,197 C477.0,197 477.0,159 494,159" fill="none" stroke="#4493f8" stroke-width="1.5" stroke-dasharray="4 10"/><circle cx="494" cy="159" r="3" fill="#656c76"/>
-<path d="M700,159 C717.0,159 717.0,197 734,197" fill="none" stroke="#656c76" stroke-width="1.5"/><path class="flow" d="M700,159 C717.0,159 717.0,197 734,197" fill="none" stroke="#4493f8" stroke-width="1.5" stroke-dasharray="4 10"/><circle cx="734" cy="197" r="3" fill="#656c76"/>
-<rect x="494" y="204" width="206" height="62" rx="10" fill="#0d1117" stroke="#3d444d"/>
-<rect x="494" y="214" width="4" height="42" rx="2" fill="#e87ba4"/>
-<text x="510" y="230" font-size="14" font-weight="600" fill="#e6edf3" text-anchor="start">VSA-3L</text>
-<text x="510" y="252" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">MONAI 2-D U-Net</text>
-<path d="M460,197 C477.0,197 477.0,235 494,235" fill="none" stroke="#656c76" stroke-width="1.5"/><path class="flow" d="M460,197 C477.0,197 477.0,235 494,235" fill="none" stroke="#4493f8" stroke-width="1.5" stroke-dasharray="4 10"/><circle cx="494" cy="235" r="3" fill="#656c76"/>
-<path d="M700,235 C717.0,235 717.0,197 734,197" fill="none" stroke="#656c76" stroke-width="1.5"/><path class="flow" d="M700,235 C717.0,235 717.0,197 734,197" fill="none" stroke="#4493f8" stroke-width="1.5" stroke-dasharray="4 10"/><circle cx="734" cy="197" r="3" fill="#656c76"/>
-<rect x="494" y="280" width="206" height="62" rx="10" fill="#0d1117" stroke="#3d444d"/>
-<rect x="494" y="290" width="4" height="42" rx="2" fill="#1baf7a"/>
-<text x="510" y="306" font-size="14" font-weight="600" fill="#e6edf3" text-anchor="start">Atrial nnU-Net</text>
-<text x="510" y="328" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">LGE, biatrial</text>
-<path d="M460,197 C477.0,197 477.0,311 494,311" fill="none" stroke="#656c76" stroke-width="1.5"/><path class="flow" d="M460,197 C477.0,197 477.0,311 494,311" fill="none" stroke="#4493f8" stroke-width="1.5" stroke-dasharray="4 10"/><circle cx="494" cy="311" r="3" fill="#656c76"/>
-<path d="M700,311 C717.0,311 717.0,197 734,197" fill="none" stroke="#656c76" stroke-width="1.5"/><path class="flow" d="M700,311 C717.0,311 717.0,197 734,197" fill="none" stroke="#4493f8" stroke-width="1.5" stroke-dasharray="4 10"/><circle cx="734" cy="197" r="3" fill="#656c76"/>
-<rect x="734" y="122" width="202" height="150" rx="10" fill="#0d1117" stroke="#3d444d"/>
-<text x="750" y="148" font-size="14" font-weight="600" fill="#e6edf3" text-anchor="start">In original space</text>
-<text x="750" y="170" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">DSC · HD95 per structure</text>
-<text x="750" y="189" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">Failure and off-heart checks</text>
-<text x="750" y="208" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">Volumes · EF · LV mass</text>
-<text x="750" y="227" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">Bland–Altman · ICC</text>
-<text x="750" y="246" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">Reports with provenance</text>
-<text x="480.0" y="368" font-size="12" font-weight="400" fill="#9198a1" text-anchor="middle">Every model runs in its own Apptainer container; Nextflow schedules the work locally or on SLURM.</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 222" width="960" height="222">
+<title>SORAT workflow</title><style>.flow{animation:dash 1.8s linear infinite} @keyframes dash{to{stroke-dashoffset:-28}} @media (prefers-reduced-motion: reduce){.flow{animation:none}}</style>
+<rect x="16" y="52" width="248" height="114" rx="8" fill="#0d1117" stroke="#3d444d"/>
+<path d="M16,60 a8,8 0 0 1 8,-8 h232 a8,8 0 0 1 8,8 v18 h-248 z" fill="#151b23"/>
+<line x1="16" y1="78" x2="264" y2="78" stroke="#3d444d"/>
+<text x="28" y="70" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#9198a1" text-anchor="start" xml:space="preserve">samplesheet.csv</text>
+<text x="28" y="98" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#e6edf3" text-anchor="start" xml:space="preserve">patient_id,image,ground_truth,…</text>
+<text x="28" y="116" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#e6edf3" text-anchor="start" xml:space="preserve">patient101,…_4d.nii.gz,…</text>
+<text x="28" y="134" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#e6edf3" text-anchor="start" xml:space="preserve">patient102,…_4d.nii.gz,…</text>
+<text x="28" y="152" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#e6edf3" text-anchor="start" xml:space="preserve">site001,cine_sax/,,…</text>
+<text x="140" y="190" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#9198a1" text-anchor="middle" xml:space="preserve">$ nextflow run main.nf</text>
+<rect x="390" y="32.0" width="196" height="38" rx="8" fill="#0d1117" stroke="#3d444d"/>
+<rect x="390" y="41.0" width="3" height="20" rx="1.5" fill="#2a78d6"/>
+<text x="404" y="55.0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#e6edf3" text-anchor="start" xml:space="preserve">sorat-cinema.sif</text>
+<path d="M264,109.0 C327.0,109.0 327.0,51.0 390,51.0" fill="none" stroke="#656c76" stroke-width="1.4"/><path class="flow" d="M264,109.0 C327.0,109.0 327.0,51.0 390,51.0" fill="none" stroke="#4493f8" stroke-width="1.4" stroke-dasharray="3 11"/>
+<path d="M586,51.0 C611.0,51.0 611.0,109.0 636,109.0" fill="none" stroke="#656c76" stroke-width="1.4"/><path class="flow" d="M586,51.0 C611.0,51.0 611.0,109.0 636,109.0" fill="none" stroke="#4493f8" stroke-width="1.4" stroke-dasharray="3 11"/>
+<rect x="390" y="90.0" width="196" height="38" rx="8" fill="#0d1117" stroke="#3d444d"/>
+<rect x="390" y="99.0" width="3" height="20" rx="1.5" fill="#eda100"/>
+<text x="404" y="113.0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#e6edf3" text-anchor="start" xml:space="preserve">sorat-nnformer.sif</text>
+<path d="M264,109.0 C327.0,109.0 327.0,109.0 390,109.0" fill="none" stroke="#656c76" stroke-width="1.4"/><path class="flow" d="M264,109.0 C327.0,109.0 327.0,109.0 390,109.0" fill="none" stroke="#4493f8" stroke-width="1.4" stroke-dasharray="3 11"/>
+<path d="M586,109.0 C611.0,109.0 611.0,109.0 636,109.0" fill="none" stroke="#656c76" stroke-width="1.4"/><path class="flow" d="M586,109.0 C611.0,109.0 611.0,109.0 636,109.0" fill="none" stroke="#4493f8" stroke-width="1.4" stroke-dasharray="3 11"/>
+<rect x="390" y="148.0" width="196" height="38" rx="8" fill="#0d1117" stroke="#3d444d"/>
+<rect x="390" y="157.0" width="3" height="20" rx="1.5" fill="#e87ba4"/>
+<text x="404" y="171.0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#e6edf3" text-anchor="start" xml:space="preserve">sorat-vsa3l.sif</text>
+<path d="M264,109.0 C327.0,109.0 327.0,167.0 390,167.0" fill="none" stroke="#656c76" stroke-width="1.4"/><path class="flow" d="M264,109.0 C327.0,109.0 327.0,167.0 390,167.0" fill="none" stroke="#4493f8" stroke-width="1.4" stroke-dasharray="3 11"/>
+<path d="M586,167.0 C611.0,167.0 611.0,109.0 636,109.0" fill="none" stroke="#656c76" stroke-width="1.4"/><path class="flow" d="M586,167.0 C611.0,167.0 611.0,109.0 636,109.0" fill="none" stroke="#4493f8" stroke-width="1.4" stroke-dasharray="3 11"/>
+<path d="M656,79.0 C614,83.0 610,133.0 654,141.0 C636,123.0 634,97.0 656,79.0 Z" fill="#f85149" fill-opacity="0.85"/>
+<circle cx="676" cy="109.0" r="30" fill="#3fb950" fill-opacity="0.85"/>
+<circle cx="676" cy="109.0" r="19" fill="#4493f8" fill-opacity="0.9"/>
+<text x="660" y="161.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#9198a1" text-anchor="middle" xml:space="preserve">in the input geometry</text>
+<rect x="728" y="55.0" width="216" height="114" rx="8" fill="#0d1117" stroke="#3d444d"/>
+<path d="M728,63.0 a8,8 0 0 1 8,-8 h200 a8,8 0 0 1 8,8 v18 h-216 z" fill="#151b23"/>
+<line x1="728" y1="81.0" x2="944" y2="81.0" stroke="#3d444d"/>
+<text x="740" y="73.0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#9198a1" text-anchor="start" xml:space="preserve">aggregated_metrics.csv</text>
+<text x="740" y="101.0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#e6edf3" text-anchor="start" xml:space="preserve">model     dice_rv  hd95_rv</text>
+<text x="740" y="119.0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#e6edf3" text-anchor="start" xml:space="preserve">cinema    0.963    1.6</text>
+<text x="740" y="137.0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#e6edf3" text-anchor="start" xml:space="preserve">nnformer  0.965    1.6</text>
+<text x="740" y="155.0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#e6edf3" text-anchor="start" xml:space="preserve">vsa3l     0.912   10.0</text>
+<path d="M706,109.0 C717.0,109.0 717.0,109.0 728,109.0" fill="none" stroke="#656c76" stroke-width="1.4"/><path class="flow" d="M706,109.0 C717.0,109.0 717.0,109.0 728,109.0" fill="none" stroke="#4493f8" stroke-width="1.4" stroke-dasharray="3 11"/>
+<text x="480.0" y="214" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#9198a1" text-anchor="middle" xml:space="preserve">ACDC patient101, end-diastole, right ventricle</text>
 </svg>

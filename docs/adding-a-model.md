@@ -1,11 +1,6 @@
 # Adding a model
 
-A model in SORAT is three things:
-- a container with the model's code and weights;
-- a preprocessing script and a segmentation script in `bin/`;
-- a Nextflow module in `modules/` that runs them.
-
-The segmentation script must write masks in the original image space, using SORAT's label set.
+Each model in SORAT has a container with its code and weights, a preprocessing script and a segmentation script in `bin/`, and a Nextflow module in `modules/` that runs them. Whatever the model does internally, its masks must come out in the original image space and in SORAT's label set.
 
 ## 1. Generate the templates
 
@@ -13,16 +8,11 @@ The segmentation script must write masks in the original image space, using SORA
 python3 bin/add_model.py mymodel
 ```
 
-This writes:
-- `modules/mymodel.nf`;
-- `bin/mymodel_preprocess.py` and `bin/mymodel_segment.py`;
-- a Dockerfile template;
-- an entry to add to `conf/model_registry.json`.
+This writes `modules/mymodel.nf`, `bin/mymodel_preprocess.py`, `bin/mymodel_segment.py`, a Dockerfile template, and an entry to add to `conf/model_registry.json`.
 
 ## 2. Implement preprocessing and segmentation
 
-- **Preprocessing** reads the image named in the samplesheet and selects frames with `frame_manifest.py`. It must record the original geometry (spacing, origin, direction) in `metadata.json`.
-- **Segmentation** maps its labels to 1 RV, 2 MYO, 3 LV (or 1 wall, 2 RA, 3 LA for atrial models). It resamples each prediction to the original geometry with `geometry_utils.py` and writes `<patient>_<frame>_<model_tag>.nii.gz`.
+The preprocessing script reads the image named in the samplesheet, selects frames with `frame_manifest.py` and records the original geometry (spacing, origin, direction) in `metadata.json`. The segmentation script maps the model's labels to 1 RV, 2 myocardium, 3 LV (or 1 wall, 2 RA, 3 LA for an atrial model), resamples each prediction to the original geometry with `geometry_utils.py`, and writes `<patient>_<frame>_<model_tag>.nii.gz`.
 
 The existing models are worked examples: `bin/nnformer_*.py` (3-D) and `bin/vsa3l_*.py` (2-D, slice by slice).
 

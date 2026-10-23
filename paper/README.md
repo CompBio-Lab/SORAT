@@ -82,11 +82,7 @@ done
 
 Outputs go to `paper/tables/` and `paper/figures/`.
 
-Conventions, all in `analysis/common.py`:
-- **Subjects:** held-out test subjects only; for M&Ms-2, the official test split (subjects 201–360).
-- **Models:** one variant per checkpoint (the three CineMA ensembles, nnFormer and VSA-3L). Single CineMA seeds are in the supplement.
-- **Unit of analysis:** the patient. ED and ES are averaged per patient.
-- **Statistics:** 95% confidence intervals come from a patient-level bootstrap (2,000 resamples, seed 0). Models are compared with a Friedman test, then Wilcoxon signed-rank tests with Holm correction.
+All analyses use the conventions in `analysis/common.py`. Only held-out test subjects are included; for M&Ms-2 that is the official test split, subjects 201–360. Each checkpoint is represented by one variant (the three CineMA ensembles, nnFormer and VSA-3L), and single CineMA seeds are reported in the supplement. The patient is the unit of analysis, with ED and ES averaged per patient. Confidence intervals come from a patient-level bootstrap (2,000 resamples, seed 0), and models are compared with a Friedman test followed by Wilcoxon signed-rank tests with Holm correction.
 
 ## Where each table and figure comes from
 

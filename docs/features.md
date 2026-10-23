@@ -1,10 +1,8 @@
 # Features
 
-With `--feature_extraction.enabled true`, SORAT writes one row per mask and phase (ED or ES) to `features/*_features.csv`. Each row holds:
+With `--feature_extraction.enabled true`, SORAT writes one row per mask and phase (ED or ES) to `features/*_features.csv`.
 
-- **Volumes and mass.** LV, RV and myocardial volume (ml), and myocardial mass (g; volume × 1.05 g/ml). Ejection fractions follow from the ED and ES volumes.
-- **Wall thickness** (`wall_thickness_mean_mm`, `_max_mm`, `_p95_mm`). Short-axis stacks are strongly anisotropic, so thickness is measured in-plane, slice by slice. The endocardial samples are the myocardium pixels 4-connected to the LV cavity. Thickness at a sample is its in-plane distance to the nearest pixel that is neither myocardium nor LV, so the septum is measured to its RV border.
-- **Radiomics.** Shape, first-order and GLCM features of the myocardium from PyRadiomics.
+Each row gives the LV, RV and myocardial volumes in ml and the myocardial mass in g (volume × 1.05 g/ml); ejection fractions follow from the ED and ES volumes. Wall thickness (`wall_thickness_mean_mm`, `_max_mm`, `_p95_mm`) is measured in-plane, slice by slice, because short-axis stacks are strongly anisotropic. The samples are the myocardium pixels 4-connected to the LV cavity, and the thickness at each sample is its in-plane distance to the nearest pixel that is neither myocardium nor LV, so the septum is measured to its RV border. Radiomics adds shape, first-order and GLCM features of the myocardium from PyRadiomics.
 
 The same functions are applied to reference masks, so automatic and manual measurements share one definition.
 

@@ -24,8 +24,9 @@ Use absolute paths.
 
 Rows with a non-NIfTI image or reference, or with `image_spacing`, first go through `PREPARE_INPUT`. It writes NIfTI with the original geometry to `<outdir>/inputs/<patient_id>/`, together with a provenance file (source paths, SHA-256 checksums, reader, DICOM series UID and output geometry).
 
-- **DICOM.** One image per slice position gives a 3-D volume. A cine series with several images per position gives a 4-D volume, with slices ordered along the slice normal and frames ordered by trigger time. RT-STRUCT and SEG contours are not read; provide references as image files.
-- **Spacing.** SORAT never infers spacing. If every spacing is exactly 1.0 and no `image_spacing` is given, it prints a warning.
+A DICOM directory with one image per slice position becomes a 3-D volume. A cine series, with several images per position, becomes a 4-D volume; slices are ordered along the slice normal and frames by trigger time. RT-STRUCT and SEG contours are not read, so give references as image files.
+
+SORAT never infers spacing. If every spacing in a file is exactly 1.0 and no `image_spacing` is given, it prints a warning.
 
 ## Frames
 
@@ -77,10 +78,7 @@ For large SLURM runs, `--slurm_max_forks`, `--slurm_queue_size` and `--slurm_sub
 
 ## Inputs without a samplesheet
 
-When `--input` is omitted, SORAT builds a samplesheet:
-
-- **Short-axis models** (`cinema`, `nnformer`, `vsa3l`, or `all`): from `--default_inputs.sax`, otherwise from an ACDC-style folder given by `--sax_data_root` and `--sax_data_split`.
-- **Atrial model**: from `--default_inputs.atrial`, otherwise from `--atrial_nnunet.dataset_root` (nnU-Net `imagesTr/`/`labelsTr/` layout, or MBAS layout).
+When `--input` is omitted, SORAT builds a samplesheet itself. For the short-axis models (`cinema`, `nnformer`, `vsa3l` or `all`) it uses `--default_inputs.sax`, or else builds one from an ACDC-style folder given by `--sax_data_root` and `--sax_data_split`. For the atrial model it uses `--default_inputs.atrial`, or else builds one from `--atrial_nnunet.dataset_root`, which may follow the nnU-Net layout (`imagesTr/`, `labelsTr/`) or the MBAS layout.
 
 `--models all` runs the three short-axis models. A run that mixes short-axis and atrial models needs an explicit `--input`.
 
@@ -100,13 +98,15 @@ When `--input` is omitted, SORAT builds a samplesheet:
 |---|---|
 | `-entry POSTPROCESS_ONLY --postprocess.results_dir <dir>` | Post-processes the segmentations of an earlier run |
 | `-entry FEATURES_ONLY --feature_extraction.results_dir <dir>` | Extracts features from an earlier run's masks, written to this run's `--outdir` |
-| `-entry DEBUG_ONLY` | Rebuilds the debug report from an earlier run |
+| `-entry DEBUG_ONLY --debug_source_outdir <dir>` | Rebuilds the debug report of an earlier run |
 
 These entry points read the samplesheet directly, so they expect NIfTI; point them at the converted files in `<outdir>/inputs/`.
 
 ## Troubleshooting
 
-- **A task failed.** Its work directory (shown in the error) contains `.command.sh`, `.command.log` and `.command.err`. Fix the cause and rerun with `-resume`.
-- **Frame check error.** The ED/ES numbers in `Info.cfg` don't match the dataset's phase images. Check whether the file counts frames from 0.
-- **Swapped cavities or a label warning.** Set `--evaluation.gt_label_map` for the dataset.
-- **No GPU in a task.** Run `validate_cuda_runtime.py` (see [Installation](installation.md#checking-the-gpu-runtime)), and check that GPU jobs request a GPU and run with `--nv`.
+| Problem | What to do |
+|---|---|
+| A task failed | Open the work directory named in the error; `.command.sh`, `.command.log` and `.command.err` show what ran. Fix the cause and rerun with `-resume` |
+| Frame check error | The ED/ES numbers in `Info.cfg` don't match the dataset's phase images; check whether the file counts frames from 0 |
+| Swapped cavities, or a label warning | Set `--evaluation.gt_label_map` for the dataset |
+| No GPU inside a task | Run `validate_cuda_runtime.py` (see [Installation](installation.md#checking-the-gpu-runtime)) and check that GPU jobs request a GPU and run with `--nv` |

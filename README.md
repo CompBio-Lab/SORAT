@@ -1,61 +1,50 @@
-<div align="center">
-
 # SORAT
 
-**Segmentation Orchestration and Reproducible Analysis Toolkit**
-
-Run several cardiac MRI segmentation models on the same data, map every prediction back to the original image, and evaluate them all with one tested implementation.
+SORAT (Segmentation Orchestration and Reproducible Analysis Toolkit) is a Nextflow pipeline that runs several cardiac MRI segmentation models on the same scans and scores their predictions in one consistent way.
 
 [![Nextflow](https://img.shields.io/badge/Nextflow-%E2%89%A523.04-23aa62?logo=nextflow&logoColor=white)](https://www.nextflow.io/)
 [![Apptainer](https://img.shields.io/badge/containers-Apptainer-1d355e)](https://apptainer.org/)
-[![Python](https://img.shields.io/badge/Python-3.10-3776ab?logo=python&logoColor=white)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/sorat-workflow-dark.svg">
-  <img alt="SORAT workflow: a samplesheet passes through one frame, label and geometry convention, is segmented in parallel by model containers, and is scored in the original image space." src="docs/assets/sorat-workflow-light.svg" width="100%">
+  <img alt="A samplesheet is passed to three model containers; each prediction is returned to the input geometry and scored, giving one row per model in aggregated_metrics.csv." src="docs/assets/sorat-workflow-light.svg" width="100%">
 </picture>
 
-</div>
-
-## Why SORAT
-
-Published segmentation models usually ship with their own preprocessing, label values and evaluation scripts. Differences between them can change reported accuracy without raising an error. SORAT puts each model behind one data contract:
-
-- **Frames.** ED and ES are read from `Info.cfg` (counted from 1, as in ACDC) and checked against the phase images a dataset provides.
-- **Labels.** Each dataset's reference label values are declared, and every model's output is mapped to one label set.
-- **Geometry.** Every prediction is resampled to the spacing, origin and orientation of the original image before it is scored.
-- **Evaluation.** DSC, HD95, failure checks, clinical measurements and reports come from one implementation, with unit tests for each convention.
-
-Each model runs in its own container, and Nextflow schedules the work on a workstation or a SLURM cluster.
+Published segmentation models each come with their own preprocessing, label values and evaluation scripts, so their reported accuracies are hard to compare. SORAT runs every model in its own container. It reads end-diastolic and end-systolic frames from `Info.cfg` and checks them against the dataset's phase images. It maps each model's labels to a common set, resamples every prediction back to the spacing, origin and orientation of the input image, and computes the metrics with a single, unit-tested implementation. The same run can also produce clinical measurements (volumes, ejection fraction, myocardial mass, wall thickness) and per-subject reports.
 
 ## Models
 
-| Model | Input | Labels | Reference |
+| Model | Input | Output labels | Reference |
 |---|---|---|---|
-| **CineMA** (3 fine-tuned datasets × 3 seeds, plus majority-vote ensembles) | Short-axis cine | 1 RV, 2 MYO, 3 LV | [Fu et al., 2026](https://doi.org/10.1038/s43856-026-01636-0) |
-| **nnFormer** (ACDC model) | Short-axis cine | 1 RV, 2 MYO, 3 LV | [Zhou et al., 2023](https://doi.org/10.1109/TIP.2023.3293771) |
-| **VSA-3L** (MONAI model zoo) | Short-axis cine | 1 RV, 2 MYO, 3 LV | [Kerfoot et al., 2019](https://doi.org/10.1007/978-3-030-12029-0_40) |
-| **Atrial nnU-Net** (MBAS 2024) | 3-D LGE | 1 wall, 2 RA, 3 LA | [Isensee et al., 2021](https://doi.org/10.1038/s41592-020-01008-z) |
+| CineMA, fine-tuned on ACDC, M&Ms-1 and M&Ms-2 (3 seeds each, plus majority-vote ensembles) | Short-axis cine | 1 RV, 2 myocardium, 3 LV | [Fu et al., 2026](https://doi.org/10.1038/s43856-026-01636-0) |
+| nnFormer, ACDC model | Short-axis cine | 1 RV, 2 myocardium, 3 LV | [Zhou et al., 2023](https://doi.org/10.1109/TIP.2023.3293771) |
+| VSA-3L, MONAI model zoo | Short-axis cine | 1 RV, 2 myocardium, 3 LV | [Kerfoot et al., 2019](https://doi.org/10.1007/978-3-030-12029-0_40) |
+| Atrial nnU-Net, trained on MBAS 2024 | 3-D LGE | 1 wall, 2 RA, 3 LA | [Isensee et al., 2021](https://doi.org/10.1038/s41592-020-01008-z) |
 
-New models can be added from a template; see [Adding a model](docs/adding-a-model.md).
+To add another model, see [Adding a model](docs/adding-a-model.md).
 
-## Quick start
+## Getting started
+
+You need Nextflow 23.04 or later, Apptainer, and an NVIDIA GPU. The model images, weights included, are on Docker Hub:
 
 ```bash
 git clone https://github.com/CompBio-Lab/SORAT.git && cd SORAT
-python3 bin/sorat_setup.py          # writes local paths and cluster settings to .sorat/user.config (gitignored)
+python3 bin/sorat_setup.py      # records your data paths and SLURM account in .sorat/user.config
+
+apptainer pull containers/sorat-cinema.sif   docker://parsaban/sorat-cinema:v100-sm70
+apptainer pull containers/sorat-nnformer.sif docker://parsaban/sorat-nnformer:v100-sm70
+apptainer pull containers/sorat-vsa3l.sif    docker://parsaban/sorat-vsa3l:v100-sm70
 ```
 
-Pull the model containers (prebuilt images are on Docker Hub; see [Installation](docs/installation.md)), then list your subjects in a samplesheet:
+List the scans in a samplesheet. Only `patient_id` and `image` are required; without `ground_truth` SORAT only segments, and without `info_cfg` it segments every frame.
 
 ```csv
 patient_id,image,ground_truth,info_cfg
-patient101,/data/patient101/patient101_4d.nii.gz,/data/patient101,/data/patient101/Info.cfg
-patient102,/data/patient102/patient102_4d.nii.gz,,
+patient101,/data/acdc/patient101/patient101_4d.nii.gz,/data/acdc/patient101,/data/acdc/patient101/Info.cfg
 ```
 
-Run on a workstation or on SLURM:
+Then run it locally or on a SLURM cluster:
 
 ```bash
 nextflow run main.nf -profile local --input samplesheet.csv --models cinema,nnformer --outdir results
@@ -63,45 +52,26 @@ nextflow run main.nf -profile slurm --slurm_account <account> --input sampleshee
     --evaluation.gt_label_map 'rv=1,myo=2,lv=3'
 ```
 
-Ground truth and `info_cfg` are optional. Without ground truth SORAT segments only. Without `info_cfg` it segments every frame. Images can be NIfTI, NRRD, MetaImage or a DICOM series. See [Usage](docs/usage.md).
-
-## Outputs
-
-```text
-results/
-├── <model>/segmentations/     predictions in the original image space
-├── metrics/                   per-frame DSC and HD95
-├── comparison/                aggregated metrics and an HTML comparison report
-├── previews/                  ED/ES overlays with per-structure DSC
-├── features/                  volumes, EF, mass, wall thickness, radiomics (optional)
-└── pipeline_info/             Nextflow execution report, timeline and trace
-```
-
-Details are in [Outputs](docs/outputs.md).
+Predictions are written to `results/<model>/segmentations/`, and the metrics for every model, subject and frame to `results/comparison/aggregated_metrics.csv`, alongside an HTML comparison report.
 
 ## Documentation
 
-| | |
-|---|---|
-| [Installation](docs/installation.md) | Requirements, model weights, building and validating containers |
-| [Usage](docs/usage.md) | Samplesheets, frames, label maps, evaluation schemas, profiles, isolated entry points |
-| [Parameters](docs/parameters.md) | Every pipeline option |
-| [Features](docs/features.md) | Clinical measurements and radiomics |
-| [Outputs](docs/outputs.md) | Output folders and reports |
-| [Adding a model](docs/adding-a-model.md) | Template generator and the wiring a new model needs |
+- [Installation](docs/installation.md): requirements, container images, building images and checking the GPU runtime
+- [Usage](docs/usage.md): samplesheets, frames, label maps, evaluation options and profiles
+- [Parameters](docs/parameters.md): every pipeline option
+- [Features](docs/features.md): clinical measurements and radiomics
+- [Outputs](docs/outputs.md): the results folder
+- [Adding a model](docs/adding-a-model.md)
+- [Reproducing the paper](paper/README.md)
 
 ## Development
 
-Tests are plain `unittest` files. They need NumPy, SimpleITK and MedPy, so run them inside a model container:
+The tests use `unittest` and need NumPy, SimpleITK and MedPy, so run them inside a model container:
 
 ```bash
 apptainer exec containers/sorat-cinema.sif python -m unittest discover -s tests -v
 ```
 
-## Citation
+## Citation and license
 
-A manuscript describing SORAT is in preparation. Until then, please cite this repository and the models you use (see the table above).
-
-## License
-
-SORAT is released under the [MIT License](LICENSE). The vendored CineMA (`cinema/`) and nnFormer (`nnformer/`) code keep their own MIT licences. Model weights and datasets are distributed by their authors under their own terms.
+A manuscript describing SORAT is in preparation; until it is published, please cite this repository and the models you use. SORAT is released under the [MIT License](LICENSE). The CineMA and nnFormer code included in `cinema/` and `nnformer/` keeps its own MIT licence. Model weights and datasets remain under their authors' terms.
