@@ -14,7 +14,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
 lib64/
 parts/
 sdist/
@@ -85,11 +84,7 @@ dag.svg
 *.tar
 
 # Repo folders not tracked on GitHub
-containers/
-docs/
 models/
-scripts/
-test/
 
 container/cinema/*
 container/nnformer/*
@@ -149,3 +144,19 @@ CLAUDE.md
 CLAUDE.local.md
 .claude/
 .mcp.json
+
+# SORAT: runtime artifacts and local files (source in lib/, containers/, docs/, scripts/ and test/ is tracked)
+containers/*.sif
+containers/bac/
+*.tar.gz
+scripts/*.log
+test/results*/
+test/features_only_results*/
+results_*/
+hcm_vendor/
+SORAT_results_summary.md
+flowchart.*
+sorat_workflow_simplified.png
+data/
+scripts/*
+!scripts/build_containers.sh

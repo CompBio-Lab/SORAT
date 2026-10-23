@@ -1,0 +1,24 @@
+# Build context filter for containers/vsa3l/Dockerfile (BuildKit reads <Dockerfile>.dockerignore).
+# The VSA-3L Dockerfile only needs the paths explicitly re-included below.
+# Keeping generated data and the other model payloads out of the build context
+# avoids sending several gigabytes to the Docker daemon.
+*
+
+!containers/
+!containers/vsa3l/
+!containers/vsa3l/Dockerfile
+
+!configs/
+!configs/**
+
+!models/
+!models/vsa3l/
+!models/vsa3l/**
+
+!bin/
+!bin/vsa3l_preprocess.py
+!bin/vsa3l_segment.py
+!bin/validate_cuda_runtime.py
+!bin/compute_metrics.py
+!bin/frame_manifest.py
+!bin/geometry_utils.py

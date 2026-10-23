@@ -1,0 +1,13 @@
+# Dockerfile-specific context overrides the root VSA-3L-only ignore file.
+*
+!containers/
+!containers/cinema/
+!containers/cinema/**
+!cinema/
+!cinema/**
+!models/
+!models/cinema/
+!models/cinema/**
+!bin/
+!bin/*.py
+**/__pycache__/
