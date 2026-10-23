@@ -17,8 +17,8 @@
 set -e  # Exit on error
 
 # Configuration
-REGISTRY="${SORAT_CONTAINER_REGISTRY:-ghcr.io}"
-NAMESPACE="${SORAT_CONTAINER_NAMESPACE:-your-org}"
+REGISTRY="${SORAT_CONTAINER_REGISTRY:-docker.io}"
+NAMESPACE="${SORAT_CONTAINER_NAMESPACE:-parsaban}"
 VERSION="${SORAT_CONTAINER_VERSION:-latest}"
 
 # Colors for output
@@ -107,15 +107,15 @@ check_model_files() {
     # Check model weights (warn if missing)
     case $model in
         cinema)
-            if [[ -f "models/cinema/model.safetensors" ]]; then
+            if ls models/cinema/finetuned/segmentation/*_sax/*.safetensors &> /dev/null; then
                 print_success "CineMA model weights found"
             else
-                print_warning "CineMA model weights not found at models/cinema/model.safetensors"
+                print_warning "CineMA model weights not found under models/cinema/finetuned/segmentation/"
                 print_warning "Image will build but you'll need to add weights later"
             fi
             ;;
         nnformer)
-            if [[ -f "models/nnformer/model.pkl" ]] || ls models/nnformer/*.pkl &> /dev/null; then
+            if ls models/nnformer/nnFormer_trained_models/nnFormer/3d_fullres/Task001_ACDC/*/fold_0/model_best.model.pkl &> /dev/null; then
                 print_success "nnFormer model weights found"
             else
                 print_warning "nnFormer model weights not found at models/nnformer/"
@@ -131,7 +131,7 @@ check_model_files() {
             fi
             ;;
         atrial_nnunet)
-            if [[ -d "models/atrial_nnunet/nnUNet_results/Dataset001_LGE/nnUNetTrainer__nnUNetPlans__2d" ]] || [[ -d "models/atrial_nnunet/Dataset001_LGE/nnUNetTrainer__nnUNetPlans__2d" ]]; then
+            if ls -d models/atrial_nnunet/nnUNet_results/Dataset001_LGE{,/Dataset001_LGE}/nnUNetTrainer__nnUNetPlans__2d &> /dev/null; then
                 print_success "Atrial nnUNet model weights found"
             else
                 print_warning "Atrial nnUNet model weights not found at models/atrial_nnunet/"
@@ -145,7 +145,7 @@ check_model_files() {
 
 build_image() {
     local model=$1
-    local image_name="${REGISTRY}/${NAMESPACE}/sorat-${model}:${VERSION}"
+    local image_name="${REGISTRY}/${NAMESPACE}/sorat-${model//_/-}:${VERSION}"
     
     print_header "Building $model image: $image_name"
     
@@ -175,7 +175,7 @@ build_image() {
 
 push_image() {
     local model=$1
-    local image_name="${REGISTRY}/${NAMESPACE}/sorat-${model}:${VERSION}"
+    local image_name="${REGISTRY}/${NAMESPACE}/sorat-${model//_/-}:${VERSION}"
     
     print_header "Pushing $model image: $image_name"
     

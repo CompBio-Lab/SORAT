@@ -34,14 +34,14 @@ To build the images yourself instead, see the next two sections.
 
 ## Model weights
 
-Only needed to build the images. Weights are not stored in this repository; download them from their authors and place them under `models/`:
+The published images above already contain these weights, so you only need them to build an image yourself. They are not stored in this repository; download them from their authors and place them under `models/`:
 
 | Model | Source | Location in `models/` |
 |---|---|---|
 | CineMA | [mathpluscode/CineMA on Hugging Face](https://huggingface.co/mathpluscode/CineMA), `finetuned/segmentation/` | `cinema/finetuned/segmentation/{acdc,mnms,mnms2}_sax/` (three `*.safetensors` seeds and `config.yaml` each) |
 | nnFormer | ACDC model from the [nnFormer repository](https://github.com/282857341/nnFormer) | `nnformer/nnFormer_trained_models/nnFormer/3d_fullres/Task001_ACDC/nnFormerTrainerV2_nnformer_acdc__nnFormerPlansv2.1/` (`plans.pkl`, `fold_0/model_best.model.pkl`) |
 | VSA-3L | MONAI bundle `ventricular_short_axis_3label` (`python -m monai.bundle download ventricular_short_axis_3label`) | `vsa3l/model.pt` (the bundle configs are in `configs/`) |
-| Atrial nnU-Net | Trained on MBAS 2024; included in the `sorat-atrial-nnunet` image | `atrial_nnunet/nnUNet_results/Dataset001_LGE/` |
+| Atrial nnU-Net | Trained on MBAS 2024 by the authors; copy it out of the published image (see below) | `atrial_nnunet/nnUNet_results/Dataset001_LGE/` |
 
 ## Building the containers
 
@@ -51,7 +51,13 @@ Each model has a Dockerfile in `containers/<model>/`. The build context is the r
 scripts/build_containers.sh all              # or: cinema | nnformer | vsa3l | atrial_nnunet
 ```
 
-`SORAT_CONTAINER_REGISTRY`, `SORAT_CONTAINER_NAMESPACE` and `SORAT_CONTAINER_VERSION` set the image names. Add `--push` to push them to a registry.
+Images are named `<registry>/<namespace>/sorat-<model>:<version>`, by default `docker.io/parsaban/sorat-<model>:latest`; set `SORAT_CONTAINER_REGISTRY`, `SORAT_CONTAINER_NAMESPACE` and `SORAT_CONTAINER_VERSION` to change them, and add `--push` to push. The atrial weights can be copied out of the published image:
+
+```bash
+mkdir -p models/atrial_nnunet
+docker create --name atrial parsaban/sorat-atrial-nnunet:latest
+docker cp atrial:/models/atrial_nnunet/nnUNet_results models/atrial_nnunet/ && docker rm atrial
+```
 
 Convert the result to an Apptainer image in `containers/`:
 

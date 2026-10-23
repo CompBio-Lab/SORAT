@@ -11,3 +11,6 @@
 !bin/
 !bin/*.py
 **/__pycache__/
+
+# Windows download metadata
+**/*:Zone.Identifier

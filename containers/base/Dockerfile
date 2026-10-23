@@ -4,10 +4,10 @@
 # Base image with common dependencies for all cardiac segmentation models
 # 
 # Build:
-#   docker build -t ghcr.io/your-org/sorat-base:latest containers/base/
+#   docker build -t <namespace>/sorat-base:<tag> containers/base/
 #
 # Push:
-#   docker push ghcr.io/your-org/sorat-base:latest
+#   docker push <namespace>/sorat-base:<tag>
 # =============================================================================
 
 FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime

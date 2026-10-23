@@ -18,14 +18,17 @@ Every script reads its locations from environment variables:
 
 ## 1. Prepare the data
 
-| Dataset | Step | Script |
-|---|---|---|
-| M&Ms-1 | `Info.cfg` (ED/ES, counted from 1) from the dataset information file, checked against the annotated frames | `data_prep/generate_mms1_info_cfg.py` |
-| M&Ms-2 | Reorganize into `MnM2/{SA,LA}/NNN/`, write `Info.cfg` from the ED/ES phase images, make samplesheets | `data_prep/reorganize_mms2.py`, `verify_regen_mms2_cfg.py`, `generate_mms2_samplesheets.py` |
-| 2018 Atrial Segmentation Challenge | Samplesheets with spacing 0.625 × 0.625 × 1.25 mm and the LA-cavity reference | `data_prep/make_lasc2018_samplesheets.py` |
-| 2018 challenge, AIM-ASD | Find scans that are also in the atrial model's MBAS training data | `data_prep/check_mbas_overlap.py` (result: `data_prep/mbas_overlap.csv`) |
+Each step writes into `$SORAT_SAMPLESHEETS`. The scripts were checked to reproduce the samplesheets used for the paper.
 
-ACDC needs no preparation.
+| Dataset | Step | Command |
+|---|---|---|
+| ACDC | Samplesheet of the 50 test subjects | `python bin/generate_acdc_samplesheet.py --acdc_dir $SORAT_DATA_ROOT/ACDC/database --dataset testing --output $SORAT_SAMPLESHEETS/acdc_testing_samplesheet.csv` |
+| M&Ms-1 | Samplesheet of the 136 test subjects, then `Info.cfg` files (ED/ES counted from 1) from the dataset information file, checked against the annotated frames | `python bin/generate_samplesheet.py --data_root "$SORAT_DATA_ROOT/M&Ms" --data_split Testing --output $SORAT_SAMPLESHEETS/mms_testing_samplesheet.csv`, then `paper/data_prep/generate_mms1_info_cfg.py` (usage in the file) |
+| M&Ms-2 | Reorganize into `MnM2/{SA,LA}/NNN/`, write `Info.cfg` from the ED/ES phase images, write `mms2_sa_samplesheet.csv` (all 360 subjects) | `paper/data_prep/reorganize_mms2.py`, `verify_regen_mms2_cfg.py`, `generate_mms2_samplesheets.py` |
+| 2018 Atrial Segmentation Challenge | Samplesheets with spacing 0.625 × 0.625 × 1.25 mm and the LA-cavity reference | `python paper/data_prep/make_lasc2018_samplesheets.py --root $SORAT_DATA_ROOT/Atria_2018 --out $SORAT_SAMPLESHEETS` |
+| AIM-ASD | Samplesheet of the LGE images and biatrial references | `python paper/data_prep/make_aim_asd_samplesheet.py --root $SORAT_DATA_ROOT/AIM-ASD/dicoms/AIM-ASD/ASD --out $SORAT_SAMPLESHEETS/aim_asd_samplesheet.csv` |
+
+`paper/data_prep/check_mbas_overlap.py` finds the 2018 and AIM-ASD scans that are also in the atrial model's MBAS training data; its result is `paper/data_prep/mbas_overlap.csv`, which the 2018 samplesheets use.
 
 ## 2. Run SORAT
 
@@ -40,7 +43,7 @@ nextflow run main.nf $COMMON --input $SORAT_SAMPLESHEETS/acdc_testing_sampleshee
   --evaluation.gt_label_map 'rv=1,myo=2,lv=3' --outdir $SORAT_RESULTS/ACDC
 nextflow run main.nf $COMMON --input $SORAT_SAMPLESHEETS/mms_testing_samplesheet.csv \
   --evaluation.gt_label_map 'lv=1,myo=2,rv=3' --outdir $SORAT_RESULTS/MMS
-nextflow run main.nf $COMMON --input $SORAT_SAMPLESHEETS/mms2_sa_samplesheet_full.csv \
+nextflow run main.nf $COMMON --input $SORAT_SAMPLESHEETS/mms2_sa_samplesheet.csv \
   --evaluation.gt_label_map 'lv=1,myo=2,rv=3' --outdir $SORAT_RESULTS/MMS_2
 
 # second, independent ACDC run from a cold cache (run-to-run reproducibility)

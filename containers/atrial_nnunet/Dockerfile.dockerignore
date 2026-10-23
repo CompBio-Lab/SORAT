@@ -1,0 +1,16 @@
+# Build context filter for containers/atrial_nnunet/Dockerfile (BuildKit reads <Dockerfile>.dockerignore).
+# Only the inputs the Dockerfile copies are sent. nnU-Net predicts with checkpoint_final.pth,
+# so the best-epoch checkpoints, validation outputs and training logs are left out (about 1.8 GB).
+*
+!containers/atrial_nnunet/
+!containers/atrial_nnunet/**
+!models/atrial_nnunet/
+!models/atrial_nnunet/**
+models/atrial_nnunet/**/checkpoint_best.pth
+models/atrial_nnunet/**/validation/
+models/atrial_nnunet/**/progress.png
+models/atrial_nnunet/**/training_log_*.txt
+!bin/
+!bin/*.py
+**/__pycache__/
+**/*:Zone.Identifier

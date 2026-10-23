@@ -4,13 +4,13 @@
 # nnFormer cardiac segmentation model with pre-trained weights
 # 
 # Build (from SORAT root directory):
-#   docker build -t ghcr.io/your-org/sorat-nnformer:latest -f containers/nnformer/Dockerfile .
+#   docker build -t <namespace>/sorat-nnformer:<tag> -f containers/nnformer/Dockerfile .
 #
 # Push:
-#   docker push ghcr.io/your-org/sorat-nnformer:latest
+#   docker push <namespace>/sorat-nnformer:<tag>
 #
 # Run interactively:
-#   docker run --gpus all -it -v /path/to/data:/data ghcr.io/your-org/sorat-nnformer:latest
+#   docker run --gpus all -it -v /path/to/data:/data <namespace>/sorat-nnformer:<tag>
 # =============================================================================
 
 # Preserve V100 (SM70) support, matching CINEMA and VSA-3L.

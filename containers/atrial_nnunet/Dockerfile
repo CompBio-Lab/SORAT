@@ -4,10 +4,12 @@
 # Atrial nnUNetv2 segmentation model with pre-trained weights.
 #
 # Build (from SORAT root directory):
-#   docker build -t ghcr.io/your-org/sorat-atrial-nnunet:latest -f containers/atrial_nnunet/Dockerfile .
+#   docker build -t <namespace>/sorat-atrial-nnunet:<tag> -f containers/atrial_nnunet/Dockerfile .
 # =============================================================================
 
-FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+# PyTorch 2.1.2 (CUDA 12.1) comes with the base image; reinstalling it in a later
+# layer would ship a second copy of torch in every pull.
+FROM pytorch/pytorch:2.1.2-cuda12.1-cudnn8-runtime
 
 LABEL org.opencontainers.image.source="https://github.com/CompBio-Lab/SORAT"
 LABEL description="Atrial nnUNetv2 segmentation model for SORAT pipeline"
@@ -23,15 +25,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 libsm6 libxext6 libxrender-dev libgl1-mesa-glx libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
+# Versions pinned to those in the image used for the published results.
 RUN pip install --upgrade pip && \
-    pip install --index-url https://download.pytorch.org/whl/cu121 --extra-index-url https://pypi.org/simple \
-        "torch==2.1.2" "torchvision==0.16.2" "torchaudio==2.1.2" && \
     pip install \
         "numpy==1.26.4" "scipy==1.13.1" "pandas==2.2.2" "matplotlib==3.8.4" \
-        SimpleITK nibabel scikit-image medpy tqdm \
-        acvl-utils dynamic-network-architectures batchgenerators batchgeneratorsv2 \
-        graphviz imagecodecs seaborn yacs \
-        requests scikit-learn tifffile dicom2nifti einops json_tricks && \
+        "SimpleITK==2.5.5" "nibabel==5.4.2" "scikit-image==0.25.2" "MedPy==0.5.2" tqdm \
+        "acvl-utils==0.2.6" "dynamic-network-architectures==0.4.4" "batchgenerators==0.25.3" "batchgeneratorsv2==0.3.3" \
+        "graphviz==0.21" "imagecodecs==2025.3.30" "seaborn==0.13.2" "yacs==0.1.8" \
+        requests "scikit-learn==1.7.2" "tifffile==2025.5.10" "dicom2nifti==2.6.2" "einops==0.8.2" "json-tricks==3.17.3" && \
     pip install --no-deps "nnunetv2==2.7.0"
 
 # Build-time sanity checks to catch dependency drift before push.

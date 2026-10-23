@@ -22,3 +22,6 @@
 !bin/compute_metrics.py
 !bin/frame_manifest.py
 !bin/geometry_utils.py
+
+# Windows download metadata
+**/*:Zone.Identifier

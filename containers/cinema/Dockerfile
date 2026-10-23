@@ -4,13 +4,13 @@
 # CineMA cardiac segmentation model with pre-trained weights
 # 
 # Build (from SORAT root directory):
-#   docker build -t ghcr.io/your-org/sorat-cinema:latest -f containers/cinema/Dockerfile .
+#   docker build -t <namespace>/sorat-cinema:<tag> -f containers/cinema/Dockerfile .
 #
 # Push:
-#   docker push ghcr.io/your-org/sorat-cinema:latest
+#   docker push <namespace>/sorat-cinema:<tag>
 #
 # Run interactively:
-#   docker run --gpus all -it -v /path/to/data:/data ghcr.io/your-org/sorat-cinema:latest
+#   docker run --gpus all -it -v /path/to/data:/data <namespace>/sorat-cinema:<tag>
 # =============================================================================
 
 # Preserve V100 (SM70) support, matching the VSA-3L runtime.

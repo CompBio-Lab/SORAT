@@ -12,7 +12,7 @@ For every subject the script checks that the CSV ED/ES frames are exactly the
 annotated frames of the 4-D ground truth, and stops if any subject disagrees.
 
 Run inside the sorat-cinema.sif container (needs nibabel + numpy):
-    python scripts/generate_mms1_info_cfg.py \
+    python paper/data_prep/generate_mms1_info_cfg.py \
         --mms_root "$SORAT_DATA_ROOT/M&Ms" \
         --samplesheet data/mms_testing_samplesheet.csv \
         --out_dir data/mms1_info
