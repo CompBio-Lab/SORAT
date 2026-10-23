@@ -1,0 +1,18 @@
+{
+  "command": "s1-report",
+  "timestamp_utc": "2026-10-07T06:06:30+00:00",
+  "git_sha": "a489ececdba8f9c199f9f811d5a7946325e64239",
+  "git_branch": "eece568-hcm-vendor",
+  "config_hash": "fd66385874c9",
+  "packages": {
+    "python": "3.11.6",
+    "numpy": "1.26.4",
+    "pandas": "2.2.3",
+    "scipy": "1.15.2",
+    "scikit-learn": "1.6.1",
+    "xgboost": "3.0.5",
+    "shap": "0.49.1",
+    "torch": "2.8.0",
+    "SimpleITK": "2.5.0"
+  }
+}

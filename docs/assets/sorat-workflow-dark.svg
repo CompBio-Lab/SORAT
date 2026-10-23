@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 380" width="960" height="380" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+<title>SORAT workflow</title><style>.flow{animation:dash 1.6s linear infinite} @keyframes dash{to{stroke-dashoffset:-28}} @media (prefers-reduced-motion: reduce){.flow{animation:none}}</style>
+<text x="24" y="30" font-size="11" font-weight="600" fill="#9198a1" text-anchor="start">INPUT</text>
+<text x="254" y="30" font-size="11" font-weight="600" fill="#9198a1" text-anchor="start">DATA CONTRACT</text>
+<text x="494" y="30" font-size="11" font-weight="600" fill="#9198a1" text-anchor="start">MODEL CONTAINERS</text>
+<text x="734" y="30" font-size="11" font-weight="600" fill="#9198a1" text-anchor="start">EVALUATION</text>
+<rect x="24" y="142" width="196" height="110" rx="10" fill="#0d1117" stroke="#3d444d"/>
+<text x="40" y="168" font-size="14" font-weight="600" fill="#e6edf3" text-anchor="start">Samplesheet</text>
+<text x="40" y="190" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">Cine SAX or atrial LGE</text>
+<text x="40" y="209" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">NIfTI · NRRD · DICOM</text>
+<text x="40" y="228" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">Optional reference masks</text>
+<rect x="254" y="142" width="206" height="110" rx="10" fill="#0d1117" stroke="#3d444d"/>
+<text x="270" y="168" font-size="14" font-weight="600" fill="#e6edf3" text-anchor="start">One convention</text>
+<text x="270" y="190" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">ED/ES frames verified</text>
+<text x="270" y="209" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">Label maps declared</text>
+<text x="270" y="228" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">Original geometry kept</text>
+<path d="M220,197 C237.0,197 237.0,197 254,197" fill="none" stroke="#656c76" stroke-width="1.5"/><path class="flow" d="M220,197 C237.0,197 237.0,197 254,197" fill="none" stroke="#4493f8" stroke-width="1.5" stroke-dasharray="4 10"/><circle cx="254" cy="197" r="3" fill="#656c76"/>
+<rect x="494" y="52" width="206" height="62" rx="10" fill="#0d1117" stroke="#3d444d"/>
+<rect x="494" y="62" width="4" height="42" rx="2" fill="#2a78d6"/>
+<text x="510" y="78" font-size="14" font-weight="600" fill="#e6edf3" text-anchor="start">CineMA</text>
+<text x="510" y="100" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">9 checkpoints + ensembles</text>
+<path d="M460,197 C477.0,197 477.0,83 494,83" fill="none" stroke="#656c76" stroke-width="1.5"/><path class="flow" d="M460,197 C477.0,197 477.0,83 494,83" fill="none" stroke="#4493f8" stroke-width="1.5" stroke-dasharray="4 10"/><circle cx="494" cy="83" r="3" fill="#656c76"/>
+<path d="M700,83 C717.0,83 717.0,197 734,197" fill="none" stroke="#656c76" stroke-width="1.5"/><path class="flow" d="M700,83 C717.0,83 717.0,197 734,197" fill="none" stroke="#4493f8" stroke-width="1.5" stroke-dasharray="4 10"/><circle cx="734" cy="197" r="3" fill="#656c76"/>
+<rect x="494" y="128" width="206" height="62" rx="10" fill="#0d1117" stroke="#3d444d"/>
+<rect x="494" y="138" width="4" height="42" rx="2" fill="#eda100"/>
+<text x="510" y="154" font-size="14" font-weight="600" fill="#e6edf3" text-anchor="start">nnFormer</text>
+<text x="510" y="176" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">3-D transformer</text>
+<path d="M460,197 C477.0,197 477.0,159 494,159" fill="none" stroke="#656c76" stroke-width="1.5"/><path class="flow" d="M460,197 C477.0,197 477.0,159 494,159" fill="none" stroke="#4493f8" stroke-width="1.5" stroke-dasharray="4 10"/><circle cx="494" cy="159" r="3" fill="#656c76"/>
+<path d="M700,159 C717.0,159 717.0,197 734,197" fill="none" stroke="#656c76" stroke-width="1.5"/><path class="flow" d="M700,159 C717.0,159 717.0,197 734,197" fill="none" stroke="#4493f8" stroke-width="1.5" stroke-dasharray="4 10"/><circle cx="734" cy="197" r="3" fill="#656c76"/>
+<rect x="494" y="204" width="206" height="62" rx="10" fill="#0d1117" stroke="#3d444d"/>
+<rect x="494" y="214" width="4" height="42" rx="2" fill="#e87ba4"/>
+<text x="510" y="230" font-size="14" font-weight="600" fill="#e6edf3" text-anchor="start">VSA-3L</text>
+<text x="510" y="252" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">MONAI 2-D U-Net</text>
+<path d="M460,197 C477.0,197 477.0,235 494,235" fill="none" stroke="#656c76" stroke-width="1.5"/><path class="flow" d="M460,197 C477.0,197 477.0,235 494,235" fill="none" stroke="#4493f8" stroke-width="1.5" stroke-dasharray="4 10"/><circle cx="494" cy="235" r="3" fill="#656c76"/>
+<path d="M700,235 C717.0,235 717.0,197 734,197" fill="none" stroke="#656c76" stroke-width="1.5"/><path class="flow" d="M700,235 C717.0,235 717.0,197 734,197" fill="none" stroke="#4493f8" stroke-width="1.5" stroke-dasharray="4 10"/><circle cx="734" cy="197" r="3" fill="#656c76"/>
+<rect x="494" y="280" width="206" height="62" rx="10" fill="#0d1117" stroke="#3d444d"/>
+<rect x="494" y="290" width="4" height="42" rx="2" fill="#1baf7a"/>
+<text x="510" y="306" font-size="14" font-weight="600" fill="#e6edf3" text-anchor="start">Atrial nnU-Net</text>
+<text x="510" y="328" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">LGE, biatrial</text>
+<path d="M460,197 C477.0,197 477.0,311 494,311" fill="none" stroke="#656c76" stroke-width="1.5"/><path class="flow" d="M460,197 C477.0,197 477.0,311 494,311" fill="none" stroke="#4493f8" stroke-width="1.5" stroke-dasharray="4 10"/><circle cx="494" cy="311" r="3" fill="#656c76"/>
+<path d="M700,311 C717.0,311 717.0,197 734,197" fill="none" stroke="#656c76" stroke-width="1.5"/><path class="flow" d="M700,311 C717.0,311 717.0,197 734,197" fill="none" stroke="#4493f8" stroke-width="1.5" stroke-dasharray="4 10"/><circle cx="734" cy="197" r="3" fill="#656c76"/>
+<rect x="734" y="122" width="202" height="150" rx="10" fill="#0d1117" stroke="#3d444d"/>
+<text x="750" y="148" font-size="14" font-weight="600" fill="#e6edf3" text-anchor="start">In original space</text>
+<text x="750" y="170" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">DSC · HD95 per structure</text>
+<text x="750" y="189" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">Failure and off-heart checks</text>
+<text x="750" y="208" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">Volumes · EF · LV mass</text>
+<text x="750" y="227" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">Bland–Altman · ICC</text>
+<text x="750" y="246" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">Reports with provenance</text>
+<text x="480.0" y="368" font-size="12" font-weight="400" fill="#9198a1" text-anchor="middle">Every model runs in its own Apptainer container; Nextflow schedules the work locally or on SLURM.</text>
+</svg>

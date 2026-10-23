@@ -1,573 +1,107 @@
-# SORAT - Segmentation Orchestration and Reproducible Analysis Toolkit
+<div align="center">
 
-[![Nextflow](https://img.shields.io/badge/nextflow-%E2%89%A523.04.0-brightgreen.svg)](https://www.nextflow.io/)
-[![Docker](https://img.shields.io/badge/docker-enabled-blue.svg)](https://www.docker.com/)
-[![Singularity](https://img.shields.io/badge/singularity-enabled-blue.svg)](https://sylabs.io/)
+# SORAT
 
-## Overview
+**Segmentation Orchestration and Reproducible Analysis Toolkit**
 
-SORAT (Segmentation Orchestration and Reproducible Analysis Toolkit) is a modular Nextflow pipeline for cardiac MRI segmentation that integrates multiple deep learning models. It enables reproducible orchestration, side-by-side comparison of segmentation results, and comprehensive evaluation metrics.
+Run several cardiac MRI segmentation models on the same data, map every prediction back to the original image, and evaluate them all with one tested implementation.
 
-### Supported Models
+[![Nextflow](https://img.shields.io/badge/Nextflow-%E2%89%A523.04-23aa62?logo=nextflow&logoColor=white)](https://www.nextflow.io/)
+[![Apptainer](https://img.shields.io/badge/containers-Apptainer-1d355e)](https://apptainer.org/)
+[![Python](https://img.shields.io/badge/Python-3.10-3776ab?logo=python&logoColor=white)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-| Model | Description | Reference |
-|-------|-------------|-----------|
-| **CineMA** | Convolutional Vision Transformer for cardiac MRI | [CineMA Paper](https://arxiv.org/abs/2506.00679) |
-| **nnFormer** | 3D medical image segmentation transformer | [Zhou et al., 2021](https://arxiv.org/abs/2109.03201) |
-| **VSA-3L** | MONAI Ventricular Short Axis 3-Label model | [MONAI Model Zoo](https://monai.io/model-zoo.html) |
-| **Atrial nnUNet** | nnUNetv2 2D atrial segmentation model (Dataset001_LGE) | [nnU-Net](https://www.nature.com/articles/s41592-020-01008-z) |
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/sorat-workflow-dark.svg">
+  <img alt="SORAT workflow: a samplesheet passes through one frame, label and geometry convention, is segmented in parallel by model containers, and is scored in the original image space." src="docs/assets/sorat-workflow-light.svg" width="100%">
+</picture>
 
-### Output Labels
+</div>
 
-SAX models (`cinema`, `nnformer`, `vsa3l`) produce ACDC-compatible labels:
-- **0**: Background
-- **1**: Right Ventricle (RV)
-- **2**: Myocardium (MYO)
-- **3**: Left Ventricle (LV)
+## Why SORAT
 
-Atrial model (`atrial_nnunet`) produces atrial labels:
-- **0**: Background
-- **1**: Wall
-- **2**: Right Atrium (RA)
-- **3**: Left Atrium (LA)
+Published segmentation models usually ship with their own preprocessing, label values and evaluation scripts. Differences between them can change reported accuracy without raising an error. SORAT puts each model behind one data contract:
 
-## Quick Start
+- **Frames.** ED and ES are read from `Info.cfg` (counted from 1, as in ACDC) and checked against the phase images a dataset provides.
+- **Labels.** Each dataset's reference label values are declared, and every model's output is mapped to one label set.
+- **Geometry.** Every prediction is resampled to the spacing, origin and orientation of the original image before it is scored.
+- **Evaluation.** DSC, HD95, failure checks, clinical measurements and reports come from one implementation, with unit tests for each convention.
 
-### 1. Install Nextflow
+Each model runs in its own container, and Nextflow schedules the work on a workstation or a SLURM cluster.
 
-```bash
-curl -s https://get.nextflow.io | bash
-```
+## Models
 
-### 2. Configure Local User Paths (Required)
+| Model | Input | Labels | Reference |
+|---|---|---|---|
+| **CineMA** (3 fine-tuned datasets × 3 seeds, plus majority-vote ensembles) | Short-axis cine | 1 RV, 2 MYO, 3 LV | [Fu et al., 2026](https://doi.org/10.1038/s43856-026-01636-0) |
+| **nnFormer** (ACDC model) | Short-axis cine | 1 RV, 2 MYO, 3 LV | [Zhou et al., 2023](https://doi.org/10.1109/TIP.2023.3293771) |
+| **VSA-3L** (MONAI model zoo) | Short-axis cine | 1 RV, 2 MYO, 3 LV | [Kerfoot et al., 2019](https://doi.org/10.1007/978-3-030-12029-0_40) |
+| **Atrial nnU-Net** (MBAS 2024) | 3-D LGE | 1 wall, 2 RA, 3 LA | [Isensee et al., 2021](https://doi.org/10.1038/s41592-020-01008-z) |
 
-```bash
-python3 bin/sorat_setup.py
-```
+New models can be added from a template; see [Adding a model](docs/adding-a-model.md).
 
-This writes local overrides to `.sorat/user.config` (gitignored).
-
-### 3. Run the Pipeline
-
-You can run SORAT directly with `nextflow run main.nf`, or use the helper runner:
+## Quick start
 
 ```bash
-./bin/sorat_run.sh [pipeline options]
+git clone https://github.com/CompBio-Lab/SORAT.git && cd SORAT
+python3 bin/sorat_setup.py          # writes local paths and cluster settings to .sorat/user.config (gitignored)
 ```
 
-The helper runner uses `main.nf` from the repo root and reminds you to run setup if no local user config is present.
-
-**Using Default Inputs (Model-Dependent):**
-```bash
-# SAX-only runs default to generated samplesheet from --sax_data_root
-./bin/sorat_run.sh -profile local
-
-# With SLURM + Apptainer on HPC
-./bin/sorat_run.sh -profile slurm
-
-# Atrial-only runs default when atrial root data is configured
-export SORAT_ATRIAL_DATA_ROOT=/path/to/nnUNet_raw/Dataset001_LGE
-./bin/sorat_run.sh --models atrial_nnunet -profile slurm
-```
-
-Notes:
-- If `--models` includes both SAX and atrial models, `--input` is required.
-- `--models all` is SAX-only.
-
-**Using Custom Data:**
-```bash
-# Run locally (Apptainer/Singularity)
-./bin/sorat_run.sh \
-    --input samplesheet.csv \
-    --outdir results \
-    --models all \
-    -profile local
-
-# Run on SLURM (HPC)
-./bin/sorat_run.sh \
-    --input samplesheet.csv \
-    --outdir results \
-    --models all \
-    -profile slurm
-
-# Run specific models only
-./bin/sorat_run.sh \
-    --input samplesheet.csv \
-    --outdir results \
-    --models cinema,nnformer \
-    -profile local
-```
-
-### Pulling Containers (Apptainer)
-
-```bash
-# Pull SORAT images from GitHub Container Registry
-export SORAT_GHCR_NAMESPACE="your-org"
-apptainer pull sorat-cinema.sif docker://ghcr.io/${SORAT_GHCR_NAMESPACE}/sorat-cinema:latest
-apptainer pull sorat-nnformer.sif docker://ghcr.io/${SORAT_GHCR_NAMESPACE}/sorat-nnformer:latest
-apptainer pull sorat-vsa3l.sif docker://ghcr.io/${SORAT_GHCR_NAMESPACE}/sorat-vsa3l:latest
-apptainer pull sorat-atrial-nnunet.sif docker://ghcr.io/${SORAT_GHCR_NAMESPACE}/sorat-atrial-nnunet:latest
-```
-
-### 4. Alternative: Jupyter Notebook Interface
-
-For interactive use, open the Jupyter notebook:
-
-```bash
-jupyter notebook notebooks/run_sorat_pipeline.ipynb
-```
-
-The notebook provides:
-- Visual data exploration
-- Interactive model configuration
-- Result visualization and comparison
-- Direct model execution (without Nextflow)
-
-## Input Format
-
-### Samplesheet (CSV)
-
-Create a CSV file with the following columns:
-
-| Column | Required | Description |
-|--------|----------|-------------|
-| `patient_id` | Yes | Unique patient identifier |
-| `image` | Yes | Image: NIfTI (`.nii`, `.nii.gz`), another format SimpleITK reads (NRRD, MetaImage), or a DICOM series directory (see [Non-NIfTI inputs](#non-nifti-inputs)) |
-| `ground_truth` | No | Ground truth: a NIfTI or other image file, or a directory of per-frame files (ACDC, M&Ms-2 layouts) |
-| `info_cfg` | No | **Optional** metadata config with ED/ES frame numbers. When absent, the pipeline segments all temporal frames of the cardiac cycle. |
-| `image_spacing` | No | Spatial voxel spacing `XxYxZ` in mm (e.g. `0.625x0.625x1.25`; no commas, so the CSV needs no quoting). Replaces the spacing stored in the image and ground truth; use it only when the files carry a placeholder (e.g. 1 x 1 x 1) |
-| `dicom_series` | No | SeriesInstanceUID to read when a DICOM directory holds more than one series |
-
-#### Example samplesheet.csv
+Pull the model containers (prebuilt images are on Docker Hub; see [Installation](docs/installation.md)), then list your subjects in a samplesheet:
 
 ```csv
 patient_id,image,ground_truth,info_cfg
 patient101,/data/patient101/patient101_4d.nii.gz,/data/patient101,/data/patient101/Info.cfg
-patient102,/data/patient102/patient102_4d.nii.gz,/data/patient102,/data/patient102/Info.cfg
-patient103,/data/patient103/patient103_4d.nii.gz,,
+patient102,/data/patient102/patient102_4d.nii.gz,,
 ```
 
-### Custom Dataset Templates
-
-Use these templates when your directory structure does not match ACDC or MBAS conventions.
-
-#### 1. Minimal generic template (any dataset structure)
-
-```csv
-patient_id,image,ground_truth,info_cfg
-case001,/data/custom/case001/image.nii.gz,,
-case002,/data/custom/case002/image.nii.gz,,
-```
-
-Use this when you only need inference. You can point `image` to any valid NIfTI path.
-
-#### 2. Recommended per-model contributor template
-
-```csv
-patient_id,image,ground_truth,info_cfg
-case001,/data/custom/case001/image_4d.nii.gz,/data/custom/case001/label_dir,/data/custom/case001/Info.cfg
-case002,/data/custom/case002/image_4d.nii.gz,/data/custom/case002/label_dir,
-```
-
-Guidance:
-- Always provide stable `patient_id` values; they are used in outputs and comparisons.
-- Set `ground_truth` when you want metrics/reporting; leave empty for inference-only runs.
-- `info_cfg` is optional and mainly useful for CineMA ED/ES frame metadata.
-- When \`info_cfg\` is absent, the pipeline uses \`frames_mode=auto\` and segments all frames. Override with \`--frames_mode ed_es\` to force 2-frame mode.
-- Keep column names unchanged even if your on-disk folder names are different.
-
-### Non-NIfTI inputs
-
-Rows whose `image` is not NIfTI, whose `ground_truth` is a non-NIfTI file, or
-that set `image_spacing` go through `PREPARE_INPUT` (`bin/prepare_input.py`)
-before preprocessing. It writes NIfTI with the original geometry to
-`<outdir>/inputs/<patient_id>/`, together with
-`<patient_id>_input_provenance.json` (source paths, SHA-256 checksums, reader,
-DICOM series UID, output geometry and any spacing override). NIfTI rows are
-used as they are.
-
-- **DICOM:** a directory holding exactly one series (or the one named in
-  `dicom_series`). One image per slice position gives a 3-D volume; a cine
-  series with several images per position gives a 4-D volume, with slices
-  ordered along the slice normal and frames by trigger time. DICOM-RT or SEG
-  contours are not read; provide ground truth as an image file.
-- **Placeholder spacing:** if every spatial spacing is exactly 1.0 and no
-  `image_spacing` is given, a warning is printed. SORAT never infers spacing.
-- The isolated entry points (`POSTPROCESS_ONLY`, `FEATURES_ONLY`) read the
-  samplesheet directly and expect NIfTI; point them at the converted files in
-  `<outdir>/inputs/`.
-
-```csv
-patient_id,image,ground_truth,info_cfg,image_spacing,dicom_series
-lasc001,/data/lasc/001/lgemri.nrrd,/data/lasc/001/laendo.nrrd,,0.625x0.625x1.25,
-inst001,/data/institution/inst001/cine_sax,,/data/institution/inst001/Info.cfg,,
-```
-
-### Info.cfg Format (Optional)
-
-The Info.cfg file gives ED and ES as frame numbers counted from 1, as defined
-by ACDC (`ED: 1` is the first frame). SORAT converts them to array indices and,
-when the dataset provides per-frame phase images next to the cine, checks the
-selected frames against them.
-
-```
-ED: 1
-ES: 13
-Group: NOR
-Height: 175
-Weight: 70
-```
-
-## Parameters
-
-### Required Parameters
-
-| Parameter | Description |
-|-----------|-------------|
-| `--input` | Optional override for input samplesheet CSV (required for mixed SAX+atrial runs) |
-
-### Optional Parameters
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `--outdir` | `./results` | Output directory |
-| `--models` | `all` | Models to run: `cinema`, `nnformer`, `vsa3l`, `atrial_nnunet`, or `all` |
-| `--default_inputs.sax` | `null` | Preferred explicit default samplesheet for SAX-only runs (or `SORAT_SAX_SAMPLESHEET`) |
-| `--sax_data_root` | `null` | Preferred SAX data root used to auto-generate defaults (ACDC-style layout) (or `SORAT_SAX_DATA_ROOT`) |
-| `--sax_data_split` | `testing` | SAX split folder used with `--sax_data_root` when auto-generating defaults |
-| `--default_inputs.atrial` | `null` | Preferred explicit default samplesheet for atrial-only runs (or `SORAT_ATRIAL_SAMPLESHEET`) |
-| `--atrial_nnunet.dataset_root` | `null` | Preferred atrial data root for auto-generated defaults. Supports nnUNet layout (`imagesTr/`,`labelsTr/`) and MBAS-style layout (`MBAS_###/MBAS_###_gt.nii.gz`,`MBAS_###_label.nii.gz`) (or `SORAT_ATRIAL_DATA_ROOT`) |
-| `--slurm_account` | `null` | SLURM allocation/account (required when `-profile slurm`, can use `SORAT_SLURM_ACCOUNT`) |
-| `--singularity_cache_dir` | `$HOME/.singularity_cache` | Per-user Singularity cache location (can use `SORAT_SINGULARITY_CACHEDIR`) |
-| `--compare` | `true` | Generate comparison report |
-| `--inference_only` | `false` | Run inference only (skip metrics + report generation) |
-| `--evaluation.label_schema` | `architecture_default` | Evaluation contract; use `atrial_binary_union` when a binary biatrial reference is compared with atrial labels 1--3 collapsed to foreground, or `atrial_la_cavity` when a binary left-atrial cavity reference (e.g. 2018 Atrial Segmentation Challenge) is compared with atrial label 3 |
-| `--evaluation.gt_label_map` | `auto` | Raw ventricular GT labels, e.g. `rv=1,myo=2,lv=3` (ACDC) or `lv=1,myo=2,rv=3` (M&Ms, M&Ms-2). `auto` infers them from anatomy and logs a warning when the inference is ambiguous |
-| `--debug` | `false` | Generate debug analytics report (execution/runtime/GPU/scalability/success + scientific utility metrics) |
-| `--postprocess.enabled` | `false` | Enable optional LV-intensity postprocessing (LV dark regions -> MYO) |
-| `--postprocess.use_for_metrics` | `false` | If postprocess enabled, also score the corrected segmentations, reported as `<model>_pp` next to the raw model output (raw output is always scored) |
-| `--postprocess.visualize` | `true` | Generate before/after/delta postprocess visualizations |
-| `--visualization.enabled` | `true` | Generate ED/ES previews for each model output. If GT exists, previews include prediction-vs-GT overlays, per-structure DSC, and difference maps |
-| `--feature_extraction.enabled` | `false` | Enable interpretable feature extraction (volumes, wall thickness, radiomics) in the main workflow |
-| `--feature_extraction.mask_source` | `prompt` | Feature mask source: `predictions`, `postprocess`, or `prompt` |
-| `--feature_extraction.virtualenv_path` | `null` | Path to a pre-built virtualenv containing `pyradiomics` for feature extraction jobs |
-| `--feature_extraction.require_virtualenv` | `false` | If `true`, fail fast unless `--feature_extraction.virtualenv_path` is provided and valid |
-| `--feature_extraction.samplesheet` | `null` | Optional samplesheet override for `-entry FEATURES_ONLY` |
-| `--feature_extraction.results_dir` | `null` | Existing results directory to read segmentations from in `-entry FEATURES_ONLY` |
-| `--feature_extraction.output_dir` | `null` | Directory for the feature CSVs. When unset, `-entry FEATURES_ONLY` writes to this run's `<outdir>/features/raw` (or `features/postprocessed`), never into `--feature_extraction.results_dir`; the main workflow writes under its results directory |
-| `--feature_extraction.model_tag` | `null` | Exact model tag(s) to extract features for, comma-separated (e.g. `nnformer__fold0`) |
-| `--feature_extraction.seed` | `ensemble` | Variant choice when `model_tag` is unset: `ensemble`, `all`, or a seed such as `seed0` |
-| `--feature_extraction.radiomics.normalize` | `false` | Z-score the image before radiomics (PyRadiomics `normalize`; uses the whole image, not just the mask) |
-| `--feature_extraction.radiomics.normalize_scale` | `null` | Scale applied after normalization (PyRadiomics `normalizeScale`, e.g. `100`) |
-| `--feature_extraction.radiomics.remove_outliers` | `null` | Clip normalized intensities beyond N standard deviations (`removeOutliers`) |
-| `--feature_extraction.radiomics.bin_count` | `null` | Fixed number of grey-level bins (`binCount`); mutually exclusive with `bin_width` |
-| `--feature_extraction.radiomics.bin_width` | `null` | Grey-level bin width (`binWidth`; PyRadiomics default 25) |
-| `--feature_extraction.radiomics.resample_spacing` | `null` | Resample to `'x,y,z'` mm before extraction; `0` keeps that axis (e.g. `'1.25,1.25,0'`) |
-| `--feature_extraction.radiomics.force2d` | `false` | Compute texture per slice in 2-D (`force2D`) |
-| `--feature_extraction.radiomics.force2d_dimension` | `0` | Axis treated as the slice axis when `force2d` is on (`force2Ddimension`) |
-| `--feature_extraction.radiomics.intensity_reference` | `null` | `lv_bloodpool`: divide each image by the mean intensity of its LV blood pool (× `intensity_reference_scale`, default 100) before radiomics; an alternative to `normalize`, which uses the whole image |
-| `--feature_extraction.radiomics.intensity_reference_scale` | `null` | Value given to the reference tissue's mean intensity (default 100) |
-| `--slurm_max_forks` | `30` | Maximum concurrent task submissions in `slurm` profile |
-| `--slurm_queue_size` | `64` | Max tasks queued/submitted to executor at once |
-| `--slurm_submit_rate` | `50/1min` | Submission throttling rate to reduce scheduler pressure |
-| `--slurm_poll_interval` | `30 sec` | Job-status polling interval |
-| `--slurm_queue_stat_interval` | `60 sec` | Queue-stat refresh interval |
-| `--preprocess_cache_enabled` | `true` | Reuse model-specific preprocessing outputs across reruns |
-| `--preprocess_cache_dir` | `${projectDir}/.cache/preprocess` | Cache root for reusable preprocessing artifacts |
-| `--frames_mode` | `'auto'` | Frame selection: `auto` (ED/ES when info_cfg present, else all frames), `ed_es` (force 2 frames), `all` (always all frames) |
-| `--max_frames` | `null` | Cap to N frames in all-frames mode by subsampling (e.g. `10`) |
-
-Note: `--models all` currently runs SAX models (`cinema`, `nnformer`, `vsa3l`) and does not automatically include `atrial_nnunet`.
-
-### Default Input Selection Rules
-
-When `--input` is omitted, SORAT resolves input automatically:
-- SAX-only runs (`cinema`, `nnformer`, `vsa3l`, or `all`) use `--default_inputs.sax` if set; otherwise SORAT generates a SAX default samplesheet from `--sax_data_root` and `--sax_data_split`.
-- Atrial-only runs (`atrial_nnunet`) use `--default_inputs.atrial` if set; otherwise SORAT auto-generates an atrial default samplesheet from `--atrial_nnunet.dataset_root`.
-- For MBAS-style atrial roots, SORAT automatically stages nnUNet-style paths (`imagesTr/*_0000.nii.gz`, `labelsTr/*.nii.gz`) in `.cache/generated_inputs/` and uses those paths in the generated samplesheet.
-- Mixed SAX+atrial runs fail fast and require explicit `--input`.
-
-### Advanced Options (Quick Reference)
-
-Use these options when needed:
-- `--inference_only true`: skip metrics/report generation.
-- `--evaluation.label_schema atrial_binary_union`: evaluate the union of atrial prediction labels 1--3 against a binary foreground reference, such as AIM-ASD's biatrial mask.
-- `--debug true`: generate debug analytics outputs.
-- `--preprocess_cache_enabled true|false`: enable or disable preprocessing cache reuse.
-- `--postprocess.enabled true`: enable optional LV -> MYO postprocessing.
-- `--feature_extraction.enabled true`: emit per-mask feature CSV files.
-
-For the locally available AIM-ASD subset, use the LGE image and binary biatrial
-reference samplesheet with the atrial model:
+Run on a workstation or on SLURM:
 
 ```bash
-nextflow run main.nf \
-    --input data/aim_asd_samplesheet.csv \
-    --models atrial_nnunet \
-    --evaluation.label_schema atrial_binary_union \
-    --outdir results/AIM_ASD
+nextflow run main.nf -profile local --input samplesheet.csv --models cinema,nnformer --outdir results
+nextflow run main.nf -profile slurm --slurm_account <account> --input samplesheet.csv --models all \
+    --evaluation.gt_label_map 'rv=1,myo=2,lv=3'
 ```
 
-Use `--inference_only true` for prediction and preview generation without
-metrics or comparison-report outputs.
+Ground truth and `info_cfg` are optional. Without ground truth SORAT segments only. Without `info_cfg` it segments every frame. Images can be NIfTI, NRRD, MetaImage or a DICOM series. See [Usage](docs/usage.md).
 
-For SLURM tuning, the main controls are `--slurm_max_forks`, `--slurm_queue_size`, `--slurm_submit_rate`, `--slurm_poll_interval`, and `--slurm_queue_stat_interval`.
+## Outputs
 
-```bash
-nextflow run main.nf \
-    --input samplesheet.csv \
-    --models all \
-    --inference_only true \
-    --debug false \
-    -profile slurm
-```
-
-## Run Modules In Isolation
-
-### Postprocess Only (Existing Segmentations)
-
-Use `-entry POSTPROCESS_ONLY` to run postprocessing and delta visualizations from a prior segmentation run.
-
-```bash
-nextflow run main.nf \
-    -entry POSTPROCESS_ONLY \
-    -profile slurm \
-    --slurm_account <your-slurm-account> \
-    --models all \
-    --input /path/to/acdc_testing_samplesheet.csv \
-    --postprocess.results_dir /path/to/results \
-    --outdir /path/to/results_postprocess_only
-```
-
-### Feature Extraction Only (No Re-segmentation)
-
-Use `-entry FEATURES_ONLY` to read existing segmentation masks from a previous run and produce feature CSVs without rerunning preprocess/segmentation.
-
-Important path split:
-- `--feature_extraction.results_dir` points to an existing completed SORAT results directory that already has segmentation files. Features are written to this run's `--outdir` (under `features/`), not into that directory.
-- `--outdir` is where this new isolated run writes its outputs (`features/`, `pipeline_info/`, etc.).
-
-#### Example: Use direct model predictions
-
-```bash
-nextflow run main.nf \
-    -entry FEATURES_ONLY \
-    -profile slurm \
-    --slurm_account <your-slurm-account> \
-    --models all \
-    --input /path/to/acdc_testing_samplesheet.csv \
-    --feature_extraction.enabled true \
-    --feature_extraction.mask_source predictions \
-    --feature_extraction.results_dir /path/to/results \
-    --outdir /path/to/results_features_only
-```
-
-#### Example: Use post-processed masks
-
-```bash
-nextflow run main.nf \
-    -entry FEATURES_ONLY \
-    -profile slurm \
-    --slurm_account <your-slurm-account> \
-    --models all \
-    --input /path/to/acdc_testing_samplesheet.csv \
-    --feature_extraction.enabled true \
-    --feature_extraction.mask_source postprocess \
-    --feature_extraction.results_dir /path/to/results \
-    --outdir /path/to/results_features_only_pp
-```
-
-Note: On SLURM/non-interactive runs, set `--feature_extraction.mask_source` explicitly to avoid prompt fallback behavior.
-
-Sockeye offline recommendation (one-time setup on login node):
-
-```bash
-module purge
-module load CVMFS_CC apptainer/1.3.4
-
-# Use the same Python ABI as the runtime container.
-apptainer exec /path/to/SORAT/containers/sorat-cinema.sif \
-    python -m venv /path/to/venvs/sorat-features-container
-
-apptainer exec /path/to/SORAT/containers/sorat-cinema.sif \
-    /path/to/venvs/sorat-features-container/bin/python -m pip install --upgrade pip
-
-apptainer exec /path/to/SORAT/containers/sorat-cinema.sif \
-    /path/to/venvs/sorat-features-container/bin/python -m pip install pyradiomics
-```
-
-Then run with that virtualenv:
-
-```bash
-nextflow run main.nf \
-    -entry FEATURES_ONLY \
-    -profile slurm \
-    --slurm_account <your-slurm-account> \
-    --models all \
-    --input /path/to/acdc_testing_samplesheet.csv \
-    --feature_extraction.enabled true \
-    --feature_extraction.mask_source predictions \
-    --feature_extraction.virtualenv_path /path/to/venvs/sorat-features-container \
-    --feature_extraction.require_virtualenv true \
-    --feature_extraction.results_dir /path/to/results \
-    --outdir /path/to/results_features_only
-```
-
-Important compatibility note:
-- `EXTRACT_FEATURES` keeps the container Python interpreter and only adds venv `site-packages` via `PYTHONPATH`.
-- Do not rely on `source <venv>/bin/activate` inside container tasks.
-- Your virtualenv must have `site-packages` for the same Python major.minor as the container runtime.
-
-### Extracted Features
-
-Each feature CSV holds one row per mask and phase (ED or ES):
-- **Volumes and mass:** LV, RV and myocardial volume (ml) and myocardial mass (g, volume × 1.05 g/ml).
-- **Wall thickness** (`wall_thickness_mean_mm`, `_max_mm`, `_p95_mm`): measured in-plane, slice by slice, because
-  short-axis stacks are strongly anisotropic. In each slice, endocardial samples are myocardium pixels 4-connected to
-  the LV cavity; thickness at a sample is its in-plane distance (mm) to the nearest pixel that is neither myocardium
-  nor LV. The RV counts as exterior, so the septum is measured to its RV border. Mean, max and 95th percentile are
-  taken over all samples in all slices. Earlier versions measured in 3-D and treated the RV as wall, which inflated
-  values to about 22 mm in normal hearts.
-- **Radiomics** on the myocardium mask: shape, first-order and GLCM features from PyRadiomics.
-
-The radiomics defaults reproduce the original runs (no normalization, bin width 25, 3-D, native spacing). For
-comparisons across scanners a harmonized setup is available, for example:
-
-```bash
-nextflow run main.nf -entry FEATURES_ONLY ... \
-    --feature_extraction.radiomics.normalize true \
-    --feature_extraction.radiomics.normalize_scale 100 \
-    --feature_extraction.radiomics.bin_count 32 \
-    --feature_extraction.radiomics.resample_spacing '1.25,1.25,0' \
-    --feature_extraction.radiomics.force2d true \
-    --feature_extraction.output_dir /path/to/features_norm
-```
-
-`--feature_extraction.radiomics.intensity_reference lv_bloodpool` (with `normalize` off) instead expresses intensities relative to the LV blood pool of the same image, a tissue present in every short-axis cine.
-
-Note that `normalize` z-scores against the whole image, whose content (blood pool, background, field of view)
-differs between scanners, so normalized texture features are not automatically comparable across vendors; check
-them on your data before relying on them. Set `--feature_extraction.output_dir` explicitly so a new configuration
-does not overwrite features inside an existing results directory.
-
-## Output Structure
-
-```
+```text
 results/
-├── cinema/
-│   ├── preprocessed/           # Preprocessed data
-│   └── segmentations/          # Model predictions
-├── nnformer/
-│   ├── preprocessed/
-│   └── segmentations/
-├── vsa3l/
-│   ├── preprocessed/
-│   └── segmentations/
-├── atrial_nnunet/
-│   ├── preprocessed/
-│   └── segmentations/
-├── metrics/
-│   ├── cinema/                 # Per-model metrics
-│   ├── nnformer/
-│   ├── vsa3l/
-│   └── atrial_nnunet/
-├── comparison/
-│   ├── aggregated_metrics.csv  # All metrics combined
-│   ├── model_comparison.csv    # Model summary statistics
-│   ├── per_patient_summary.csv # Per-patient comparison
-│   ├── comparison_report.html  # Interactive HTML report
-│   └── figures/                # Visualization plots
-├── previews/
-│   ├── <model_tag>/*_ED_preview.png or *_frameNN_preview.png
-│   └── <model_tag>/*_ES_preview.png or *_frameNN_preview.png
-├── features/
-│   └── *_features.csv
-└── pipeline_info/
-    ├── execution_timeline.html
-    ├── execution_report.html
-    └── pipeline_dag.svg
-└── debug/
-    ├── text/
-    │   ├── debug_report.md
-    │   ├── debug_metrics_summary.json
-    │   ├── task_profile.csv
-    │   ├── gpu_profile.csv
-    │   └── metrics_snapshot.csv
-    └── figures/
-        ├── runtime_by_process.png
-        ├── gpu_walltime_by_process.png
-        └── overall_dice_by_model.png
+├── <model>/segmentations/     predictions in the original image space
+├── metrics/                   per-frame DSC and HD95
+├── comparison/                aggregated metrics and an HTML comparison report
+├── previews/                  ED/ES overlays with per-structure DSC
+├── features/                  volumes, EF, mass, wall thickness, radiomics (optional)
+└── pipeline_info/             Nextflow execution report, timeline and trace
 ```
 
-## Execution Profiles
+Details are in [Outputs](docs/outputs.md).
 
-| Profile | Description |
-|---------|-------------|
-| `local` | Local execution with Apptainer/Singularity |
-| `slurm` | SLURM execution with Apptainer |
-| `test` | Quick test with minimal data |
+## Documentation
 
-### Profile Selection
+| | |
+|---|---|
+| [Installation](docs/installation.md) | Requirements, model weights, building and validating containers |
+| [Usage](docs/usage.md) | Samplesheets, frames, label maps, evaluation schemas, profiles, isolated entry points |
+| [Parameters](docs/parameters.md) | Every pipeline option |
+| [Features](docs/features.md) | Clinical measurements and radiomics |
+| [Outputs](docs/outputs.md) | Output folders and reports |
+| [Adding a model](docs/adding-a-model.md) | Template generator and the wiring a new model needs |
+
+## Development
+
+Tests are plain `unittest` files. They need NumPy, SimpleITK and MedPy, so run them inside a model container:
 
 ```bash
-# Local run
-./bin/sorat_run.sh -profile local --input samplesheet.csv
-
-# SLURM run
-./bin/sorat_run.sh -profile slurm --input samplesheet.csv
+apptainer exec containers/sorat-cinema.sif python -m unittest discover -s tests -v
 ```
-
-Use one execution profile at a time.
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Out of Memory**
-   ```bash
-   # Increase memory allocation
-   nextflow run main.nf --max_memory 64.GB --input samplesheet.csv
-   ```
-
-2. **GPU Not Detected**
-   ```bash
-   # Ensure NVIDIA runtime is configured
-   docker run --gpus all nvidia/cuda:11.8-base nvidia-smi
-   ```
-
-3. **Path Issues**
-   - Use absolute paths in samplesheet
-   - Ensure all input files are accessible
-
-### Getting Help
-
-- Check execution logs: `results/pipeline_info/`
-- View work directory: `.nextflow/` and `work/`
-- Enable verbose logging: `nextflow run main.nf -with-trace`
 
 ## Citation
 
-If you use SORAT in your research, please cite:
-
-```bibtex
-@software{sorat2024,
-    title = {SORAT: Segmentation Orchestration and Reproducible Analysis Toolkit},
-    year = {2024},
-    url = {https://github.com/your-org/SORAT}
-}
-```
-
-Also cite the individual models you use:
-- **nnFormer**: https://arxiv.org/abs/2109.03201
-- **MONAI VSA-3L (LV quantification reference)**: https://doi.org/10.1007/978-3-030-12029-0_40
-- **CineMA**: https://arxiv.org/abs/2506.00679
+A manuscript describing SORAT is in preparation. Until then, please cite this repository and the models you use (see the table above).
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- [nf-core](https://nf-co.re/) for Nextflow best practices
-- [MONAI](https://monai.io/) for medical imaging tools
-- ACDC Challenge organizers for the benchmark dataset
+SORAT is released under the [MIT License](LICENSE). The vendored CineMA (`cinema/`) and nnFormer (`nnformer/`) code keep their own MIT licences. Model weights and datasets are distributed by their authors under their own terms.

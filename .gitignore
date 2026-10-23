@@ -157,6 +157,6 @@ hcm_vendor/
 SORAT_results_summary.md
 flowchart.*
 sorat_workflow_simplified.png
-data/
+/data/
 scripts/*
 !scripts/build_containers.sh
