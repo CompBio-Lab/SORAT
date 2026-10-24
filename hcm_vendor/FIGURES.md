@@ -113,6 +113,7 @@ Command: `hcmv_python -m hcmv qc-report` (code: `hcmv/explore.py::qc_report`). A
 - `d6_excluded.csv`: subjects failing D6. It is **empty**; no subject fails in any dataset or config.
 - `dice_per_subject.csv` and `dice_by_vendor.csv`: nnFormer Dice vs GT, median per dataset × vendor × diagnosis × phase. This is QC only.
   - M&Ms-2 ED Dice: LV 0.83–0.86, MYO 0.71–0.79, RV 0.92–0.95.
+  - ACDC ED Dice (frame-fixed rerun, T46): LV 0.95–0.97, MYO 0.88–0.92, RV 0.93–0.95. Before the fix the ACDC masks were of the frame after ED/ES and LV Dice was 0.85–0.86.
 - `missingness.csv`: 0 missing cells in all 4 nnFormer tables.
 - `qc_summary.md`: all T22 tables as markdown.
 
@@ -191,7 +192,7 @@ Run jobs (submitted from the repo root on `b7ebc58`; `A="--account=st-zlaksman-1
 The same gap for the two texture-containing sets, normalized vs raw texture. Raw texture gives a smaller gap for the MLP (+0.03 to +0.10 vs +0.20 to +0.32) and for the SVM on all features Philips→Siemens.
 
 ### F17. `runs/E5/analysis/e5_roc.png`
-ROC curves on the 20 ACDC subjects (10 HCM / 10 NOR) for models trained on all M&Ms-2 NOR/HCM (n = 135), one panel per family set; AUC [95% CI] in the legend. AUC 0.84–1.00; CIs are wide at n = 20.
+ROC curves on the 20 ACDC subjects (10 HCM / 10 NOR) for models trained on all M&Ms-2 NOR/HCM (n = 135), one panel per family set; AUC [95% CI] in the legend. AUC 0.81–1.00 after the T46 frame fix (0.84–1.00 before); CIs are wide at n = 20.
 
 ### Tables
 - `runs/E4/analysis/e4_e1_auc.csv` (E1 AUC by family set and config), `e4_gap.csv` (Δ AUC, balanced accuracy and specificity per direction × set × model × config), `e4_contrasts.csv` (ΔΔ family vs clinical and raw vs norm, paired bootstrap, Holm within contrast type and direction), `summary.md`.
@@ -296,3 +297,12 @@ These existing outputs now include `ref` alongside `norm` and `raw`:
 - Tables: `runs/E4/analysis/e4_gap.csv`, `e4_contrasts.csv` (new contrast type `ref vs norm`), `e4_e1_auc.csv`; `qc/texture_check/per_feature.csv`, `summary.csv`, `reliance.csv`; `tables/summary.md` (limitations updated).
 - Key check (not a separate file): GLCM Cohen's d is identical under `norm` and `ref` (max difference 0.006), first-order is not; computed from `qc/texture_check/per_feature.csv`.
 
+---
+
+## ACDC frame fix (T46, 2026-10-24)
+
+SORAT used to read ACDC Info.cfg ED/ES as 0-based, so the nnFormer ACDC masks were of the frame after ED and ES. The user re-extracted the nnFormer ACDC features (raw, norm, ref) with `-entry FEATURES_ONLY` from the frame-fixed segmentations in `results_v2/ACDC` (SORAT `main`). `feature-tables`, `validate-gt` and `qc-report` were rerun on the login node, and E5 (job 13721050), `e5-report` (13721051) and `summary`, `tables`, `figures` (13721052) on SLURM, on commit `00d2003` with `paths.sorat_results.acdc = results_v2/ACDC`. Ground-truth features and all M&Ms-2 results are unaffected.
+
+Everything that reads the ACDC nnFormer features was regenerated in place: F17, `fig06_acdc_roc`, table 6 (E5 ACDC), `tables/summary.md`, the T12 nnFormer-vs-GT ACDC rows and the T22 ACDC Dice rows. The pre-fix outputs are in `results_hcm_vendor/backup_preframefix_20261012/`, the old E5 store in `runs/E5_preframefix_20261012/` and the old features in `features/nnformer/acdc_preframefix_20261012/`.
+
+`runs/E5/analysis/e5_old_vs_new_framefix.csv` lists AUC, sensitivity, specificity, balanced accuracy and Brier before and after for every family set and model (made by a short pandas merge of the two `e5_metrics.csv` files). AUC is unchanged (median difference 0.00, range −0.05 to +0.03), sensitivity is 10/10 for every model (clinical SVM was 9/10 before), and specificity at 0.5 moves by at most two of the 10 NOR subjects (median 0, range −0.2 to +0.1). The E5 conclusions do not change. On the ACDC nnFormer-vs-GT agreement, the LVEF bias went from −2.6 to −0.4 points and its Pearson r from 0.92 to 0.94.

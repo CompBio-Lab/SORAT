@@ -11,7 +11,7 @@ paths:
   acdc_samplesheet: data/acdc_testing_samplesheet.csv
   sorat_results:
     mms2: results/MMS_2
-    acdc: results/ACDC
+    acdc: results_v2/ACDC     # frame-fixed rerun (T46)
 
 segmentation_model_tag: nnformer__fold0
 

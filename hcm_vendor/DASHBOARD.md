@@ -16,7 +16,7 @@
   - **The user also submits every SLURM batch job** (set 2026-10-01): the node Claude works on is not a compute node. Give the exact `sbatch` command, run from the repo root; the user submits it and says when it finished.
   - **Work in agreed batches.** Do the batch the user approved, stop at a clean checkpoint (tests green, committed, this block updated), then wait for the user to say continue. Do not roll on into the next batch.
 - **Last completed:** Batch 12 on 2026-10-08: S7 blood-pool intensity reference. Batch 11 on 2026-10-07: S1 ground-truth masks, S3 ComBat, S6 docs PR. Batch 10 on 2026-10-05: TabPFN as a sixth model. Batch 9 on 2026-10-05: T61 final tables/figures, T63 reproducibility. Batch 8 on 2026-10-05: T41/T42 finalized, T51 summary and verdicts. Batch 7 on 2026-10-03: texture check and T50 SHAP. Batch 6 on 2026-10-03: T43 (E4), T44 (E5), T45 (GE), SVM grid widening. Batch 5 on 2026-10-01: T40 (E1), preliminary T41 (E2) and T42 (E3), plus an SVM probability fix. Batch 4 on 2026-10-01: T32 (PyTorch MLP, passes sklearn's `check_estimator`) and T34 (runner, result store, `run-experiment` CLI, sbatch script; smoke E1/E2 on compute nodes; full E1 ≈ 20 min on 32 cores). Batch 3 on 2026-09-30: T22 (`qc-report`, no D6 exclusions, texture direction reverses between vendors) and T31 (model zoo, grids, one-fold timing). Also the correlation filter now keeps myocardial mass over myo volume. Batch 2: T30, T33 tested. Batch 1: T14, T12, T21. Earlier: T00–T02, T10, T11, T13, T20.
-- **Batch 12 done 2026-10-08; paused at a checkpoint. Wait for the user's go.** S7 (blood-pool intensity reference) done: no improvement over raw texture, and it showed the GLCM reversal comes from the bin/2D/resampling settings (see Stretch log). S1, S3, S6 done 2026-10-07. Remaining: T62 final report and T60 midterm (on hold until the user asks), S2/S4/S5 (not requested). The report thread was briefed through the coordinator. **Pending T46:** ACDC frame bug found by the SORAT paper thread; rerun E5 once fixed ACDC segmentations exist (raise with the user at the next 'continue'). Note: the shared working tree may be on `main` (paper thread); do not switch branches while another thread is working.
+- **T46 done 2026-10-24; paused at a checkpoint. Wait for the user's go.** E5 was rerun on the frame-fixed ACDC nnFormer features (see the T46 log and FIGURES.md, "ACDC frame fix"). AUC and sensitivity are unchanged and specificity moves by at most 2 of 10 NOR, so no conclusion changes. Earlier: Batch 12 (S7) on 2026-10-08; S1, S3, S6 on 2026-10-07. Remaining: T62 final report and T60 midterm (on hold until the user asks), S2/S4/S5 (not requested). Note: the shared working tree is usually on `main` for the paper thread. T46 was done in a separate clone of this branch at `SORAT/.cache/hcmv_t46` (its `results_hcm_vendor` is a symlink to the real one); do not switch branches in the shared tree while another thread is working.
 - **Batch 3 follow-up (2026-09-30):** all figures were redrawn to stand alone (plain titles, units, n per group, legends), and a Siemens-vs-Philips AUC scatter (`auc_agreement_siemens_philips.png`) was added. The `all-no-wt` family set was added (D11), along with `FIGURES.md`.
 - **Planned batches:**
 - **Open questions for the user:** none. The ceiling question was answered by D11.
@@ -88,7 +88,7 @@
 | T43 | **E4** feature-family ablation (+ raw vs normalized texture) | 4 Experiments | P1 | Nov 6 | T40, T41, T42 | DONE (2026-10-03) |
 | T44 | **E5** external test on ACDC | 4 Experiments | P1 | Nov 8 | T34 | DONE (2026-10-03) |
 | T45 | GE specificity check | 4 Experiments | P1 | Nov 8 | T34 | DONE (2026-10-03) |
-| T46 | **Rerun E5 (ACDC) after the SORAT ACDC frame fix** | 4 Experiments | P1 | — | SORAT ACDC rerun | PENDING (raised 2026-10-08; user approved; start when the user says continue) |
+| T46 | **Rerun E5 (ACDC) after the SORAT ACDC frame fix** | 4 Experiments | P1 | — | SORAT ACDC rerun | DONE (2026-10-24) |
 | T50 | SHAP attributions + Siemens-vs-Philips stability | 5 Interpret | P1 | Nov 14 | T41 | DONE (2026-10-03) |
 | T51 | Statistical comparison summary, hypothesis verdicts | 5 Interpret | P1 | Nov 16 | T43, T44, T45, T50 | DONE (2026-10-05; user signed off 2026-10-06) |
 | T61 | Final figures + tables | 6 Deliver | P1 | Nov 20 | T51 | DONE (2026-10-05) |
@@ -964,16 +964,22 @@ Nested CV runs on each cohort: outer 5×5, inner 5.
 - Caveats are written into `summary.md`: in-domain ACDC segmentations (nnFormer trained on ACDC training data) and 3 T scans without per-subject field strength.
 
 ### T46: Rerun E5 (ACDC) after the SORAT ACDC frame fix
-**Status:** PENDING (added 2026-10-08 from the SORAT paper thread; the user approved rerunning once fixed ACDC outputs exist; do not start until the user says continue)
+**Status:** DONE (2026-10-24) · added 2026-10-08 from the SORAT paper thread
 
 **Why:** the SORAT paper review found that SORAT read ACDC `Info.cfg` ED/ES indices as 0-based although they are 1-based, so every ACDC segmentation was of the frame after ED or ES. The **nnFormer** ACDC features (`results_hcm_vendor/features/nnformer/acdc/*`, `tables/features_acdc_nnformer-fold0_*`) are therefore suspect, and so are **E5** and the nnFormer-vs-GT ACDC rows of the T12 validation and T22 Dice QC. The ground-truth ACDC features are fine: `scripts/extract_gt_features.py` reads ACDC Info.cfg as 1-based and loads the matching `frameXX` files, and for M&Ms-2 it uses the per-phase `_SA_ED/ES` files, not Info.cfg. M&Ms-2 is unaffected (its cfg indices were regenerated and verified 0-based). Two other SORAT bugs found there do not affect this study: HD95 spacing axis order (HD95 is not used) and scoring on post-processed masks by default (we use `mask_source predictions`). The fixes are on SORAT `main` (paper thread); the user is rerunning the ACDC segmentations.
 
 **Tasks:**
-- [ ] Merge SORAT `main` into this branch; confirm the frame fix.
-- [ ] Re-extract ACDC nnFormer features (norm, raw, ref) from the rerun segmentations (Nextflow, via the user). GT features need no rerun.
-- [ ] **Info.cfg convention changed on disk (2026-10-09):** the paper thread rewrote the M&Ms-2 Info.cfg files 1-based (backup `SORAT/.cache/mms2_info_cfg_0based_backup_20261008.tar.gz`); fixes on SORAT `main` are 9503fcb, 054142e, 55b9e2b. No hcm_vendor code reads M&Ms-2 Info.cfg (cohort.py only reads ACDC `Group`), but any future M&Ms-2 re-extraction must use the new `main`. Existing M&Ms-2 features were made with the old 0-based files and the old code, which agree, so they stand.
-- [ ] Rebuild ACDC feature tables; rerun `run-experiment --experiment E5`, `e5-report`, `summary`, `tables`, `figures`; recheck the T12/T22 ACDC rows.
-- [ ] Report changes to the user and the coordinator (report thread).
+- [x] Merge SORAT `main` into this branch; confirm the frame fix.
+- [x] Re-extract ACDC nnFormer features (norm, raw, ref) from the rerun segmentations (Nextflow, via the user). GT features need no rerun.
+- [x] **Info.cfg convention changed on disk (2026-10-09):** the paper thread rewrote the M&Ms-2 Info.cfg files 1-based (backup `SORAT/.cache/mms2_info_cfg_0based_backup_20261008.tar.gz`); fixes on SORAT `main` are 9503fcb, 054142e, 55b9e2b. No hcm_vendor code reads M&Ms-2 Info.cfg (cohort.py only reads ACDC `Group`), but any future M&Ms-2 re-extraction must use the new `main`. Existing M&Ms-2 features were made with the old 0-based files and the old code, which agree, so they stand.
+- [x] Rebuild ACDC feature tables; rerun `run-experiment --experiment E5`, `e5-report`, `summary`, `tables`, `figures`; recheck the T12/T22 ACDC rows.
+- [x] Report changes to the user and the coordinator (report thread).
+
+**Log:**
+- 2026-10-24: merged SORAT `main` (7b950e5, includes the frame fix 9503fcb) into this branch. The user re-extracted the nnFormer ACDC features (raw, norm, ref) with `-entry FEATURES_ONLY` from `results_v2/ACDC`; the paper thread's later ACDC rerun on 2026-10-18 only redid CineMA, so those nnFormer masks are the frame-fixed ones from 2026-10-08. `study.yaml` now points `paths.sorat_results.acdc` at `results_v2/ACDC`, so the Dice QC reads the rerun.
+- Rebuilt `feature-tables`, `validate-gt`, `qc-report`; E5 job 13721050, `e5-report` 13721051, `summary`/`tables`/`figures` 13721052. Pre-fix outputs are in `results_hcm_vendor/backup_preframefix_20261012/` and `runs/E5_preframefix_20261012/`.
+- ACDC nnFormer quality: ED LV Dice 0.85–0.86 before, 0.95–0.97 after; LVEF bias vs GT −2.6 → −0.4 points, Pearson r 0.92 → 0.94.
+- E5 old vs new (`runs/E5/analysis/e5_old_vs_new_framefix.csv`): AUC median change 0.00 (range −0.05 to +0.03); sensitivity is 10/10 for every model after the fix (clinical SVM was 9/10 before); specificity at 0.5 median change 0, range −0.2 to +0.1 (at most two of 10 NOR). On all features, LR-EN 1.00 AUC, specificity 0.5 both times; TabPFN 1.00, specificity 0.8 → 0.7. The E5 conclusions and the summary verdicts are unchanged.
 
 ### T45: GE specificity check
 **Status:** TODO · **Pri:** P1 · **Target:** Nov 8 · **Depends on:** T34
