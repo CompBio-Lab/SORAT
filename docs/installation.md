@@ -25,7 +25,7 @@ Prebuilt images, with the model weights included, are on Docker Hub. Pull them a
 apptainer pull containers/sorat-cinema.sif        docker://parsaban/sorat-cinema:v100-sm70
 apptainer pull containers/sorat-nnformer.sif      docker://parsaban/sorat-nnformer:v100-sm70
 apptainer pull containers/sorat-vsa3l.sif         docker://parsaban/sorat-vsa3l:v100-sm70
-apptainer pull containers/sorat-atrial-nnunet.sif docker://parsaban/sorat-atrial-nnunet:latest
+apptainer pull containers/sorat-atrial-nnunet.sif docker://parsaban/sorat-atrial-nnunet:v2
 ```
 
 The pipeline expects these four file names. Use `--vsa3l_container` (or `SORAT_VSA3L_CONTAINER`) to point VSA-3L at another image, for example a new build you want to test.
@@ -55,7 +55,7 @@ Images are named `<registry>/<namespace>/sorat-<model>:<version>`, by default `d
 
 ```bash
 mkdir -p models/atrial_nnunet
-docker create --name atrial parsaban/sorat-atrial-nnunet:latest
+docker create --name atrial parsaban/sorat-atrial-nnunet:v2
 docker cp atrial:/models/atrial_nnunet/nnUNet_results models/atrial_nnunet/ && docker rm atrial
 ```
 
