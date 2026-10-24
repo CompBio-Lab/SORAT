@@ -35,6 +35,7 @@ process COMPUTE_METRICS {
         --model ${model} \\
         --architecture "${arch}" \\
         --label_schema "${params.evaluation.label_schema}" \\
+        --gt_label_map "${params.evaluation.gt_label_map ?: 'auto'}" \\
         --seg ${seg} \\
         --frame_tag ${frame_tag} \\
         --frame_idx ${frame_idx} \\

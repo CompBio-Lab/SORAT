@@ -1,19 +1,10 @@
-# Local SORAT User Config
+# Local settings
 
-Create a local, gitignored user config at:
+`bin/sorat_setup.py` writes your data paths, SLURM account and cache locations to `.sorat/user.config` in this folder. The file is gitignored and loaded automatically by `nextflow.config`, so the same command works on every machine:
 
-.sorat/user.config
+```bash
+python3 bin/sorat_setup.py           # first time
+python3 bin/sorat_setup.py --force   # after your paths or allocation change
+```
 
-Generate it interactively:
-
-python3 bin/sorat_setup.py
-
-Then run SORAT with the local override file:
-
-nextflow run main.nf -profile local
-nextflow run main.nf -profile slurm
-
-`.sorat/user.config` is auto-loaded when present, and can store generic defaults
-such as `default_inputs.sax` and `default_inputs.atrial`.
-
-If your data paths or allocation changes, rerun the setup wizard with --force.
+It can also hold defaults such as `default_inputs.sax` and `default_inputs.atrial`.

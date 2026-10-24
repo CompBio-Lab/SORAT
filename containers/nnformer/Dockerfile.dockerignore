@@ -1,0 +1,16 @@
+# Dockerfile-specific context overrides the root VSA-3L-only ignore file.
+*
+!containers/
+!containers/nnformer/
+!containers/nnformer/**
+!nnformer/
+!nnformer/**
+!models/
+!models/nnformer/
+!models/nnformer/**
+!bin/
+!bin/*.py
+**/__pycache__/
+
+# Windows download metadata
+**/*:Zone.Identifier

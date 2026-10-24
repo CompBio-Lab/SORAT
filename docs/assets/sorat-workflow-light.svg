@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 222" width="960" height="222">
+<title>SORAT workflow</title><style>.flow{animation:dash 1.8s linear infinite} @keyframes dash{to{stroke-dashoffset:-28}} @media (prefers-reduced-motion: reduce){.flow{animation:none}}</style>
+<rect x="16" y="52" width="248" height="114" rx="8" fill="#ffffff" stroke="#d1d9e0"/>
+<path d="M16,60 a8,8 0 0 1 8,-8 h232 a8,8 0 0 1 8,8 v18 h-248 z" fill="#f6f8fa"/>
+<line x1="16" y1="78" x2="264" y2="78" stroke="#d1d9e0"/>
+<text x="28" y="70" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#59636e" text-anchor="start" xml:space="preserve">samplesheet.csv</text>
+<text x="28" y="98" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#1f2328" text-anchor="start" xml:space="preserve">patient_id,image,ground_truth,…</text>
+<text x="28" y="116" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#1f2328" text-anchor="start" xml:space="preserve">patient101,…_4d.nii.gz,…</text>
+<text x="28" y="134" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#1f2328" text-anchor="start" xml:space="preserve">patient102,…_4d.nii.gz,…</text>
+<text x="28" y="152" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#1f2328" text-anchor="start" xml:space="preserve">site001,cine_sax/,,…</text>
+<text x="140" y="190" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#59636e" text-anchor="middle" xml:space="preserve">$ nextflow run main.nf</text>
+<rect x="390" y="32.0" width="196" height="38" rx="8" fill="#ffffff" stroke="#d1d9e0"/>
+<rect x="390" y="41.0" width="3" height="20" rx="1.5" fill="#2a78d6"/>
+<text x="404" y="55.0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#1f2328" text-anchor="start" xml:space="preserve">sorat-cinema.sif</text>
+<path d="M264,109.0 C327.0,109.0 327.0,51.0 390,51.0" fill="none" stroke="#8c959f" stroke-width="1.4"/><path class="flow" d="M264,109.0 C327.0,109.0 327.0,51.0 390,51.0" fill="none" stroke="#0969da" stroke-width="1.4" stroke-dasharray="3 11"/>
+<path d="M586,51.0 C611.0,51.0 611.0,109.0 636,109.0" fill="none" stroke="#8c959f" stroke-width="1.4"/><path class="flow" d="M586,51.0 C611.0,51.0 611.0,109.0 636,109.0" fill="none" stroke="#0969da" stroke-width="1.4" stroke-dasharray="3 11"/>
+<rect x="390" y="90.0" width="196" height="38" rx="8" fill="#ffffff" stroke="#d1d9e0"/>
+<rect x="390" y="99.0" width="3" height="20" rx="1.5" fill="#eda100"/>
+<text x="404" y="113.0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#1f2328" text-anchor="start" xml:space="preserve">sorat-nnformer.sif</text>
+<path d="M264,109.0 C327.0,109.0 327.0,109.0 390,109.0" fill="none" stroke="#8c959f" stroke-width="1.4"/><path class="flow" d="M264,109.0 C327.0,109.0 327.0,109.0 390,109.0" fill="none" stroke="#0969da" stroke-width="1.4" stroke-dasharray="3 11"/>
+<path d="M586,109.0 C611.0,109.0 611.0,109.0 636,109.0" fill="none" stroke="#8c959f" stroke-width="1.4"/><path class="flow" d="M586,109.0 C611.0,109.0 611.0,109.0 636,109.0" fill="none" stroke="#0969da" stroke-width="1.4" stroke-dasharray="3 11"/>
+<rect x="390" y="148.0" width="196" height="38" rx="8" fill="#ffffff" stroke="#d1d9e0"/>
+<rect x="390" y="157.0" width="3" height="20" rx="1.5" fill="#e87ba4"/>
+<text x="404" y="171.0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#1f2328" text-anchor="start" xml:space="preserve">sorat-vsa3l.sif</text>
+<path d="M264,109.0 C327.0,109.0 327.0,167.0 390,167.0" fill="none" stroke="#8c959f" stroke-width="1.4"/><path class="flow" d="M264,109.0 C327.0,109.0 327.0,167.0 390,167.0" fill="none" stroke="#0969da" stroke-width="1.4" stroke-dasharray="3 11"/>
+<path d="M586,167.0 C611.0,167.0 611.0,109.0 636,109.0" fill="none" stroke="#8c959f" stroke-width="1.4"/><path class="flow" d="M586,167.0 C611.0,167.0 611.0,109.0 636,109.0" fill="none" stroke="#0969da" stroke-width="1.4" stroke-dasharray="3 11"/>
+<path d="M656,79.0 C614,83.0 610,133.0 654,141.0 C636,123.0 634,97.0 656,79.0 Z" fill="#cf222e" fill-opacity="0.85"/>
+<circle cx="676" cy="109.0" r="30" fill="#1a7f37" fill-opacity="0.85"/>
+<circle cx="676" cy="109.0" r="19" fill="#0969da" fill-opacity="0.9"/>
+<text x="660" y="161.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#59636e" text-anchor="middle" xml:space="preserve">in the input geometry</text>
+<rect x="728" y="55.0" width="216" height="114" rx="8" fill="#ffffff" stroke="#d1d9e0"/>
+<path d="M728,63.0 a8,8 0 0 1 8,-8 h200 a8,8 0 0 1 8,8 v18 h-216 z" fill="#f6f8fa"/>
+<line x1="728" y1="81.0" x2="944" y2="81.0" stroke="#d1d9e0"/>
+<text x="740" y="73.0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#59636e" text-anchor="start" xml:space="preserve">aggregated_metrics.csv</text>
+<text x="740" y="101.0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#1f2328" text-anchor="start" xml:space="preserve">model     dice_rv  hd95_rv</text>
+<text x="740" y="119.0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#1f2328" text-anchor="start" xml:space="preserve">cinema    0.963    1.6</text>
+<text x="740" y="137.0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#1f2328" text-anchor="start" xml:space="preserve">nnformer  0.965    1.6</text>
+<text x="740" y="155.0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400" fill="#1f2328" text-anchor="start" xml:space="preserve">vsa3l     0.912   10.0</text>
+<path d="M706,109.0 C717.0,109.0 717.0,109.0 728,109.0" fill="none" stroke="#8c959f" stroke-width="1.4"/><path class="flow" d="M706,109.0 C717.0,109.0 717.0,109.0 728,109.0" fill="none" stroke="#0969da" stroke-width="1.4" stroke-dasharray="3 11"/>
+<text x="480.0" y="214" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#59636e" text-anchor="middle" xml:space="preserve">ACDC patient101, end-diastole, right ventricle</text>
+</svg>

@@ -21,15 +21,19 @@ except ImportError:
     from geometry_utils import read_nifti_with_sitk_fallback, resample_label_to_reference_safe  # noqa: E402
 
 try:
-    from frame_manifest import resolve_frame_ground_truth
+    from frame_manifest import parse_gt_label_map, resolve_frame_ground_truth
 except ImportError:
     import os as _os, sys as _sys
     _sys.path.insert(0, _os.getcwd())
-    from frame_manifest import resolve_frame_ground_truth
+    from frame_manifest import parse_gt_label_map, resolve_frame_ground_truth
 
 VENTRICULAR_LABELS = [(1, "rv"), (2, "myo"), (3, "lv")]
 ATRIAL_LABELS = [(1, "wall"), (2, "ra"), (3, "la")]
 BINARY_ATRIAL_LABELS = [(1, "biatrial")]
+LA_CAVITY_LABELS = [(3, "la")]
+
+# Schemas that compare atrial predictions with a single-structure binary reference.
+BINARY_REFERENCE_SCHEMAS = ("atrial_binary_union", "atrial_la_cavity")
 
 
 def dice_score(pred: np.ndarray, gt: np.ndarray) -> float:
@@ -47,6 +51,11 @@ def hd95_score(pred: np.ndarray, gt: np.ndarray, voxelspacing=None) -> float:
         return 0.0
     else:
         return np.inf
+
+
+def array_axis_spacing(image: sitk.Image) -> tuple:
+    """Return voxel spacing ordered like ``sitk.GetArrayFromImage(image)`` axes."""
+    return tuple(float(s) for s in reversed(image.GetSpacing()))
 
 
 def _same_geometry(a: sitk.Image, b: sitk.Image, atol: float = 1e-5) -> bool:
@@ -105,14 +114,14 @@ def resample_to_reference(
 
 def get_label_spec(architecture: str, label_schema: str = "architecture_default") -> list[tuple[int, str]]:
     """Return label ids and names for a given model architecture."""
-    if label_schema == "atrial_binary_union":
+    if label_schema in BINARY_REFERENCE_SCHEMAS:
         if architecture != "atrial_nnunet":
-            raise ValueError("label_schema=atrial_binary_union requires architecture=atrial_nnunet")
-        return BINARY_ATRIAL_LABELS
+            raise ValueError(f"label_schema={label_schema} requires architecture=atrial_nnunet")
+        return BINARY_ATRIAL_LABELS if label_schema == "atrial_binary_union" else LA_CAVITY_LABELS
     if label_schema != "architecture_default":
         raise ValueError(
             f"Unknown label schema '{label_schema}'. "
-            "Valid values: architecture_default, atrial_binary_union"
+            "Valid values: architecture_default, atrial_binary_union, atrial_la_cavity"
         )
     if architecture == "atrial_nnunet":
         return ATRIAL_LABELS
@@ -144,27 +153,32 @@ def compute_metrics_for_volume(
     gt_size = gt_sitk.GetSize()
     
     if pred_size != gt_size or (
-        label_schema == "atrial_binary_union" and not _same_geometry(pred_sitk, gt_sitk)
+        label_schema in BINARY_REFERENCE_SCHEMAS and not _same_geometry(pred_sitk, gt_sitk)
     ):
         print(f"  Resampling prediction from {pred_size} to {gt_size}")
         pred_sitk = resample_to_reference(
             pred_sitk,
             gt_sitk,
             is_label=True,
-            strict=(label_schema == "atrial_binary_union"),
+            strict=(label_schema in BINARY_REFERENCE_SCHEMAS),
         )
     
     pred = sitk.GetArrayFromImage(pred_sitk)
     gt = sitk.GetArrayFromImage(gt_sitk)
     
-    # Get voxel spacing from ground truth for HD95
-    spacing = gt_sitk.GetSpacing()
-    
+    # medpy expects spacing in array axis order. SimpleITK reports (x, y, z)
+    # while GetArrayFromImage returns (z, y, x), so the spacing is reversed.
+    spacing = array_axis_spacing(gt_sitk)
+
     metrics = {}
 
     for label, name in label_spec:
         if label_schema == "atrial_binary_union":
             pred_mask = np.isin(pred, (1, 2, 3)).astype(np.uint8)
+            gt_mask = (gt > 0).astype(np.uint8)
+        elif label_schema == "atrial_la_cavity":
+            # Binary LA-cavity reference (e.g. 2018 Atrial Segmentation Challenge).
+            pred_mask = (pred == label).astype(np.uint8)
             gt_mask = (gt > 0).astype(np.uint8)
         else:
             pred_mask = (pred == label).astype(np.uint8)
@@ -205,6 +219,7 @@ def compute_patient_metrics(
     output_path: Path,
     architecture: str = None,
     label_schema: str = "architecture_default",
+    gt_label_map: str = "auto",
 ) -> pd.DataFrame:
     """
     Compute metrics for a patient's single-frame segmentation.
@@ -217,6 +232,7 @@ def compute_patient_metrics(
         frame_idx: Frame index (0-based)
         ground_truth: Path to ground truth directory or file
         output_path: Path to save metrics CSV
+        gt_label_map: explicit raw GT labels, e.g. "rv=1,myo=2,lv=3", or "auto"
     
     Returns:
         DataFrame with metrics
@@ -227,7 +243,14 @@ def compute_patient_metrics(
 
     label_spec = get_label_spec(architecture, label_schema=label_schema)
     
-    gt = resolve_frame_ground_truth(gt_path, frame_tag, frame_idx, patient_id, architecture=architecture)
+    gt = resolve_frame_ground_truth(
+        gt_path,
+        frame_tag,
+        frame_idx,
+        patient_id,
+        architecture=architecture,
+        label_map=parse_gt_label_map(gt_label_map),
+    )
     
     has_gt = gt is not None and gt.exists()
     
@@ -246,6 +269,7 @@ def compute_patient_metrics(
             'frame_idx': frame_idx,
             'has_gt': True,
             'label_schema': label_schema,
+            'gt_label_map': gt_label_map,
             **metrics
         }
     else:
@@ -257,6 +281,7 @@ def compute_patient_metrics(
             'frame_idx': frame_idx,
             'has_gt': False,
             'label_schema': label_schema,
+            'gt_label_map': gt_label_map,
         }
         for _, name in label_spec:
             result[f'dice_{name}'] = float('nan')
@@ -277,8 +302,13 @@ def main():
     parser.add_argument(
         '--label_schema',
         default='architecture_default',
-        choices=['architecture_default', 'atrial_binary_union'],
+        choices=['architecture_default', 'atrial_binary_union', 'atrial_la_cavity'],
         help='Ground-truth/evaluation schema for this run',
+    )
+    parser.add_argument(
+        '--gt_label_map',
+        default='auto',
+        help="Raw ventricular GT labels, e.g. 'rv=1,myo=2,lv=3' (ACDC) or 'lv=1,myo=2,rv=3' (M&Ms); 'auto' infers them from anatomy",
     )
     parser.add_argument('--seg', required=True, help='Path to segmentation')
     parser.add_argument('--frame_tag', required=True, type=str, help='Frame tag (e.g., ED, ES)')
@@ -298,6 +328,7 @@ def main():
         output_path=Path(args.output),
         architecture=args.architecture,
         label_schema=args.label_schema,
+        gt_label_map=args.gt_label_map,
     )
     
     print(f"Metrics computed for {args.patient_id} frame {args.frame_tag} using {args.model}")

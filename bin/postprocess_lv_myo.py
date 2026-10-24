@@ -75,16 +75,11 @@ def _parse_info_cfg(info_cfg: Optional[str]) -> Tuple[Optional[int], Optional[in
 	es = None
 	for line in p.read_text().splitlines():
 		line = line.strip()
+		# Info.cfg counts frames from 1 (ACDC); return 0-based indices.
 		if line.startswith("ED:"):
-			try:
-				ed = int(line.split(":", 1)[1].strip())
-			except Exception:
-				pass
+			ed = int(line.split(":", 1)[1].strip()) - 1
 		elif line.startswith("ES:"):
-			try:
-				es = int(line.split(":", 1)[1].strip())
-			except Exception:
-				pass
+			es = int(line.split(":", 1)[1].strip()) - 1
 	return ed, es
 
 

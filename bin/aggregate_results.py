@@ -26,7 +26,7 @@ def aggregate_metrics(input_files: list, output_aggregated: Path, output_compari
     dfs = []
     for f in input_files:
         if Path(f).exists():
-            df = pd.read_csv(f)
+            df = pd.read_csv(f, dtype={"patient_id": str})
             if not df.empty:
                 dfs.append(df)
     

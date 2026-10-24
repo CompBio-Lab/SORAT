@@ -67,7 +67,7 @@ def _spatial_direction_from_any(direction: Tuple[float, ...]) -> Tuple[float, ..
 
 
 def parse_info_cfg(info_cfg: Optional[str]) -> Tuple[Optional[int], Optional[int]]:
-    """Parse ED/ES indices from an optional Info.cfg file."""
+    """Parse ED/ES from an optional Info.cfg as 0-based indices (the file counts from 1)."""
     if not info_cfg:
         return None, None
 
@@ -79,17 +79,18 @@ def parse_info_cfg(info_cfg: Optional[str]) -> Tuple[Optional[int], Optional[int
     for line in p.read_text().splitlines():
         line = line.strip()
         if line.startswith("ED:"):
-            try:
-                ed_idx = int(line.split(":", 1)[1].strip())
-            except Exception:
-                pass
+            ed_idx = _info_cfg_index(line, p)
         elif line.startswith("ES:"):
-            try:
-                es_idx = int(line.split(":", 1)[1].strip())
-            except Exception:
-                pass
+            es_idx = _info_cfg_index(line, p)
 
     return ed_idx, es_idx
+
+
+def _info_cfg_index(line: str, source: Path) -> int:
+    number = int(line.split(":", 1)[1].strip())
+    if number < 1:
+        raise ValueError(f"{source}: frame number {number} is invalid; Info.cfg counts frames from 1")
+    return number - 1
 
 
 def infer_phase_from_path(mask_path: Path) -> str:

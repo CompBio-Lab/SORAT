@@ -85,7 +85,8 @@ process VSA3L_SEGMENT {
         --output_prefix ${patient_id} \\
         --model_path ${model_path} \\
         --bundle_root /models/vsa3l \\
-        --model_tag ${model_tag}
+        --model_tag ${model_tag} \\
+        --require_cuda
     
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

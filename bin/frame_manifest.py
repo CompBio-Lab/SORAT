@@ -9,6 +9,7 @@ preprocess, postprocess, features, visualization, and comparison scripts.
 
 import json
 import os
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
@@ -32,6 +33,10 @@ def _read_nifti(path: Union[str, Path], dtype=None):
 def parse_info_cfg(info_cfg_path: Optional[Union[str, Path]]) -> Dict[str, Any]:
     """Parse an ACDC-style Info.cfg file to extract ED / ES frame indices.
 
+    Info.cfg follows the ACDC definition: ``ED``/``ES`` count frames from 1
+    (``ED: 1`` is the first frame, stored as ``{pid}_frame01``). The values are
+    returned as 0-based indices into the 4-D array.
+
     Returns ``{"ed_frame": <int>, "es_frame": <int|None>}``.
     When *info_cfg_path* is ``None`` or the file does not exist the defaults
     ``ed_frame=0`` and ``es_frame=None`` are returned.
@@ -54,12 +59,22 @@ def parse_info_cfg(info_cfg_path: Optional[Union[str, Path]]) -> Dict[str, Any]:
                 key = key.strip().lower()
                 value = value.strip()
                 if key == "ed":
-                    info["ed_frame"] = int(value)
+                    info["ed_frame"] = info_cfg_frame_to_index(value, cfg)
                 elif key == "es":
-                    info["es_frame"] = int(value)
-    except Exception:
+                    info["es_frame"] = info_cfg_frame_to_index(value, cfg)
+    except OSError:
         pass
     return info
+
+
+def info_cfg_frame_to_index(value: Union[str, int], source: Union[str, Path] = "Info.cfg") -> int:
+    """Convert a 1-based Info.cfg frame number to a 0-based array index."""
+    number = int(str(value).strip())
+    if number < 1:
+        raise ValueError(
+            f"{source}: frame number {number} is invalid; Info.cfg counts frames from 1 (ACDC convention)"
+        )
+    return number - 1
 
 
 # ---------------------------------------------------------------------------
@@ -239,6 +254,95 @@ def build_frame_manifest(
 # Manifest I/O
 # ---------------------------------------------------------------------------
 
+def _matching_frames(array, ref) -> List[int]:
+    import numpy as np
+
+    if ref.shape != array.shape[1:]:
+        return []
+    return [t for t in range(array.shape[0]) if np.allclose(ref, array[t])]
+
+
+def verify_frame_references(
+    image_path: Union[str, Path],
+    manifest: Dict[str, Any],
+    patient_id: str,
+) -> int:
+    """Check that each ED/ES frame is the phase the dataset itself provides.
+
+    Some datasets ship the annotated phases as separate images next to the
+    4-D cine: ACDC ``{pid}_frameNN.nii.gz`` (NN counts from 1) and M&Ms-2
+    ``{pid}_SA_ED.nii.gz`` / ``{pid}_SA_ES.nii.gz``. When they exist:
+
+    * a tagged reference (``_SA_ED``) must equal the frame chosen for that tag;
+    * an ACDC ``frameNN`` file must equal 4-D frame ``NN - 1``, and every
+      ED/ES frame must be one of those provided phases.
+
+    A mismatch means the ED/ES indices were read with the wrong convention,
+    so this raises instead of silently segmenting the wrong cardiac phase.
+    Returns the number of ED/ES frames verified (0 without references).
+    """
+    image_path = Path(image_path)
+    array = _sitk_array(_read_nifti(image_path))
+    if array.ndim != 4:
+        return 0
+    # Nextflow stages inputs as symlinks; look for references beside the real file.
+    reference_dir = image_path.resolve().parent
+
+    phase_frames = [f for f in manifest.get("frames", []) if str(f["tag"]) in ("ED", "ES")]
+
+    # ACDC-style numbered phase images: their 1-based number fixes the convention.
+    numbered = {}
+    for ref_path in sorted(reference_dir.glob(f"{patient_id}_frame[0-9][0-9].nii.gz")):
+        number = int(ref_path.name[len(patient_id) + len("_frame"):][:2])
+        matches = _matching_frames(array, _sitk_array(_read_nifti(ref_path)))
+        if number - 1 not in matches:
+            raise ValueError(
+                f"{patient_id}: {ref_path.name} should equal 4-D frame {number - 1} "
+                f"but matches {matches or 'no frame'}"
+            )
+        numbered[number - 1] = ref_path.name
+
+    verified = 0
+    for frame in phase_frames:
+        tag, idx = str(frame["tag"]), int(frame["idx"])
+        tagged = [reference_dir / f"{patient_id}_{axis}_{tag}.nii.gz" for axis in ("SA", "LA")]
+        tagged = [p for p in tagged if p.exists()]
+        for ref_path in tagged:
+            matches = _matching_frames(array, _sitk_array(_read_nifti(ref_path)))
+            if not matches:
+                continue  # e.g. an LA reference beside an SA cine
+            if idx not in matches:
+                raise ValueError(
+                    f"{patient_id} {tag}: 4-D frame index {idx} does not match {ref_path.name} "
+                    f"(matching 4-D index: {matches}). Check the Info.cfg index convention."
+                )
+            verified += 1
+            break
+        else:
+            if numbered:
+                if idx not in numbered:
+                    raise ValueError(
+                        f"{patient_id} {tag}: 4-D frame index {idx} is not one of the provided "
+                        f"phase images ({', '.join(f'{v} = index {k}' for k, v in sorted(numbered.items()))}). "
+                        "Check the Info.cfg index convention."
+                    )
+                verified += 1
+
+    print(
+        f"{patient_id}: verified {verified} of {len(phase_frames)} ED/ES frames "
+        "against per-frame reference images",
+        file=sys.stderr,
+    )
+    return verified
+
+
+def _sitk_array(image):
+    """``sitk.GetArrayFromImage`` imported lazily (numpy order: t, z, y, x)."""
+    import SimpleITK as sitk
+
+    return sitk.GetArrayFromImage(image)
+
+
 def write_manifest(manifest: Dict[str, Any], path: Union[str, Path]) -> None:
     """Write *manifest* dict to a JSON file at *path*."""
     with open(path, "w", encoding="utf-8") as fh:
@@ -269,6 +373,33 @@ _ATRIAL_ARCHITECTURES = {"atrial_nnunet", "atrial"}
 _VENTRICULAR_ARCHITECTURES = {"cinema", "nnformer", "vsa3l", "ventricular", "sax"}
 
 
+VENTRICULAR_CANONICAL = {"rv": 1, "myo": 2, "lv": 3}
+
+
+def parse_gt_label_map(spec: Optional[str]) -> Optional[Dict[int, int]]:
+    """Parse an explicit ventricular GT label map such as ``"rv=1,myo=2,lv=3"``.
+
+    The values are the label values stored in the dataset's ground truth.
+    Returns ``{raw_value: canonical_value}`` (SORAT convention 1=RV, 2=MYO,
+    3=LV), or ``None`` for ``None``/``""``/``"auto"``, which keeps the
+    anatomy-based inference.
+    """
+    if spec is None or str(spec).strip().lower() in ("", "auto", "null", "none"):
+        return None
+    mapping: Dict[int, int] = {}
+    for part in str(spec).split(","):
+        name, sep, value = part.partition("=")
+        name = name.strip().lower()
+        if not sep or name not in VENTRICULAR_CANONICAL:
+            raise ValueError(
+                f"Invalid GT label map entry '{part.strip()}'; expected e.g. 'rv=1,myo=2,lv=3'"
+            )
+        mapping[int(value.strip())] = VENTRICULAR_CANONICAL[name]
+    if sorted(mapping.values()) != [1, 2, 3]:
+        raise ValueError(f"GT label map '{spec}' must name rv, myo and lv exactly once")
+    return mapping
+
+
 def _architecture_family(architecture: str) -> str:
     """Return the anatomical label family for an architecture string."""
     arch = (architecture or "").strip().lower()
@@ -287,7 +418,11 @@ def _is_atrial_architecture(architecture: str) -> bool:
     return _architecture_family(architecture) == "atrial"
 
 
-def _canonicalize_3d_gt(gt_path: Path, architecture: str) -> Path:
+def _canonicalize_3d_gt(
+    gt_path: Path,
+    architecture: str,
+    label_map: Optional[Dict[int, int]] = None,
+) -> Path:
     """Canonicalize a per-frame 3-D GT file to the SORAT
     convention (1=RV, 2=MYO, 3=LV) when the architecture is ventricular.
 
@@ -313,7 +448,9 @@ def _canonicalize_3d_gt(gt_path: Path, architecture: str) -> Path:
         if gt_array.ndim != 3:
             return gt_path  # only 3-D per-frame files are canonicalized here
 
-        canonical = _remap_cardiac_labels(gt_array.astype(np.int32), np, architecture)
+        canonical = _remap_cardiac_labels(
+            gt_array.astype(np.int32), np, architecture, label_map=label_map
+        )
         if np.array_equal(canonical, gt_array.astype(np.int32)):
             return gt_path  # already canonical (e.g. ACDC) — return raw, no copy
 
@@ -339,6 +476,7 @@ def resolve_frame_ground_truth(
     frame_idx: int,
     patient_id: str,
     architecture: str = "ventricular",
+    label_map: Optional[Dict[int, int]] = None,
 ) -> Optional[Path]:
     """Find the ground-truth NIfTI for a concrete frame.
 
@@ -349,6 +487,9 @@ def resolve_frame_ground_truth(
     * **MMS-style** — ``gt_path`` is a **single multi-frame file**.  The
       frame at *frame_idx* is extracted; if it contains no labels (all zero)
       ``None`` is returned.
+
+    *label_map* (from :func:`parse_gt_label_map`) fixes the dataset's raw
+    ventricular labels explicitly; without it they are inferred from anatomy.
 
     Returns
     -------
@@ -389,7 +530,7 @@ def resolve_frame_ground_truth(
 
         for cand in candidates:
             if cand.exists():
-                return _canonicalize_3d_gt(cand, architecture)
+                return _canonicalize_3d_gt(cand, architecture, label_map)
         return None
 
     # --- file: MMS-style multi-frame GT ----------------------------------
@@ -412,7 +553,9 @@ def resolve_frame_ground_truth(
                 # The mapping is derived from anatomy (LV = cavity enclosed by
                 # the myocardial ring) so it is robust to per-dataset label
                 # conventions and ordering (ACDC, M&Ms, future datasets).
-                frame_data = _remap_cardiac_labels(frame_data, np, architecture=architecture)
+                frame_data = _remap_cardiac_labels(
+                    frame_data, np, architecture=architecture, label_map=label_map
+                )
 
                 frame_img = sitk.GetImageFromArray(frame_data)
                 _copy_spatial_metadata(gt_img, frame_img)
@@ -427,7 +570,7 @@ def resolve_frame_ground_truth(
             return None
 
         # 3-D file -> canonicalize like directory-resolved per-frame GT.
-        return _canonicalize_3d_gt(gt, architecture)
+        return _canonicalize_3d_gt(gt, architecture, label_map)
 
     return None
 
@@ -552,8 +695,14 @@ def _canonicalize_ventricular_labels(frame_data, np, nonzero_labels):
             if len(rv_candidates) == 1:
                 return _apply_label_remap(frame_data, {rv_candidates[0]: 1, myo_label: 2, lv_label: 3}, np)
 
-    # Silent fallback for ambiguous anatomy: preserve the previous robust
-    # behavior for known SAX datasets while still allowing LV/RV swapping.
+    # Ambiguous anatomy: fall back to the middle-valued label as MYO and
+    # resolve the cavities by containment/centroid. Logged so it can be
+    # audited; pass an explicit GT label map to avoid inference altogether.
+    print(
+        "WARNING: GT label inference was ambiguous; using the fallback mapping "
+        "(set --evaluation.gt_label_map to fix the labels explicitly)",
+        file=sys.stderr,
+    )
     assumed_myo = sorted(labels)[1]
     fallback = _canonicalize_with_known_myo(frame_data, np, labels, assumed_myo)
     if fallback is not None:
@@ -563,7 +712,7 @@ def _canonicalize_ventricular_labels(frame_data, np, nonzero_labels):
     return _apply_label_remap(frame_data, remap, np)
 
 
-def _remap_cardiac_labels(frame_data, np, architecture: str = "ventricular"):
+def _remap_cardiac_labels(frame_data, np, architecture: str = "ventricular", label_map=None):
     """Canonicalize GT labels to the SORAT convention (1=RV, 2=MYO, 3=LV).
 
     For ventricular architectures the mapping is derived from anatomy (see
@@ -573,7 +722,16 @@ def _remap_cardiac_labels(frame_data, np, architecture: str = "ventricular"):
 
     Atrial architectures keep their own label semantics and are returned
     unchanged (or sorted-order remapped when raw values exceed 3).
+
+    An explicit *label_map* ``{raw: canonical}`` replaces the anatomical
+    inference for ventricular architectures.
     """
+    if label_map and not _is_atrial_architecture(architecture):
+        unknown = sorted(int(v) for v in np.unique(frame_data) if v != 0 and int(v) not in label_map)
+        if unknown:
+            raise ValueError(f"GT contains labels {unknown} not covered by the GT label map {label_map}")
+        return _apply_label_remap(frame_data, label_map, np)
+
     nonzero_labels = sorted(int(v) for v in np.unique(frame_data) if v != 0)
 
     if not nonzero_labels:

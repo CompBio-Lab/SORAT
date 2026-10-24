@@ -25,6 +25,14 @@ import SimpleITK as sitk
 import torch
 from skimage.transform import resize
 
+try:
+    from validate_cuda_runtime import validate_cuda_runtime
+except ImportError:
+    # The normal container and Nextflow paths expose /app/bin (and therefore
+    # this helper). Keep the error explicit for direct use with an old image
+    # that has neither the helper nor the repository bind mounted.
+    validate_cuda_runtime = None
+
 
 def load_model(model_path: Path, bundle_root: Path, device: torch.device):
     """Load MONAI VSA-3L model."""
@@ -121,7 +129,8 @@ def segment_patient(
     model_path: Path,
     bundle_root: Path,
     device: torch.device = None,
-    model_tag: str = None
+    model_tag: str = None,
+    require_cuda: bool = False,
 ) -> dict:
     """
     Segment a single patient's cardiac MRI using VSA-3L.
@@ -138,7 +147,23 @@ def segment_patient(
         Dictionary with segmentation results
     """
     if device is None:
+        if require_cuda and not torch.cuda.is_available():
+            raise RuntimeError(
+                "VSA-3L segmentation requires CUDA, but no CUDA device is available. "
+                "Check the SLURM GPU request and Apptainer --nv configuration."
+            )
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    if device.type == "cuda":
+        if validate_cuda_runtime is None:
+            raise RuntimeError(
+                "Cannot validate the CUDA runtime because "
+                "validate_cuda_runtime.py is missing from the container. "
+                "Rebuild the VSA-3L container or bind the repository bin/ directory."
+            )
+        validate_cuda_runtime(device)
+    elif require_cuda:
+        raise RuntimeError("VSA-3L segmentation requires a CUDA device.")
     
     # Build model tag for filenames/metadata
     if model_tag is None:
@@ -267,6 +292,11 @@ def main():
     parser.add_argument('--model_path', required=True, help='Path to model weights')
     parser.add_argument('--bundle_root', required=True, help='Path to MONAI bundle root')
     parser.add_argument('--model_tag', default=None, help='Model tag for output naming')
+    parser.add_argument(
+        '--require_cuda',
+        action='store_true',
+        help='Fail instead of silently running this GPU process on the CPU',
+    )
     
     args = parser.parse_args()
     
@@ -276,7 +306,8 @@ def main():
         output_prefix=args.output_prefix,
         model_path=Path(args.model_path),
         bundle_root=Path(args.bundle_root),
-        model_tag=args.model_tag
+        model_tag=args.model_tag,
+        require_cuda=args.require_cuda,
     )
     
     print(f"Segmentation complete for {args.patient_id}")

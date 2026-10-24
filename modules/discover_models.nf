@@ -67,7 +67,10 @@ process NNFORMER_DISCOVER_MODELS {
 }
 
 process VSA3L_DISCOVER_MODELS {
-    label 'process_low'
+    // Model discovery is also the single fail-fast GPU/runtime validation
+    // point. This prevents an incompatible container from launching one
+    // failed segmentation task per patient/frame.
+    label 'process_gpu_light'
 
     publishDir "${params.outdir}/vsa3l", mode: params.publish_dir_mode
 
@@ -80,6 +83,8 @@ process VSA3L_DISCOVER_MODELS {
 
     script:
     """
+    python /app/bin/validate_cuda_runtime.py --json
+
     python ${script_file} \\
         --architecture vsa3l \\
         --output vsa3l_models.csv
@@ -92,6 +97,8 @@ process VSA3L_DISCOVER_MODELS {
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         python: \$(python --version | sed 's/Python //')
+        torch: \$(python -c "import torch; print(torch.__version__)")
+        torch_cuda: \$(python -c "import torch; print(torch.version.cuda)")
     END_VERSIONS
     """
 }

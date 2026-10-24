@@ -1,0 +1,15 @@
+{
+  "title": "SORAT: Segmentation Orchestration and Reproducible Analysis Toolkit",
+  "description": "A containerized Nextflow workflow that runs several cardiac MRI segmentation models on the same scans, maps every prediction back to the original image geometry and evaluates them with one implementation. The paper/ folder holds the scripts that reproduce the tables and figures of the accompanying manuscript.",
+  "upload_type": "software",
+  "license": "MIT",
+  "keywords": ["cardiovascular magnetic resonance", "segmentation", "deep learning", "reproducibility", "Nextflow", "Apptainer"],
+  "creators": [
+    {"name": "Moheban, Parsa", "affiliation": "University of British Columbia"},
+    {"name": "Paires, Carla", "affiliation": "Universitat Pompeu Fabra"},
+    {"name": "Camara, Oscar", "affiliation": "Universitat Pompeu Fabra"},
+    {"name": "Ivanov, Andre", "affiliation": "University of British Columbia"},
+    {"name": "Laksman, Zachary", "affiliation": "University of British Columbia"},
+    {"name": "Singh, Amrit", "affiliation": "University of British Columbia"}
+  ]
+}

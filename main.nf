@@ -48,6 +48,7 @@ include { GENERATE_DEBUG_REPORT } from './modules/debug'
 include { DISCOVER_POSTPROCESS_INPUTS; POSTPROCESS_LV_MYO; VISUALIZE_POSTPROCESS_DELTA } from './modules/postprocess'
 include { GENERATE_SEGMENTATION_PREVIEWS } from './modules/visualization'
 include { EXTRACT_FEATURES } from './modules/features'
+include { PREPARE_INPUT } from './modules/inputs'
 include { validateInput } from './lib/utils'
 include { parseManifest; frameTagFromFilename; discoverFramePattern; normalizeSegList } from './lib/frame_utils'
 
@@ -733,17 +734,24 @@ def resolveFeatureMaskSource(contextLabel = 'main workflow') {
 ========================================================================================
 */
 
+
+// True for NIfTI files (.nii / .nii.gz); directories and other formats are converted by PREPARE_INPUT.
+def isNiftiPath(path) {
+    def name = path.getName().toLowerCase()
+    return !path.isDirectory() && (name.endsWith('.nii') || name.endsWith('.nii.gz'))
+}
+
 workflow {
 
     assertSlurmAccountForProfile('main workflow')
 
     def models_to_run = parseModels(params.models)
     def labelSchema = (params.evaluation?.label_schema ?: 'architecture_default').toString().trim()
-    if (!(labelSchema in ['architecture_default', 'atrial_binary_union'])) {
-        exit 1, "ERROR: main workflow: invalid evaluation.label_schema '${labelSchema}'. Valid values: architecture_default, atrial_binary_union."
+    if (!(labelSchema in ['architecture_default', 'atrial_binary_union', 'atrial_la_cavity'])) {
+        exit 1, "ERROR: main workflow: invalid evaluation.label_schema '${labelSchema}'. Valid values: architecture_default, atrial_binary_union, atrial_la_cavity."
     }
-    if (labelSchema == 'atrial_binary_union' && !models_to_run.contains('atrial_nnunet')) {
-        exit 1, "ERROR: evaluation.label_schema=atrial_binary_union requires atrial_nnunet in --models."
+    if (labelSchema in ['atrial_binary_union', 'atrial_la_cavity'] && !models_to_run.contains('atrial_nnunet')) {
+        exit 1, "ERROR: evaluation.label_schema=${labelSchema} requires atrial_nnunet in --models."
     }
     log.info "Evaluation label schema: ${labelSchema}"
     def effective_input_samplesheet = resolveEffectiveSamplesheet(
@@ -767,29 +775,58 @@ workflow {
     def debug_outdir = file(params.outdir).toAbsolutePath().toString()
     def debug_input_samplesheet = file(effective_input_samplesheet).toAbsolutePath().toString()
     
-    // Validate and parse input samplesheet
-    ch_input = Channel
+    // Validate and parse input samplesheet. Optional columns: image_spacing
+    // ('x,y,z' mm, replaces placeholder spacing) and dicom_series (UID).
+    // Rows whose image is not NIfTI (NRRD, MetaImage, DICOM directory), whose
+    // ground-truth file is not NIfTI, or that set image_spacing go through
+    // PREPARE_INPUT; ground-truth directories (ACDC/M&Ms-2 per-frame layout)
+    // are always passed through unchanged.
+    def singlePatient = params.single_patient as boolean
+    def providedPatientName = params.patient_name ? params.patient_name.toString().trim() : null
+    if (providedPatientName) { singlePatient = true }
+    def targetPatient = singlePatient ? resolveSinglePatient(effective_input_samplesheet, providedPatientName) : null
+    if (singlePatient) {
+        log.info "Single-patient mode: running patient '$targetPatient' only"
+    }
+
+    ch_rows = Channel
         .fromPath(effective_input_samplesheet, checkIfExists: true)
         .splitCsv(header: true)
-        .map { row -> 
+        .filter { row -> !singlePatient || row.patient_id == targetPatient }
+        .map { row ->
             def patient_id = row.patient_id
             def image_file = file(row.image, checkIfExists: true)
             def gt_file = row.ground_truth ? file(row.ground_truth, checkIfExists: true) : null
             def info_file = row.info_cfg ? file(row.info_cfg, checkIfExists: true) : null
-            [ patient_id, image_file, gt_file, info_file ]
+            def spacing = (row.image_spacing ?: '').toString().trim()
+            def series = (row.dicom_series ?: '').toString().trim()
+            [ patient_id, image_file, gt_file, info_file, spacing, series ]
+        }
+        .branch { patient_id, image_file, gt_file, info_file, spacing, series ->
+            prepare: !isNiftiPath(image_file) || (gt_file && !gt_file.isDirectory() && !isNiftiPath(gt_file)) || spacing
+            ready: true
         }
 
-    def singlePatient = params.single_patient as boolean
-    def providedPatientName = params.patient_name ? params.patient_name.toString().trim() : null
-    if (providedPatientName) { singlePatient = true }
-    if (singlePatient) {
-        def targetPatient = resolveSinglePatient(effective_input_samplesheet, providedPatientName)
-        log.info "Single-patient mode: running patient '$targetPatient' only"
-        ch_input = ch_input
-            .filter { patient_id, image_file, gt_file, info_file ->
-                patient_id == targetPatient
-            }
-    }
+    PREPARE_INPUT(
+        ch_rows.prepare.map { patient_id, image_file, gt_file, info_file, spacing, series ->
+            def gt_is_dir = gt_file && gt_file.isDirectory()
+            [ patient_id, image_file, gt_file && !gt_is_dir ? gt_file.toString() : '', gt_is_dir ? gt_file.toString() : '',
+              info_file, spacing, series ]
+        }
+    )
+
+    ch_input = ch_rows.ready
+        .map { patient_id, image_file, gt_file, info_file, spacing, series -> [ patient_id, image_file, gt_file, info_file ] }
+        .mix(
+            // Ground truth is optional: rows without it have no entry in the
+            // ground_truth channel, so the join keeps them with a null.
+            PREPARE_INPUT.out.images
+                .join(PREPARE_INPUT.out.ground_truth, remainder: true)
+                .map { patient_id, image_file, info_file, gt_directory, gt_file ->
+                    [ patient_id, image_file, gt_file ?: (gt_directory ? file(gt_directory) : null), info_file ]
+                }
+        )
+
 
     def auto_discover = params.auto_discover_models as boolean
     
@@ -808,10 +845,10 @@ workflow {
     // segmentations are physically aligned with the original image (was
     // origin 0 + identity, which broke feature extraction on oblique / offset
     // acquisitions such as M&Ms).
-    def cinema_preprocess_key = 'cinema_s1.0x1.0x10.0_crop192x192_v4'
-    def nnformer_preprocess_key = 'nnformer_frame_extract_v3'
-    def vsa3l_preprocess_key = "vsa3l_input${params.vsa3l.input_size.join('x')}_v4"
-    def atrial_nnunet_preprocess_key = 'atrial_nnunet_frame_extract_v3'
+    def cinema_preprocess_key = 'cinema_s1.0x1.0x10.0_crop192x192_v6'
+    def nnformer_preprocess_key = 'nnformer_frame_extract_v4'
+    def vsa3l_preprocess_key = "vsa3l_input${params.vsa3l.input_size.join('x')}_v5"
+    def atrial_nnunet_preprocess_key = 'atrial_nnunet_frame_extract_v4'
     
     // Run CineMA model
     if ('cinema' in models_to_run || 'all' in models_to_run) {
@@ -1027,11 +1064,6 @@ workflow {
                 meta?.architecture != 'atrial_nnunet'
             }
 
-        ch_atrial_segmentations = ch_all_segmentations
-            .filter { patient_id, model, frame_tag, frame_idx, seg, meta ->
-                meta?.architecture == 'atrial_nnunet'
-            }
-
         ch_postprocess_inputs = ch_postprocess_candidates
             .combine(ch_input_context, by: 0)
             .map { patient_id, model, frame_tag, frame_idx, seg, meta, image_path, gt_path, info_cfg ->
@@ -1043,12 +1075,16 @@ workflow {
 
         POSTPROCESS_LV_MYO(ch_postprocess_inputs)
 
+        // Raw model output is always scored. Post-processed masks are scored in
+        // addition, under '<model>_pp', so the two are never mixed in one row.
         if (params.postprocess.use_for_metrics) {
-            ch_segmentations_for_metrics = POSTPROCESS_LV_MYO.out.segmentations
-                .map { patient_id, model, frame_tag, frame_idx, seg, meta_pp, image_path, info_cfg ->
-                    [ patient_id, model, frame_tag, frame_idx, seg, meta_pp ]
-                }
-                .mix(ch_atrial_segmentations)
+            ch_segmentations_for_metrics = ch_all_segmentations
+                .mix(
+                    POSTPROCESS_LV_MYO.out.segmentations
+                        .map { patient_id, model, frame_tag, frame_idx, seg, meta_pp, image_path, info_cfg ->
+                            [ patient_id, "${model}_pp".toString(), frame_tag, frame_idx, seg, meta_pp ]
+                        }
+                )
         }
 
         VISUALIZE_POSTPROCESS_DELTA(POSTPROCESS_LV_MYO.out.before_after)

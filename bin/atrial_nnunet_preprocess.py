@@ -15,12 +15,12 @@ import numpy as np
 import SimpleITK as sitk
 
 try:
-    from frame_manifest import build_frame_manifest, write_manifest
+    from frame_manifest import build_frame_manifest, verify_frame_references, write_manifest
 except ImportError:
     import os as _os
     import sys as _sys
     _sys.path.insert(0, _os.getcwd())
-    from frame_manifest import build_frame_manifest, write_manifest  # noqa: F401
+    from frame_manifest import build_frame_manifest, verify_frame_references, write_manifest  # noqa: F401
 
 try:
     from geometry_utils import read_nifti_with_sitk_fallback
@@ -89,6 +89,7 @@ def preprocess_patient(
         max_frames=max_frames,
         ground_truth_path=ground_truth,
     )
+    verify_frame_references(input_path, manifest, patient_id)
 
     if is_4d:
         output_files = []
