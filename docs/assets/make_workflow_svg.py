@@ -1,7 +1,7 @@
 """Draw docs/assets/sorat-workflow-{light,dark}.svg for the README.
 
 The figure follows one real case through SORAT: rows of a samplesheet, the
-short-axis model containers, a mask in the input geometry, and the resulting
+short-axis model containers, a mask in original image space, and the resulting
 rows of comparison/aggregated_metrics.csv (ACDC patient101, ED, RV).
 
 Usage: python docs/assets/make_workflow_svg.py docs/assets
@@ -10,7 +10,7 @@ from pathlib import Path
 import sys
 
 OUT = Path(sys.argv[1])
-W, H = 960, 222
+W, H = 1050, 204
 THEMES = {
     "light": dict(fg="#1f2328", muted="#59636e", card="#ffffff", head="#f6f8fa", stroke="#d1d9e0",
                   line="#8c959f", accent="#0969da", rv="#cf222e", myo="#1a7f37", lv="#0969da"),
@@ -77,13 +77,13 @@ def svg(theme):
         p.append(flow(264, mid, xs, y + 19))
         p.append(flow(xs + ws, y + 19, 636, mid))
     p.append(mask(676, mid))
-    p.append(t(660, mid + 52, "in the input geometry", 11, "muted", anchor="middle"))
-    metrics, mh = file_card(728, mid - 54, 216, "aggregated_metrics.csv",
+    p.append(t(662, mid + 50, "mask in original", 11, "muted", anchor="middle"))
+    p.append(t(662, mid + 64, "image space", 11, "muted", anchor="middle"))
+    metrics, mh = file_card(728, mid - 54, 306, "aggregated_metrics.csv · patient101 ED",
                             ["model     dice_rv  hd95_rv", "cinema    0.963    1.6", "nnformer  0.965    1.6",
                              "vsa3l     0.912   10.0"])
     p.append(metrics)
     p.append(flow(706, mid, 728, mid))
-    p.append(t(W / 2, H - 8, "ACDC patient101, end-diastole, right ventricle", 11, "muted", anchor="middle"))
     p.append("</svg>")
     out = "\n".join(p)
     for k, val in v.items():
