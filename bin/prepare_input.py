@@ -85,12 +85,7 @@ def sha256_of(paths: Sequence[Path]) -> str:
 # ---------------------------------------------------------------------------
 
 def _series_files(directory: Path) -> Dict[str, List[str]]:
-    """Map each DICOM series UID to its files, in ``directory`` and its immediate subdirectories.
-
-    Scanners that store one series per short-axis slice (Siemens) leave the
-    stack spread over several folders; looking one level down lets a
-    samplesheet point at a folder that holds (or links to) all of them.
-    """
+    """Map each series UID to its files in ``directory`` and its immediate subdirectories."""
     found: Dict[str, List[str]] = {}
     for folder in [directory] + sorted(p for p in directory.iterdir() if p.is_dir()):
         if not any(f.is_file() for f in folder.iterdir()):
@@ -123,7 +118,7 @@ def _series_time(tags: Dict[str, Dict[str, str]], files: List[str]) -> str:
 
 def _drop_repeated_positions(by_series: Dict[str, List[str]], tags: Dict[str, Dict[str, str]],
                              normal: np.ndarray) -> Tuple[List[str], List[str]]:
-    """Keep one series per slice position: the latest acquired, as a repeat replaces a failed take."""
+    """Keep one series per slice position, preferring the latest acquisition."""
     def positions(files):
         return {round(float(np.dot(normal, _float_list(tags[f][TAG_POSITION]))), 3) for f in files}
 
@@ -146,12 +141,7 @@ def read_dicom_series(directory: Path, series_uid: Optional[str] = None) -> Tupl
 
 
 def _read_dicom(directory: Path, series_uid: Optional[str]) -> Tuple[sitk.Image, dict, List[str]]:
-    """Read one series, or several (``uid1;uid2;...``) that together form one stack.
-
-    Several series must share orientation, matrix and pixel spacing; they are
-    combined by slice position. When two series cover the same position, the
-    later one is used and the other is listed under ``dropped_series``.
-    """
+    """Read one series, or several (``uid1;uid2``) with shared geometry stacked by slice position."""
     available = _series_files(directory)
     ids = list(available)
     if not ids:
