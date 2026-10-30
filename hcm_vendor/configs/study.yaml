@@ -10,8 +10,8 @@ paths:
   acdc_testing_root: /scratch/st-zlaksman-1/pmoheban/ACDC/database/testing
   acdc_samplesheet: data/acdc_testing_samplesheet.csv
   sorat_results:
-    mms2: results/MMS_2
-    acdc: results_v2/ACDC     # frame-fixed rerun (T46)
+    mms2: results_v2/MMS_2
+    acdc: results_v2/ACDC
 
 segmentation_model_tag: nnformer__fold0
 

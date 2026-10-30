@@ -17,7 +17,7 @@ FEATURE_VENV=/scratch/st-zlaksman-1/pmoheban/venvs/sorat-features-conda
 OUT_ROOT="${PWD}/results_hcm_vendor/features/nnformer"
 RUN_ROOT="${PWD}/results_hcm_vendor/pipeline_runs"
 
-declare -A SORAT_RESULTS=([mms2]=results/MMS_2 [acdc]=results/ACDC)
+declare -A SORAT_RESULTS=([mms2]=results_v2/MMS_2 [acdc]=results_v2/ACDC)
 
 for dataset in ${DATASETS}; do
     for cfg in ${CONFIGS}; do

@@ -16,7 +16,7 @@
   - **The user also submits every SLURM batch job** (set 2026-10-01): the node Claude works on is not a compute node. Give the exact `sbatch` command, run from the repo root; the user submits it and says when it finished.
   - **Work in agreed batches.** Do the batch the user approved, stop at a clean checkpoint (tests green, committed, this block updated), then wait for the user to say continue. Do not roll on into the next batch.
 - **Last completed:** Batch 12 on 2026-10-08: S7 blood-pool intensity reference. Batch 11 on 2026-10-07: S1 ground-truth masks, S3 ComBat, S6 docs PR. Batch 10 on 2026-10-05: TabPFN as a sixth model. Batch 9 on 2026-10-05: T61 final tables/figures, T63 reproducibility. Batch 8 on 2026-10-05: T41/T42 finalized, T51 summary and verdicts. Batch 7 on 2026-10-03: texture check and T50 SHAP. Batch 6 on 2026-10-03: T43 (E4), T44 (E5), T45 (GE), SVM grid widening. Batch 5 on 2026-10-01: T40 (E1), preliminary T41 (E2) and T42 (E3), plus an SVM probability fix. Batch 4 on 2026-10-01: T32 (PyTorch MLP, passes sklearn's `check_estimator`) and T34 (runner, result store, `run-experiment` CLI, sbatch script; smoke E1/E2 on compute nodes; full E1 ≈ 20 min on 32 cores). Batch 3 on 2026-09-30: T22 (`qc-report`, no D6 exclusions, texture direction reverses between vendors) and T31 (model zoo, grids, one-fold timing). Also the correlation filter now keeps myocardial mass over myo volume. Batch 2: T30, T33 tested. Batch 1: T14, T12, T21. Earlier: T00–T02, T10, T11, T13, T20.
-- **T46 done 2026-10-24; paused at a checkpoint. Wait for the user's go.** E5 was rerun on the frame-fixed ACDC nnFormer features (see the T46 log and FIGURES.md, "ACDC frame fix"). AUC and sensitivity are unchanged and specificity moves by at most 2 of 10 NOR, so no conclusion changes. Earlier: Batch 12 (S7) on 2026-10-08; S1, S3, S6 on 2026-10-07. Remaining: T62 final report and T60 midterm (on hold until the user asks), S2/S4/S5 (not requested). Note: the shared working tree is usually on `main` for the paper thread. T46 was done in a separate clone of this branch at `SORAT/.cache/hcmv_t46` (its `results_hcm_vendor` is a symlink to the real one); do not switch branches in the shared tree while another thread is working.
+- **T46 done 2026-10-24; paused at a checkpoint. Wait for the user's go.** E5 was rerun on the frame-fixed ACDC nnFormer features (see the T46 log and FIGURES.md, "ACDC frame fix"). AUC and sensitivity are unchanged and specificity moves by at most 2 of 10 NOR, so no conclusion changes. Earlier: Batch 12 (S7) on 2026-10-08; S1, S3, S6 on 2026-10-07. Remaining: T62 final report and T60 midterm (on hold until the user asks), S2/S4/S5 (not requested). SORAT inputs now come from `results_v2/` (`results/` was deleted 2026-10-30; see the first gotcha). Note: the shared working tree is usually on `main` for the paper thread. T46 was done in a separate clone of this branch at `SORAT/.cache/hcmv_t46` (its `results_hcm_vendor` is a symlink to the real one); do not switch branches in the shared tree while another thread is working.
 - **Batch 3 follow-up (2026-09-30):** all figures were redrawn to stand alone (plain titles, units, n per group, legends), and a Siemens-vs-Philips AUC scatter (`auc_agreement_siemens_philips.png`) was added. The `all-no-wt` family set was added (D11), along with `FIGURES.md`.
 - **Planned batches:**
 - **Open questions for the user:** none. The ceiling question was answered by D11.
@@ -57,7 +57,7 @@
   - **P0**: must be done for the result to be valid.
   - **P1**: a core proposal deliverable.
   - **P2**: stretch work, only if time allows after P0/P1.
-- **Never write into `results/`.** It holds the original SORAT runs and is read-only for this project. New pipeline outputs go to `results_hcm_vendor/`.
+- **`results/` no longer exists** (the user deleted the September SORAT runs on 2026-10-30, along with `work/` and `.cache/preprocess`, so `-resume` on those runs no longer works). `study.yaml` (`paths.sorat_results`) and `scripts/run_feature_extraction.sh` now point to `results_v2/{MMS_2,ACDC}`. The finished features and tables in `results_hcm_vendor/` are unaffected. The M&Ms-2 nnFormer features were extracted from the old `results/MMS_2` masks; a future M&Ms-2 re-extraction or Dice QC rerun would read the `results_v2/MMS_2` masks (written 2026-10-10) instead, so its numbers may differ slightly. Never write into `results_v2/`; new pipeline outputs go to `results_hcm_vendor/`.
 
 ---
 
@@ -159,7 +159,7 @@ Nov 16 ─ Nov 27  Phase 6  Figures, report, reproducibility   T61 T62 T63
 
 **Segmentations:**
 - nnFormer (`nnformer__fold0`) was trained on ACDC training data only. So there is no segmentation-training leakage into M&Ms-2 or into ACDC test (101–150).
-- Masks are at `results/{MMS_2,ACDC}/nnformer/segmentations/<pid>_{ED,ES}_nnformer__fold0.nii.gz` (ACDC pid is `patientNNN`), in native image space.
+- Masks were at `results/{MMS_2,ACDC}/nnformer/segmentations/<pid>_{ED,ES}_nnformer__fold0.nii.gz` (ACDC pid is `patientNNN`), in native image space.
 - Masks use the SORAT label convention: **1=RV, 2=MYO, 3=LV**.
 - **Ground-truth label conventions differ.**
   - M&Ms-2 ground truth (`M&Ms_2/MnM2/SA/NNN/NNN_SA_{ED,ES}_gt.nii.gz`) is **1=LV, 2=MYO, 3=RV**. This was checked by which label the myocardium encloses.
@@ -169,7 +169,7 @@ Nov 16 ─ Nov 27  Phase 6  Figures, report, reproducibility   T61 T62 T63
 - Each M&Ms-2 `Info.cfg` holds 0-indexed ED/ES indices into `NNN_SA_CINE.nii.gz`. They were regenerated and checked by `scripts/verify_regen_mms2_cfg.py`.
 
 **Current feature CSVs (the old features, to be superseded by T14):**
-- Location: `results/MMS_2/features/raw/<pid>_nnformer__fold0_{ED,ES}_features.csv` (230 subjects) and `results/ACDC/features/raw/patientNNN_nnformer__fold0_{ED,ES}_features.csv` (50, created Sep 26).
+- Location (deleted 2026-10-30): `results/MMS_2/features/raw/<pid>_nnformer__fold0_{ED,ES}_features.csv` (230 subjects) and `results/ACDC/features/raw/patientNNN_nnformer__fold0_{ED,ES}_features.csv` (50, created Sep 26).
 - One row per file. Columns are prefixed `ed_`/`es_`. The `patient_id` column is *not* a bare ID, so parse the ID from the filename.
 - Per phase there are 62 features:
   - 6 clinical: LV, RV and MYO volume, myocardial mass, and mean/max wall thickness.
