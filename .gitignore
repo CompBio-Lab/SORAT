@@ -160,3 +160,7 @@ sorat_workflow_simplified.png
 /data/
 scripts/*
 !scripts/build_containers.sh
+
+# Institutional (non-public) data: samplesheets, Info.cfg files and results are never committed
+*institutional*
+institutional_hcm/

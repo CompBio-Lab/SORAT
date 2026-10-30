@@ -21,7 +21,8 @@ if np is not None:
     import prepare_input as P  # noqa: E402
 
 
-def write_dicom_series(directory: Path, volumes, series_uid: str, spacing=(0.8, 0.8, 8.0), trigger_step=40.0):
+def write_dicom_series(directory: Path, volumes, series_uid: str, spacing=(0.8, 0.8, 8.0), trigger_step=40.0,
+                       z0=0.0, series_time="120000"):
     """Write one series: volumes is a list of (z, y, x) arrays, one per cine frame."""
     directory.mkdir(parents=True, exist_ok=True)
     writer = sitk.ImageFileWriter()
@@ -35,7 +36,7 @@ def write_dicom_series(directory: Path, volumes, series_uid: str, spacing=(0.8, 
             tags = {
                 "0008|0060": "MR", "0020|000d": study_uid, "0020|000e": series_uid,
                 "0008|0018": f"{series_uid}.{t}.{z}", "0020|0013": str(n + 1),
-                "0020|0032": f"0\\0\\{z * spacing[2]}", "0020|0037": "1\\0\\0\\0\\1\\0",
+                "0020|0032": f"0\\0\\{z0 + z * spacing[2]}", "0008|0031": series_time, "0020|0037": "1\\0\\0\\0\\1\\0",
                 "0028|0030": f"{spacing[1]}\\{spacing[0]}", "0018|0050": str(spacing[2]),
                 "0018|1060": str(t * trigger_step),
             }
@@ -129,6 +130,55 @@ class PrepareInputTests(unittest.TestCase):
             P.read_dicom_series(self.dir / "two")
         image, info = P.read_dicom_series(self.dir / "two", "1.2.3.4.302")
         self.assertEqual(info["series_uid"], "1.2.3.4.302")
+
+    def write_slice_series(self, root: Path, frames, order):
+        """One series per slice (Siemens layout): frames is (t, z, y, x); series written in ``order``."""
+        uids = []
+        for n, z in enumerate(order):
+            uid = f"1.2.3.4.5{z:02d}"
+            write_dicom_series(root / f"SE{n:02d}", [frames[t][z:z + 1] for t in range(len(frames))], uid,
+                               z0=z * 8.0, series_time=f"1200{n:02d}")
+            uids.append(uid)
+        return uids
+
+    def test_slice_series_are_stacked_by_position(self):
+        frames = self.rng.integers(0, 1000, (3, 4, 5, 6))
+        uids = self.write_slice_series(self.dir / "exam", frames, order=[2, 0, 3, 1])
+        image, info = P.read_dicom_series(self.dir / "exam", ";".join(uids))
+        self.assertEqual((info["n_slices"], info["n_frames"]), (4, 3))
+        self.assertTrue(np.array_equal(sitk.GetArrayFromImage(image), frames))
+        np.testing.assert_allclose(image.GetSpacing()[:3], (0.8, 0.8, 8.0), atol=1e-6)
+        self.assertNotIn("dropped_series", info)
+
+    def test_repeated_slice_keeps_the_later_series(self):
+        frames = self.rng.integers(0, 1000, (2, 3, 4, 4))
+        uids = self.write_slice_series(self.dir / "exam", frames, order=[0, 1, 2])
+        repeat = self.rng.integers(0, 1000, (2, 1, 4, 4))
+        write_dicom_series(self.dir / "exam" / "SE99", [repeat[t] for t in range(2)], "1.2.3.4.599",
+                           z0=8.0, series_time="130000")
+        image, info = P.read_dicom_series(self.dir / "exam", ";".join(uids + ["1.2.3.4.599"]))
+        self.assertEqual(info["dropped_series"], ["1.2.3.4.501"])
+        expected = frames.copy()
+        expected[:, 1] = repeat[:, 0]
+        self.assertTrue(np.array_equal(sitk.GetArrayFromImage(image), expected))
+
+    def test_slice_series_with_other_orientation_are_rejected(self):
+        frames = self.rng.integers(0, 1000, (2, 2, 4, 4))
+        uids = self.write_slice_series(self.dir / "exam", frames, order=[0, 1])
+        f = next((self.dir / "exam" / "SE01").iterdir())
+        img = sitk.ReadImage(str(f))
+        img.SetMetaData("0020|0037", "0\\1\\0\\0\\0\\1")
+        w = sitk.ImageFileWriter(); w.KeepOriginalImageUIDOn(); w.SetFileName(str(f)); w.Execute(img)
+        with self.assertRaisesRegex(ValueError, "orientation"):
+            P.read_dicom_series(self.dir / "exam", ";".join(uids))
+
+    def test_cli_records_stacked_series(self):
+        frames = self.rng.integers(0, 1000, (2, 3, 4, 4))
+        uids = self.write_slice_series(self.dir / "exam", frames, order=[1, 2, 0])
+        out = self.run_cli("--patient_id", "s1", "--image", str(self.dir / "exam"), "--dicom_series", ";".join(uids))
+        prov = json.loads((out / "s1_input_provenance.json").read_text())["files"][0]
+        self.assertEqual((prov["n_slices"], prov["n_frames"], prov["n_files"]), (3, 2, 6))
+        self.assertEqual(sorted(prov["series_uid"].split(";")), sorted(uids))
 
 
 if __name__ == "__main__":
