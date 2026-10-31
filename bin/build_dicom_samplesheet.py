@@ -107,7 +107,7 @@ def choose(exam, include, exclude, min_slices):
 
 def write_csv(path, fields, rows):
     with open(path, "w", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")
+        writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore", lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
 

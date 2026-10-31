@@ -148,7 +148,8 @@ class PrepareInputTests(unittest.TestCase):
         self.assertEqual((info["n_slices"], info["n_frames"]), (4, 3))
         self.assertTrue(np.array_equal(sitk.GetArrayFromImage(image), frames))
         np.testing.assert_allclose(image.GetSpacing()[:3], (0.8, 0.8, 8.0), atol=1e-6)
-        self.assertNotIn("dropped_series", info)
+        self.assertNotIn("replaced_slices", info)
+        self.assertEqual(info["slice_gap_mm"], [8.0, 8.0])
 
     def test_repeated_slice_keeps_the_later_series(self):
         frames = self.rng.integers(0, 1000, (2, 3, 4, 4))
@@ -157,9 +158,22 @@ class PrepareInputTests(unittest.TestCase):
         write_dicom_series(self.dir / "exam" / "SE99", [repeat[t] for t in range(2)], "1.2.3.4.599",
                            z0=8.0, series_time="130000")
         image, info = P.read_dicom_series(self.dir / "exam", ";".join(uids + ["1.2.3.4.599"]))
-        self.assertEqual(info["dropped_series"], ["1.2.3.4.501"])
+        self.assertEqual(info["replaced_slices"], 1)
         expected = frames.copy()
         expected[:, 1] = repeat[:, 0]
+        self.assertTrue(np.array_equal(sitk.GetArrayFromImage(image), expected))
+
+    def test_partial_repeat_replaces_only_its_slices(self):
+        frames = self.rng.integers(0, 1000, (2, 5, 4, 4))
+        write_dicom_series(self.dir / "exam" / "SE01", [frames[t] for t in range(2)], "1.2.3.4.601",
+                           series_time="120000")
+        repeat = self.rng.integers(0, 1000, (2, 2, 4, 4))
+        write_dicom_series(self.dir / "exam" / "SE02", [repeat[t] for t in range(2)], "1.2.3.4.602",
+                           z0=16.0, series_time="121000")
+        image, info = P.read_dicom_series(self.dir / "exam", "1.2.3.4.601;1.2.3.4.602")
+        expected = frames.copy()
+        expected[:, 2:4] = repeat
+        self.assertEqual((info["n_slices"], info["replaced_slices"]), (5, 2))
         self.assertTrue(np.array_equal(sitk.GetArrayFromImage(image), expected))
 
     def test_slice_series_with_other_orientation_are_rejected(self):

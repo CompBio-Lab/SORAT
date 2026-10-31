@@ -116,22 +116,19 @@ def _series_time(tags: Dict[str, Dict[str, str]], files: List[str]) -> str:
     return min(tags[f].get(TAG_SERIES_TIME) or tags[f].get(TAG_ACQUISITION_TIME, "") for f in files)
 
 
-def _drop_repeated_positions(by_series: Dict[str, List[str]], tags: Dict[str, Dict[str, str]],
-                             normal: np.ndarray) -> Tuple[List[str], List[str]]:
-    """Keep one series per slice position, preferring the latest acquisition."""
-    def positions(files):
-        return {round(float(np.dot(normal, _float_list(tags[f][TAG_POSITION]))), 3) for f in files}
-
-    order = sorted(by_series, key=lambda uid: _series_time(tags, by_series[uid]), reverse=True)
-    taken, kept, dropped = set(), [], []
-    for uid in order:
-        pos = positions(by_series[uid])
-        if pos & taken:
-            dropped.append(uid)
-            continue
-        taken |= pos
-        kept.extend(by_series[uid])
-    return kept, dropped
+def _latest_per_position(by_series: Dict[str, List[str]], tags: Dict[str, Dict[str, str]],
+                         normal: np.ndarray) -> Tuple[List[str], int]:
+    """Use, at each slice position, the images of the latest series covering it (a repeat replaces a failed take)."""
+    chosen: Dict[float, Tuple[str, List[str]]] = {}
+    replaced = 0
+    for uid in sorted(by_series, key=lambda u: _series_time(tags, by_series[u])):
+        by_pos: Dict[float, List[str]] = {}
+        for f in by_series[uid]:
+            by_pos.setdefault(round(float(np.dot(normal, _float_list(tags[f][TAG_POSITION]))), 1), []).append(f)
+        for pos, files in by_pos.items():
+            replaced += pos in chosen
+            chosen[pos] = (uid, files)
+    return [f for _, files in chosen.values() for f in files], replaced
 
 
 def read_dicom_series(directory: Path, series_uid: Optional[str] = None) -> Tuple[sitk.Image, dict]:
@@ -154,14 +151,14 @@ def _read_dicom(directory: Path, series_uid: Optional[str]) -> Tuple[sitk.Image,
             )
         wanted = ids
     else:
-        wanted = [u.strip() for u in series_uid.split(";") if u.strip()]
+        wanted = [u.strip() for u in series_uid.split(";") if u.strip()] or ids
         missing = [u for u in wanted if u not in available]
         if missing:
             raise ValueError(f"{directory}: series {', '.join(missing)} not found (available: {', '.join(ids)})")
 
     by_series = {uid: available[uid] for uid in wanted}
     tags = {f: _read_tags(f) for files in by_series.values() for f in files}
-    dropped: List[str] = []
+    replaced = 0
     if len(wanted) == 1:
         files = by_series[wanted[0]]
     else:
@@ -173,7 +170,7 @@ def _read_dicom(directory: Path, series_uid: Optional[str]) -> Tuple[sitk.Image,
                 raise ValueError(f"{directory}: series {uid} differs in matrix or pixel spacing from {wanted[0]}")
             if not np.allclose(_float_list(t[TAG_ORIENTATION]), reference, atol=1e-3):
                 raise ValueError(f"{directory}: series {uid} has a different orientation from {wanted[0]}")
-        files, dropped = _drop_repeated_positions(by_series, tags, np.cross(reference[:3], reference[3:]))
+        files, replaced = _latest_per_position(by_series, tags, np.cross(reference[:3], reference[3:]))
 
     orientation = _float_list(tags[files[0]][TAG_ORIENTATION])
     normal = np.cross(orientation[:3], orientation[3:])
@@ -187,10 +184,15 @@ def _read_dicom(directory: Path, series_uid: Optional[str]) -> Tuple[sitk.Image,
     if len(counts) != 1:
         raise ValueError(f"{directory}: slice positions have unequal numbers of images {sorted(counts)}")
     n_frames = counts.pop()
-    info = {"reader": "dicom", "series_uid": ";".join(u for u in wanted if u not in dropped),
+    info = {"reader": "dicom", "series_uid": ";".join(wanted),
             "n_files": len(files), "n_slices": len(positions), "n_frames": n_frames}
-    if dropped:
-        info["dropped_series"] = dropped
+    gaps = np.diff(positions)
+    if len(gaps):
+        info["slice_gap_mm"] = [round(float(gaps.min()), 2), round(float(gaps.max()), 2)]
+        if gaps.max() - gaps.min() > 0.1 * gaps.mean():
+            print(f"WARNING: {directory}: uneven slice spacing {info['slice_gap_mm']} mm", file=sys.stderr)
+    if replaced:
+        info["replaced_slices"] = replaced
 
     if n_frames == 1:
         ordered = [by_position[p][0] for p in positions]
