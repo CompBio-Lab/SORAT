@@ -735,6 +735,13 @@ def resolveFeatureMaskSource(contextLabel = 'main workflow') {
 */
 
 
+// Suffix for preprocess cache keys: the cached frames depend on the frame selection,
+// so a changed frames_mode, max_frames or Info.cfg must not reuse an older cache entry.
+def frameSelectionKey(info) {
+    def text = "${params.frames_mode}|${params.max_frames}|${info ? file(info).text : ''}"
+    return text.md5().take(8)
+}
+
 // True for NIfTI files (.nii / .nii.gz); directories and other formats are converted by PREPARE_INPUT.
 def isNiftiPath(path) {
     def name = path.getName().toLowerCase()
@@ -886,7 +893,7 @@ workflow {
         ch_cinema_models = ch_cinema_per_seed.mix(ch_cinema_ensemble)
 
         ch_cinema_preprocess_input = ch_input
-            .map { patient_id, image, gt, info -> [ patient_id, image, gt, info, cinema_preprocess_key ] }
+            .map { patient_id, image, gt, info -> [ patient_id, image, gt, info, "${cinema_preprocess_key}_${frameSelectionKey(info)}" ] }
 
         CINEMA_PREPROCESS(ch_cinema_preprocess_input)
         ch_cinema_inputs = CINEMA_PREPROCESS.out.preprocessed
@@ -925,7 +932,7 @@ workflow {
         }
 
         ch_nnformer_preprocess_input = ch_input
-            .map { patient_id, image, gt, info -> [ patient_id, image, gt, info, nnformer_preprocess_key ] }
+            .map { patient_id, image, gt, info -> [ patient_id, image, gt, info, "${nnformer_preprocess_key}_${frameSelectionKey(info)}" ] }
 
         NNFORMER_PREPROCESS(ch_nnformer_preprocess_input)
         ch_nnformer_inputs = NNFORMER_PREPROCESS.out.preprocessed
@@ -962,7 +969,7 @@ workflow {
         }
 
         ch_vsa3l_preprocess_input = ch_input
-            .map { patient_id, image, gt, info -> [ patient_id, image, gt, info, vsa3l_preprocess_key ] }
+            .map { patient_id, image, gt, info -> [ patient_id, image, gt, info, "${vsa3l_preprocess_key}_${frameSelectionKey(info)}" ] }
 
         VSA3L_PREPROCESS(ch_vsa3l_preprocess_input)
         ch_vsa3l_inputs = VSA3L_PREPROCESS.out.preprocessed
@@ -1001,7 +1008,7 @@ workflow {
         }
 
         ch_atrial_nnunet_preprocess_input = ch_input
-            .map { patient_id, image, gt, info -> [ patient_id, image, gt, info, atrial_nnunet_preprocess_key ] }
+            .map { patient_id, image, gt, info -> [ patient_id, image, gt, info, "${atrial_nnunet_preprocess_key}_${frameSelectionKey(info)}" ] }
 
         ATRIAL_NNUNET_PREPROCESS(ch_atrial_nnunet_preprocess_input)
         ch_atrial_nnunet_inputs = ATRIAL_NNUNET_PREPROCESS.out.preprocessed
